@@ -121,3 +121,66 @@ test("href never carries the legacy params forward", () => {
   assert.ok(!href.includes("promo="), href);
   assert.ok(href.includes("discount_only=true"), href);
 });
+
+test("prototype pollution via sort/popular cannot escape MODERN_SORTS", () => {
+  assert.equal(parse("sort=constructor").sort, "best_seller");
+  assert.equal(parse("popular=toString").sort, "best_seller");
+  assert.equal(parse("popular=hasOwnProperty").sort, "best_seller");
+  assert.equal(parse("sort=hasOwnProperty").sort, "best_seller");
+});
+
+test("full round trip through buildProductsHref and back is lossless", () => {
+  const original = {
+    q: "royal canin",
+    categorySlugs: ["makanan-kucing", "makanan-anjing"],
+    brandSlugs: ["royal-canin", "whiskas"],
+    minPrice: 10000,
+    maxPrice: 90000,
+    inStock: true,
+    minRating: 4,
+    discountOnly: true,
+    sort: "price_asc" as const,
+    page: 3,
+  };
+  const href = buildProductsHref(original);
+  const query = href.split("?")[1] ?? "";
+  const roundTripped = parse(query);
+  assert.deepEqual(roundTripped, original);
+});
+
+test("q param from live hero links is parsed, trimmed, forwarded, and carried", () => {
+  const p = parse("q=%20royal+canin%20");
+  assert.equal(p.q, "royal canin");
+  assert.equal(buildApiSearchParams(p).get("q"), "royal canin");
+  assert.ok(buildProductsHref(p).includes("q=royal"), buildProductsHref(p));
+
+  assert.equal(parse("q=").q, "");
+  assert.equal(buildApiSearchParams(parse("q=")).get("q"), null);
+});
+
+test("popular wins over new when both are present", () => {
+  assert.equal(parse("popular=trending&new=today").sort, "trending");
+});
+
+test("min_rating=0 is a no-op filter, not a rating floor", () => {
+  assert.equal(parse("min_rating=0").minRating, undefined);
+  assert.equal(parse("min_rating=4").minRating, 4);
+});
+
+test("minPrice/maxPrice of 0 remain legitimate explicit bounds", () => {
+  assert.equal(parse("min_price=0").minPrice, 0);
+  assert.equal(parse("max_price=0").maxPrice, 0);
+});
+
+test("duplicate brand slugs are de-duplicated preserving first-seen order", () => {
+  const p = parse("brand=a&brand=a&brand=b&brand=a");
+  assert.deepEqual(p.brandSlugs, ["a", "b"]);
+});
+
+test("number edge cases fail closed", () => {
+  assert.equal(parse("min_price=abc").minPrice, undefined);
+  assert.equal(parse("min_price=-5").minPrice, undefined);
+  assert.equal(parse("page=0").page, 1);
+  assert.equal(parse("page=-1").page, 1);
+  assert.equal(parse("page=abc").page, 1);
+});

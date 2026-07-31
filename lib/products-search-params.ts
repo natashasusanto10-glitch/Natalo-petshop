@@ -51,10 +51,15 @@ const POPULAR_SORTS: Record<string, SearchSort> = {
   "most-bought": "best_seller",
 };
 
-function positiveNumber(raw: string | null): number | undefined {
+function nonNegativeNumber(raw: string | null): number | undefined {
   if (!raw) return undefined;
   const value = Number(raw);
   return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function positiveNumber(raw: string | null): number | undefined {
+  const value = nonNegativeNumber(raw);
+  return value !== undefined && value > 0 ? value : undefined;
 }
 
 export function parseProductsParams(sp: URLSearchParams): ProductsCatalogParams {
@@ -67,27 +72,38 @@ export function parseProductsParams(sp: URLSearchParams): ProductsCatalogParams 
     sp.get("diskon") === "1" ||
     rawSort === "promo";
 
+  // `Object.hasOwn` mencegah kunci prototype bawaan (mis. "constructor",
+  // "toString") ikut terbaca sebagai entri tabel yang valid — tanpa guard ini
+  // `?sort=constructor` atau `?popular=toString` bisa meloloskan nilai fungsi
+  // bawaan JS ke `sort`. Hasil akhirnya tetap divalidasi ulang ke MODERN_SORTS
+  // supaya `sort` yang dikembalikan selalu salah satu dari 7 SearchSort.
   let sort: SearchSort | undefined;
   if (rawSort && (MODERN_SORTS as string[]).includes(rawSort)) {
     sort = rawSort as SearchSort;
-  } else if (rawSort && SORT_ALIASES[rawSort]) {
+  } else if (rawSort && Object.hasOwn(SORT_ALIASES, rawSort)) {
     sort = SORT_ALIASES[rawSort];
   } else {
     const popular = sp.get("popular");
-    if (popular && POPULAR_SORTS[popular]) sort = POPULAR_SORTS[popular];
+    if (popular && Object.hasOwn(POPULAR_SORTS, popular)) sort = POPULAR_SORTS[popular];
     // Batas 30-hari dibuang (owner §4.8); "terbaru dulu" tak pernah kosong.
     else if (sp.get("new")) sort = "newest";
   }
+  if (sort && !(MODERN_SORTS as string[]).includes(sort)) sort = undefined;
 
-  const category = sp.get("kategori") ?? sp.get("category");
+  // Simetris dengan buildApiSearchParams/buildProductsHref yang menulis
+  // banyak nilai kategori (forEach/append) — getAll() supaya round-trip setia.
+  const rawKategori = sp.getAll("kategori");
+  const categoryValues = rawKategori.length > 0 ? rawKategori : sp.getAll("category");
+  const categorySlugs = categoryValues.filter((slug) => slug && slug !== "all");
+
   const page = Number(sp.get("page"));
 
   return {
     q: (sp.get("q") ?? "").trim(),
-    categorySlugs: category && category !== "all" ? [category] : [],
-    brandSlugs: sp.getAll("brand").filter(Boolean),
-    minPrice: positiveNumber(sp.get("min_price")),
-    maxPrice: positiveNumber(sp.get("max_price")),
+    categorySlugs,
+    brandSlugs: [...new Set(sp.getAll("brand").filter(Boolean))],
+    minPrice: nonNegativeNumber(sp.get("min_price")),
+    maxPrice: nonNegativeNumber(sp.get("max_price")),
     inStock: sp.get("in_stock") === "true",
     minRating: positiveNumber(sp.get("min_rating")),
     discountOnly,
