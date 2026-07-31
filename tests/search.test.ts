@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   filterSortPaginateSearchDocs,
+  orderDocsBySalesRank,
   type ProductSearchDoc,
   type SearchOptions,
 } from "@/lib/search";
@@ -234,4 +235,77 @@ test("partial and typo tolerant search can match kandang bsi to kandang besi", (
 
   assert.equal(result.total, 1);
   assert.equal(result.items[0].id, "kandang-besi");
+});
+
+test("sales rank ordering keeps never-sold products instead of dropping them", () => {
+  const sold = doc({ id: "sold", slug: "sold", name: "Pernah terjual" });
+  const unsold = doc({ id: "unsold", slug: "unsold", name: "Belum pernah terjual" });
+
+  const ordered = orderDocsBySalesRank([unsold, sold], ["sold"], () => 0);
+
+  assert.deepEqual(
+    ordered.map((item) => item.id),
+    ["sold", "unsold"],
+  );
+});
+
+test("sales rank ordering follows ranked id order, not input order", () => {
+  const a = doc({ id: "a", slug: "a" });
+  const b = doc({ id: "b", slug: "b" });
+  const c = doc({ id: "c", slug: "c" });
+
+  const ordered = orderDocsBySalesRank([a, b, c], ["c", "a", "b"], () => 0);
+
+  assert.deepEqual(
+    ordered.map((item) => item.id),
+    ["c", "a", "b"],
+  );
+});
+
+test("never-sold products fall back to the tiebreak comparator", () => {
+  const cheap = doc({ id: "cheap", slug: "cheap", price_min: 10_000 });
+  const pricey = doc({ id: "pricey", slug: "pricey", price_min: 90_000 });
+
+  const ordered = orderDocsBySalesRank(
+    [pricey, cheap],
+    [],
+    (a, b) => a.price_min - b.price_min,
+  );
+
+  assert.deepEqual(
+    ordered.map((item) => item.id),
+    ["cheap", "pricey"],
+  );
+});
+
+test("sales rank ordering does not mutate the caller's array", () => {
+  const a = doc({ id: "a", slug: "a" });
+  const b = doc({ id: "b", slug: "b" });
+  const input = [a, b];
+
+  orderDocsBySalesRank(input, ["b"], () => 0);
+
+  assert.deepEqual(
+    input.map((item) => item.id),
+    ["a", "b"],
+  );
+});
+
+test("rank wins over tiebreak, and tiebreak only orders the unranked tail", () => {
+  const ranked = doc({ id: "ranked", slug: "ranked", price_min: 99_000 });
+  const cheapUnranked = doc({ id: "cheap", slug: "cheap", price_min: 10_000 });
+  const priceyUnranked = doc({ id: "pricey", slug: "pricey", price_min: 50_000 });
+
+  const ordered = orderDocsBySalesRank(
+    [priceyUnranked, cheapUnranked, ranked],
+    ["ranked"],
+    (a, b) => a.price_min - b.price_min,
+  );
+
+  // "ranked" is most expensive, so a price tiebreak would put it LAST —
+  // it must still come first because sales rank outranks the tiebreak.
+  assert.deepEqual(
+    ordered.map((item) => item.id),
+    ["ranked", "cheap", "pricey"],
+  );
 });

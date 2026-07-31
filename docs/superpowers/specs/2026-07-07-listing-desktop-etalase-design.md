@@ -96,6 +96,29 @@ Ditemukan saat investigasi, keduanya menular ke `/products` begitu migrasi:
 **Temuan sampingan (bug pre-existing di stack produk, bukan dibuat PR2).**
 `/api/products?discountOnly=true` **terlalu longgar**: ia mencocokkan produk yang punya baris promo aktif walau harga efektifnya tidak benar-benar turun — respons API-nya sendiri menunjukkan `discountPrice: null` untuk produk-produk itu. Search lebih ketat (menyaring ulang dengan `discount_price < price_min`, sama dengan syarat badge di kartu) sehingga mengembalikan 0 di Preview DB, yang **lebih jujur**. Kalau nanti pelanggan mengeluh "filter diskon kosong", cek dulu apakah memang tidak ada diskon efektif — bukan bug filter.
 
+### 4.7b Hasil PR3 — bloker batas-2000 DITUTUP + perilaku yang diketahui di atas 2000 baris
+
+**PR3 SELESAI.** `searchProductsFromDb` kini menjalankan ranking lebih dulu, lalu mengambil **kepala** (produk yang pernah terjual, lewat `id IN rankedIds` — tak bisa terpotong) terpisah dari **ekor** (belum pernah terjual, terbaru dulu, dibatasi kuota), lalu menggabungkannya. Best-seller lama tidak bisa lagi hilang diam-diam. Diverifikasi: ketujuh sort mengembalikan id & total **identik** sebelum vs sesudah di Preview DB (1324 produk), dan integritas filter dibuktikan (`min_rating=4`→48, `min_price=100k`→598, jadi rantai `AND` selamat melewati kedua query).
+
+**Perilaku yang diketahui saat katalog melewati 2000 — diwariskan ke PR4, jangan ditemukan ulang:**
+
+- **`total` & facet jadi bergantung-sort.** Di atas batas, `best_seller`/`trending` bisa mencapai `kepala + 2000` sementara `newest` berhenti di 2000. Ini lebih baik daripada pemotongan seragam yang lama, dan **tidak** menghasilkan halaman kosong (array yang sama di-slice), tapi angka "Menampilkan X dari Y" dan hitungan facet akan berubah saat pembeli mengganti sort. Obat sebenarnya: pindahkan filter+paginasi ke SQL.
+- **Biaya query di atas batas.** Dua daftar parameter `IN`/`NOT IN` berisi hingga 2000 id per permintaan, dan `orderBy createdAt desc` di bawah `NOT IN` kemungkinan tidak memakai indeks. Dormant sampai katalog ~2000 (headroom hari ini 1324/2000); `console.warn` ekor adalah pemicu untuk meninjau ulang — pantau juga latensi query ekor saat itu.
+- **Memori puncak ~2×.** Sort penjualan bisa menghidrasi hingga 4000 baris sekaligus (kepala + ekor) alih-alih 2000. Wajar di skala sekarang; siapa pun yang menaikkan `CATALOG_FETCH_CAP` harus tahu biayanya berlipat.
+- **Dua batas, dua warn.** `CATALOG_FETCH_CAP` (ekor) dan `SALES_HEAD_CAP` (kepala) masing-masing punya `console.warn` sendiri. Tidak ada lagi pemotongan yang diam.
+
+**Saran untuk PR4 sebelum memindahkan `/products`:** jalankan sekali uji sintetis di-atas-batas (turunkan sementara `CATALOG_FETCH_CAP` ke mis. 50 di percobaan terpisah) supaya klaim terkuat PR3 — kepala selamat, ekor terpotong — berubah dari "dinalar" jadi "diamati". Preview DB (1324) tidak bisa memicu jalur itu.
+
+### 4.8 Keputusan owner 2026-07-31 (sebelum PR3) — pemecahan, filter yang dibuang, urutan default
+
+Setelah investigasi kode penuh, tiga hal dibawa ke owner karena mengubah apa yang pembeli lihat. Semua sudah diputuskan:
+
+1. **PR3 dipecah dua.** **PR3 = perbaikan bloker batas-2000 saja** (backend, kecil, bisa diverifikasi lewat `/search` yang sudah memakai jalur itu). **PR4 = migrasi halaman `/products`.** Alasan: kalau perbaikan mesin punya bug halus, ketahuannya di `/search` dulu, bukan langsung di katalog — halaman paling ramai.
+2. **Filter tanpa padanan di stack search DIBUANG:** `today`, `this-week`, `last-30-days` (dari param `new`) dan `most-searched`, `most-bought` (dari param `popular`). Alasan: app Flutter sendiri tidak punya filter-filter ini, jadi membuangnya justru menyamakan web dengan app sesuai arahan owner. Yang tersisa tetap lengkap: kategori, brand, stok, harga, rating, diskon + sort Terlaris/Terbaru/Rating/Harga↑↓.
+3. **Urutan default `/products` = "Paling Populer"** (`sort=best_seller`, penjualan asli). Pengacakan per-kunjungan (`seed`) dibuang — dengan paginasi berbasis halaman, urutan acak tidak bisa dijamin konsisten antar-halaman dan tidak bisa dijelaskan ke pembeli.
+
+**Koreksi penting atas rencana bloker (opsi (a) versi spec ternyata belum lengkap).** "Ambil produk berdasarkan ranked-ids lebih dulu" kalau ditelan mentah akan **menghapus produk yang belum pernah terjual** — padahal sekarang mereka sengaja dipertahankan dan didorong ke ekor (lihat komentar di `searchProductsFromDb`), dan juga diam-diam ikut menerapkan saringan "layak beli" (`productRankWhere`: harga>0 & stok>0) ke hasil yang tampil. Jadi bentuk benarnya: **kepala terurut-penjualan (diambil by ranked-ids) + ekor belum-terjual (terbaru dulu, dibatasi kuota)**, lalu digabung. Ini yang dikerjakan PR3.
+
 ## 5. Desain per halaman
 
 ### 5.1 `/products` (inti)

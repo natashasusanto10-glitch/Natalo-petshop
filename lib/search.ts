@@ -698,6 +698,29 @@ function compareSearchItems(sort: SearchSort, query: string) {
   };
 }
 
+/**
+ * Urutkan dokumen memakai urutan ranking penjualan (`rankedIds`, indeks 0 =
+ * paling laku).
+ *
+ * Produk yang TIDAK ada di `rankedIds` (belum pernah terjual) sengaja TIDAK
+ * dibuang — didorong ke ekor lalu diurut dengan `tiebreak`. Sort tidak boleh
+ * menghilangkan hasil (beda dengan /api/products yang menggabung filter+sort
+ * dalam satu param `popular`).
+ */
+export function orderDocsBySalesRank(
+  docs: ProductSearchDoc[],
+  rankedIds: string[],
+  tiebreak: (a: ProductSearchDoc, b: ProductSearchDoc) => number,
+): ProductSearchDoc[] {
+  const rank = new Map(rankedIds.map((id, index) => [id, index]));
+  return [...docs].sort((a, b) => {
+    const rankA = rank.get(a.id) ?? Infinity;
+    const rankB = rank.get(b.id) ?? Infinity;
+    if (rankA !== rankB) return rankA - rankB;
+    return tiebreak(a, b);
+  });
+}
+
 export function filterSortPaginateSearchDocs(
   docs: ProductSearchDoc[],
   opts: NormalizedSearchOptions,
@@ -783,6 +806,31 @@ async function trigramCandidateIds(query: string, limit = 500): Promise<string[]
   return rows.map((row) => row.id);
 }
 
+/**
+ * Batas baris yang diambil per query untuk permintaan search TANPA kata kunci.
+ *
+ * Untuk sort berbasis penjualan (best_seller/trending) batas ini hanya mengenai
+ * EKOR — kepala diambil lewat id-nya sendiri jadi tidak pernah terpotong.
+ * Untuk sort lain (newest/price_asc/price_desc/rating_desc/relevance) tidak ada
+ * kepala, sehingga batas ini memotong SELURUH hasil, persis seperti sebelumnya.
+ *
+ * Menaikkan batas ini menaikkan pemakaian memori: sort penjualan bisa
+ * menghidrasi hingga (kepala + batas) baris sekaligus.
+ */
+const CATALOG_FETCH_CAP = 2000;
+
+/**
+ * Batas panjang kepala terurut-penjualan, sekaligus penjaga ukuran klausa
+ * `IN`/`NOT IN`.
+ *
+ * EFEK NYATA kalau terlampaui: produk dengan peringkat di bawah batas ini
+ * KEHILANGAN peringkat penjualannya — ia jatuh ke ekor lalu diurut ulang oleh
+ * proksi `review_count` di `compareSearchItems`, dan ikut berebut kuota ekor
+ * dengan produk yang belum pernah terjual. Bukan sekadar "halaman dalam".
+ * Karena itu pelampauannya di-warn di bawah, bukan didiamkan.
+ */
+const SALES_HEAD_CAP = 2000;
+
 async function searchProductsFromDb(opts: NormalizedSearchOptions) {
   const start = Date.now();
   const q = opts.q.trim();
@@ -840,25 +888,63 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
   );
   if (andFilters.length > 0) where.AND = andFilters;
 
-  // NOTE: tanpa orderBy, `take: 2000` mengambil 2000 baris ARBITRER — begitu
-  // katalog lewat 2000 produk, hasilnya jadi non-deterministik. Beri urutan
-  // tetap (terbaru dulu) supaya potongannya stabil & bisa dijelaskan.
-  const products = await prisma.product.findMany({
-    where,
+  // best_seller & trending di-rank dari data penjualan asli (OrderItem), bukan
+  // proksi review_count. Pakai `where` yang sama supaya ranking menghormati
+  // filter aktif. Ranking dijalankan DULU supaya produk yang pernah laku bisa
+  // diambil lewat id-nya di bawah.
+  let rankedIds: string[] = [];
+  if (opts.sort === "best_seller" || opts.sort === "trending") {
+    rankedIds =
+      opts.sort === "trending"
+        ? await getTrendingProductIds({ productWhere: where, take: SALES_HEAD_CAP })
+        : await getBestSellerProductIds({ productWhere: where, take: SALES_HEAD_CAP });
+  }
+
+  // Kepala pun punya batas. Kalau tersentuh, produk peringkat di bawahnya
+  // kehilangan urutan penjualannya (lihat SALES_HEAD_CAP). Jangan didiamkan.
+  if (rankedIds.length >= SALES_HEAD_CAP) {
+    console.warn(
+      `[searchProductsFromDb] Kepala ranking menyentuh batas ${SALES_HEAD_CAP}. ` +
+        "Produk dengan peringkat penjualan di bawah batas kehilangan urutannya dan jatuh ke ekor. " +
+        "Naikkan SALES_HEAD_CAP atau pindahkan ranking+paginasi ke SQL.",
+    );
+  }
+
+  // Ambil KEPALA (pernah terjual, lewat id ranking) terpisah dari EKOR (belum
+  // pernah terjual, terbaru dulu, dibatasi kuota). Tanpa pemisahan ini,
+  // best-seller lama hilang diam-diam begitu katalog lewat CATALOG_FETCH_CAP:
+  // query ranking menaruhnya di peringkat 1, tapi pengambilan "terbaru dulu"
+  // tidak ikut membawanya sehingga produknya lenyap dari hasil.
+  const useRankedHead = !candidateIds && rankedIds.length > 0;
+
+  const rankedHeadPromise = useRankedHead
+    ? prisma.product.findMany({
+        where: { ...where, id: { in: rankedIds } },
+        include: getProductSearchInclude(),
+      })
+    : null;
+
+  // NOTE: tanpa orderBy, `take` mengambil baris ARBITRER — begitu katalog lewat
+  // batas, hasilnya jadi non-deterministik. Beri urutan tetap (terbaru dulu)
+  // supaya potongannya stabil & bisa dijelaskan.
+  const tailPromise = prisma.product.findMany({
+    where: useRankedHead ? { ...where, id: { notIn: rankedIds } } : where,
     include: getProductSearchInclude(),
     orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-    take: candidateIds ? undefined : 2000,
+    take: candidateIds ? undefined : CATALOG_FETCH_CAP,
   });
 
-  // Batas keras 2000 baris: begitu katalog melewatinya, potongan "terbaru dulu"
-  // mulai memotong produk yang seharusnya ikut di-rank (query ranking penjualan
-  // TIDAK dibatasi), sehingga best-seller lama bisa hilang diam-diam dan `total`
-  // ikut terpotong. Jangan gagal diam-diam — teriak supaya ketahuan.
-  if (!candidateIds && products.length >= 2000) {
+  const [rankedHead, tail] = await Promise.all([rankedHeadPromise, tailPromise]);
+  const products = [...(rankedHead ?? []), ...tail];
+
+  // Kepala selalu utuh; yang masih bisa terpotong hanya EKOR (produk yang belum
+  // pernah terjual) — dan itu cuma terasa di halaman-halaman dalam. Jangan gagal
+  // diam-diam.
+  if (!candidateIds && tail.length >= CATALOG_FETCH_CAP) {
     console.warn(
-      `[searchProductsFromDb] Katalog mencapai batas 2000 baris (${products.length}). ` +
-        "Hasil & total bisa terpotong, dan sort best_seller/trending bisa kehilangan produk lama. " +
-        "Naikkan batas atau ambil produk berdasarkan ranked-ids lebih dulu.",
+      `[searchProductsFromDb] Ekor katalog menyentuh batas ${CATALOG_FETCH_CAP} baris. ` +
+        "Produk yang belum pernah terjual bisa terpotong di halaman dalam, dan `total` ikut terpotong. " +
+        "Naikkan CATALOG_FETCH_CAP atau pindahkan filter+paginasi ke SQL.",
     );
   }
 
@@ -873,20 +959,6 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
       )
     : allDocs;
 
-  // best_seller & trending di-rank dari data penjualan asli (OrderItem),
-  // bukan proksi review_count. Pakai `where` yang sama supaya ranking
-  // menghormati filter aktif.
-  let salesRank: Map<string, number> | null = null;
-  if (opts.sort === "best_seller" || opts.sort === "trending") {
-    const rankedIds =
-      opts.sort === "trending"
-        ? await getTrendingProductIds({ productWhere: where })
-        : await getBestSellerProductIds({ productWhere: where });
-    if (rankedIds.length > 0) {
-      salesRank = new Map(rankedIds.map((id, index) => [id, index]));
-    }
-  }
-
   // Kalau ada candidateIds, sort sesuai urutan kandidat (sudah by similarity).
   // Kalau opts.sort bukan "relevance", override dengan compareSearchItems.
   let items: ProductSearchDoc[];
@@ -895,18 +967,8 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
     items = [...docs].sort(
       (a, b) => (orderMap.get(a.id) ?? Infinity) - (orderMap.get(b.id) ?? Infinity),
     );
-  } else if (salesRank) {
-    const rank = salesRank;
-    const tiebreak = compareSearchItems(opts.sort, q);
-    // Produk tanpa penjualan TIDAK dibuang — didorong ke ekor. Sort tidak
-    // boleh menghilangkan hasil (beda dengan /api/products yang menggabung
-    // filter+sort dalam satu param `popular`).
-    items = [...docs].sort((a, b) => {
-      const rankA = rank.get(a.id) ?? Infinity;
-      const rankB = rank.get(b.id) ?? Infinity;
-      if (rankA !== rankB) return rankA - rankB;
-      return tiebreak(a, b);
-    });
+  } else if (rankedIds.length > 0) {
+    items = orderDocsBySalesRank(docs, rankedIds, compareSearchItems(opts.sort, q));
   } else {
     items = [...docs].sort(compareSearchItems(opts.sort, q));
   }
