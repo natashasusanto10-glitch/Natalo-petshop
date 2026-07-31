@@ -342,7 +342,7 @@ export function ProductsCatalogClient() {
                   <button
                     type="button"
                     onClick={() => void loadMore()}
-                    disabled={loadingMore}
+                    disabled={loadingMore || loadMoreBlocked}
                     className="rounded-full border border-natalo-200 bg-white px-6 py-2.5 text-sm font-bold text-natalo-700 transition hover:bg-natalo-50 disabled:opacity-60"
                   >
                     {loadingMore ? "Memuat produk..." : "Muat lebih banyak"}
