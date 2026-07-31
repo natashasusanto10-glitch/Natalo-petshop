@@ -18,6 +18,10 @@
 - **Jangan sentuh kode mati.** `buildDbProductWhere` (`lib/search.ts:294–324`) dan `buildDbSearchPageArgs` (`lib/search.ts:326–348`) tidak dipakai jalur ini — biarkan apa adanya.
 - **Jalur Meilisearch tidak diubah.** Meili sedang OFF; `best_seller`/`trending` di Meili memakai proksi berbeda dan sudah ada guard-nya. Di luar cakupan.
 - **Konvensi tes repo:** helper murni diuji dengan `node:test` (`npx tsx --test tests/search.test.ts`); komponen React tidak punya unit test. Ikuti itu — jangan pasang test runner baru.
+- **BASELINE yang sudah diukur di branch ini (jangan dikira regresi, jangan diperbaiki di PR3):**
+  - `npx tsc --noEmit` → **6 error, SEMUANYA** `Cannot find module 'vitest'` di `tests/admin-brand-schema.test.ts`, `tests/admin-product-form.test.ts`, `tests/admin-product-media.test.ts`, `tests/admin-product-schema.test.ts`, `tests/admin-product-visibility.test.ts`, `tests/product-video-draft.test.ts`. Sesi lain meng-commit tes vitest tanpa memasang vitest. Sukses = **0 error non-vitest**.
+  - `npm test` → **609 tes, 603 lulus, 6 gagal** (enam file vitest yang sama). Sukses = jumlah gagal tetap 6 dan semuanya file vitest itu.
+  - `npx next build` → **sukses penuh** di baseline. Kalau jadi gagal setelah perubahanmu, itu regresi nyata.
 - Commit tiap task selesai, pesan gaya conventional-commit.
 
 ---
@@ -219,13 +223,13 @@ menjadi:
 - [ ] **Step 6: Typecheck + lint + tes**
 
 Run: `npx tsc --noEmit`
-Expected: tidak ada error BARU. Repo ini punya 2 error lama yang tidak berhubungan di `app/api/admin/reset-all/route.ts` (`chatMessage`/`chatThread` tidak ada di PrismaClient) — abaikan, jangan diperbaiki.
+Expected: 6 error, semuanya `Cannot find module 'vitest'` (lihat BASELINE di Global Constraints). **0 error non-vitest.**
 
 Run: `npm run lint`
 Expected: 0 errors (warning lama di file lain wajar).
 
 Run: `npm test`
-Expected: semua hijau.
+Expected: 603 lulus / 6 gagal — enam kegagalan itu file vitest baseline, plus 4 tes barumu ikut lulus.
 
 - [ ] **Step 7: Commit**
 
@@ -395,13 +399,13 @@ dengan:
 - [ ] **Step 5: Typecheck + lint + tes**
 
 Run: `npx tsc --noEmit`
-Expected: tidak ada error BARU (2 error lama di `app/api/admin/reset-all/route.ts` tetap ada — abaikan).
+Expected: 6 error vitest baseline saja, **0 error non-vitest**.
 
 Run: `npm run lint`
 Expected: 0 errors.
 
 Run: `npm test`
-Expected: semua hijau.
+Expected: 603 lulus / 6 gagal (file vitest baseline).
 
 - [ ] **Step 6: Buktikan regresi nol (pembanding baseline)**
 
@@ -456,16 +460,16 @@ false-positive."
 - [ ] **Step 1: Cek statis penuh**
 
 Run: `npx tsc --noEmit`
-Expected: hanya 2 error lama di `app/api/admin/reset-all/route.ts`.
+Expected: 6 error vitest baseline saja, **0 error non-vitest**.
 
 Run: `npm run lint`
 Expected: 0 errors.
 
 Run: `npm test`
-Expected: semua hijau, termasuk 4 tes `orderDocsBySalesRank` dari Task 1.
+Expected: 603 lulus / 6 gagal (file vitest baseline), termasuk 4 tes `orderDocsBySalesRank` dari Task 1 yang lulus.
 
 Run: `npx next build`
-Expected: langkah kompilasi Turbopack sukses. Build penuh akan berhenti di type-check karena 2 error lama tadi (`app/api/admin/reset-all/route.ts`) — itu memang sudah rusak sebelum branch ini dan di luar cakupan; catat, jangan perbaiki.
+Expected: **sukses penuh.** Build ini lulus di baseline, jadi kegagalan apa pun di sini adalah regresi nyata yang WAJIB kamu selidiki, bukan diabaikan.
 
 - [ ] **Step 2: Cek `/search` (halaman live yang memakai jalur ini) tidak rusak**
 
