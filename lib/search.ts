@@ -16,6 +16,8 @@
 import { Meilisearch } from "meilisearch";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { discountOnlyWhere } from "@/lib/product-ranking";
+import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
 import {
   normalizeSearchText,
   tokenizeSearchQuery,
@@ -430,6 +432,7 @@ export interface SearchOptions {
   maxPrice?: number;
   inStock?: boolean;
   minRating?: number;
+  discountOnly?: boolean;
   sort?: SearchSort;
   page?: number;
   perPage?: number;
@@ -445,7 +448,7 @@ export type SearchFacets = {
 export type NormalizedSearchOptions = Required<
   Pick<SearchOptions, "q" | "categorySlug" | "brandSlug" | "sort" | "page" | "perPage">
 > &
-  Pick<SearchOptions, "minPrice" | "maxPrice" | "inStock" | "minRating">;
+  Pick<SearchOptions, "minPrice" | "maxPrice" | "inStock" | "minRating" | "discountOnly">;
 
 type ProductForSearchDoc = NonNullable<Awaited<ReturnType<typeof prisma.product.findFirst>>> & {
   category: { id: string; name: string; slug: string } | null;
@@ -797,6 +800,10 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
 
   const where: Prisma.ProductWhereInput = {
     isActive: true,
+    // Produk yang masih setengah jadi (creationState "creating") TIDAK boleh
+    // bocor ke pelanggan. /api/products sudah pakai guard ini; search belum,
+    // jadi produk stuck bisa muncul di /search. Samakan.
+    ...productIsVisibleWhere(),
     ...(candidateIds ? { id: { in: candidateIds } } : {}),
     ...(opts.categorySlug.length > 0 ? { category: { slug: { in: opts.categorySlug } } } : {}),
     ...(opts.brandSlug.length > 0 ? { brand: { slug: { in: opts.brandSlug } } } : {}),
@@ -819,20 +826,35 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
       ? { avgRating: { gte: opts.minRating } }
       : undefined;
 
-  const andFilters = [priceWhere, stockWhere, ratingWhere].filter(
+  const discountWhere: Prisma.ProductWhereInput | undefined = opts.discountOnly
+    ? discountOnlyWhere()
+    : undefined;
+
+  const andFilters = [priceWhere, stockWhere, ratingWhere, discountWhere].filter(
     (f): f is Prisma.ProductWhereInput => Boolean(f),
   );
   if (andFilters.length > 0) where.AND = andFilters;
 
+  // NOTE: tanpa orderBy, `take: 2000` mengambil 2000 baris ARBITRER — begitu
+  // katalog lewat 2000 produk, hasilnya jadi non-deterministik. Beri urutan
+  // tetap (terbaru dulu) supaya potongannya stabil & bisa dijelaskan.
   const products = await prisma.product.findMany({
     where,
     include: getProductSearchInclude(),
+    orderBy: [{ createdAt: "desc" }, { id: "asc" }],
     take: candidateIds ? undefined : 2000,
   });
 
-  const docs = products.map((product) =>
+  const allDocs = products.map((product) =>
     mapProductToSearchDoc(product as ProductForSearchDoc),
   );
+  // `where` di atas sudah menyaring kasar; di sini disamakan persis dengan
+  // badge diskon di kartu produk (butuh harga efektif yang benar-benar turun).
+  const docs = opts.discountOnly
+    ? allDocs.filter(
+        (doc) => doc.discount_price !== null && doc.discount_price < doc.price_min,
+      )
+    : allDocs;
 
   // Kalau ada candidateIds, sort sesuai urutan kandidat (sudah by similarity).
   // Kalau opts.sort bukan "relevance", override dengan compareSearchItems.
@@ -876,6 +898,7 @@ export async function searchProducts(opts: SearchOptions) {
     maxPrice,
     inStock,
     minRating,
+    discountOnly,
     sort = "relevance",
     page = 1,
     perPage = 24,
@@ -890,6 +913,7 @@ export async function searchProducts(opts: SearchOptions) {
     maxPrice,
     inStock,
     minRating,
+    discountOnly,
     sort,
     page,
     perPage: limit,
