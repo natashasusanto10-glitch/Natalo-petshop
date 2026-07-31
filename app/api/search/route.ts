@@ -9,7 +9,8 @@
  *   max_price      number
  *   in_stock       "true" | "false"
  *   min_rating     number 1–5
- *   sort           relevance | price_asc | price_desc | newest | rating_desc | best_seller
+ *   discount_only  "true" | "false" — hanya produk Flash Sale / Promo Toko aktif
+ *   sort           relevance | price_asc | price_desc | newest | rating_desc | best_seller | trending
  *   page           default 1
  *   per_page       default 24, max 60
  */
@@ -26,6 +27,7 @@ const VALID_SORT: SearchSort[] = [
   "newest",
   "rating_desc",
   "best_seller",
+  "trending",
 ];
 
 export async function GET(request: NextRequest) {
@@ -58,6 +60,7 @@ export async function GET(request: NextRequest) {
       minRating: sp.get("min_rating")
         ? Number(sp.get("min_rating"))
         : undefined,
+      discountOnly: sp.get("discount_only") === "true",
       sort,
       page: Math.max(1, Number(sp.get("page") ?? 1)),
       perPage: Math.min(60, Math.max(1, Number(sp.get("per_page") ?? 24))),
