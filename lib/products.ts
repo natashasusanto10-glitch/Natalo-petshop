@@ -8,7 +8,19 @@ import { productVideoPayload } from "@/lib/product/product-video-serialize";
 import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
 import { productSearchWhere } from "@/lib/search";
 import { sampleProducts } from "@/lib/sample-data";
-import type { OrderStatus, Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import {
+  VALID_SALES_ORDER_STATUSES,
+  TRENDING_WINDOW_DAYS,
+  WIB_OFFSET_MS,
+  wibDateKey,
+  toAndArray,
+  withAnd,
+  productRankWhere,
+  discountOnlyWhere,
+  getBestSellerProductIds,
+  getTrendingProductIds,
+} from "@/lib/product-ranking";
 
 export type StoreVariantOption = {
   id: string;
@@ -341,18 +353,8 @@ export type PopularFilter =
   | "highest-rating"
   | "most-bought";
 
-const VALID_SALES_ORDER_STATUSES: OrderStatus[] = [
-  "PAID",
-  "PROCESSING",
-  "READY_FOR_PICKUP",
-  "SHIPPED",
-  "DELIVERED",
-];
-
-const TRENDING_WINDOW_DAYS = 14;
 const NEW_PRODUCT_WINDOW_DAYS = 30;
 const SEARCH_POPULAR_WINDOW_DAYS = 30;
-const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 function isOrderDrivenPopularFilter(filter?: PopularFilter) {
   return (
@@ -360,21 +362,6 @@ function isOrderDrivenPopularFilter(filter?: PopularFilter) {
     filter === "most-bought" ||
     filter === "trending"
   );
-}
-
-function toAndArray(and: Prisma.ProductWhereInput["AND"]) {
-  if (!and) return [];
-  return Array.isArray(and) ? and : [and];
-}
-
-function withAnd(
-  where: Prisma.ProductWhereInput,
-  condition: Prisma.ProductWhereInput
-): Prisma.ProductWhereInput {
-  return {
-    ...where,
-    AND: [...toAndArray(where.AND), condition],
-  };
 }
 
 function startOfWibDay(date = new Date()) {
@@ -425,141 +412,6 @@ function newProductCutoff(filter: NewProductFilter | undefined): Date | null {
     return daysAgo(now, NEW_PRODUCT_WINDOW_DAYS);
   }
   return null;
-}
-
-function wibDateKey(date: Date) {
-  return new Date(date.getTime() + WIB_OFFSET_MS).toISOString().slice(0, 10);
-}
-
-function productRankWhere(
-  where: Prisma.ProductWhereInput
-): Prisma.ProductWhereInput {
-  return withAnd(where, {
-    OR: [
-      { hasVariants: false, price: { gt: 0 }, stock: { gt: 0 } },
-      {
-        hasVariants: true,
-        variants: {
-          some: {
-            deletedAt: null,
-            isActive: true,
-            price: { gt: 0 },
-            stock: { gt: 0 },
-          },
-        },
-      },
-    ],
-  });
-}
-
-async function getBestSellerProductIds({
-  productWhere,
-  take,
-  skip,
-}: {
-  productWhere: Prisma.ProductWhereInput;
-  take?: number;
-  skip?: number;
-}) {
-  const rows = await prisma.orderItem.groupBy({
-    by: ["productId"],
-    where: {
-      order: {
-        paymentStatus: "PAID",
-        status: { in: VALID_SALES_ORDER_STATUSES },
-      },
-      product: productRankWhere(productWhere),
-    },
-    _sum: { quantity: true },
-    orderBy: { _sum: { quantity: "desc" } },
-    ...(typeof take === "number" ? { take } : {}),
-    ...(typeof skip === "number" && skip > 0 ? { skip } : {}),
-  });
-
-  return rows.map((row) => row.productId);
-}
-
-async function getTrendingProductIds({
-  productWhere,
-  take,
-  skip,
-}: {
-  productWhere: Prisma.ProductWhereInput;
-  take?: number;
-  skip?: number;
-}) {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - TRENDING_WINDOW_DAYS);
-
-  const rows = await prisma.orderItem.findMany({
-    where: {
-      order: {
-        createdAt: { gte: cutoff },
-        paymentStatus: "PAID",
-        status: { in: VALID_SALES_ORDER_STATUSES },
-      },
-      product: productRankWhere(productWhere),
-    },
-    select: {
-      productId: true,
-      quantity: true,
-      order: {
-        select: {
-          id: true,
-          userId: true,
-          customerEmail: true,
-          customerPhone: true,
-          createdAt: true,
-        },
-      },
-    },
-  });
-
-  const stats = new Map<
-    string,
-    { totalSold: number; buyerIds: Set<string>; purchaseDays: Set<string> }
-  >();
-
-  for (const row of rows) {
-    const productStats = stats.get(row.productId) ?? {
-      totalSold: 0,
-      buyerIds: new Set<string>(),
-      purchaseDays: new Set<string>(),
-    };
-    productStats.totalSold += row.quantity;
-    productStats.buyerIds.add(
-      row.order.userId ??
-        row.order.customerEmail ??
-        row.order.customerPhone ??
-        `order:${row.order.id}`
-    );
-    productStats.purchaseDays.add(wibDateKey(row.order.createdAt));
-    stats.set(row.productId, productStats);
-  }
-
-  return Array.from(stats.entries())
-    .map(([productId, productStats]) => {
-      const purchaseFrequencyDays = productStats.purchaseDays.size;
-      const trendingScore =
-        productStats.totalSold * 0.5 +
-        productStats.buyerIds.size * 0.3 +
-        purchaseFrequencyDays * 0.2;
-      return {
-        productId,
-        totalSold: productStats.totalSold,
-        purchaseFrequencyDays,
-        trendingScore,
-      };
-    })
-    .filter((item) => item.totalSold > 0 && item.purchaseFrequencyDays >= 2)
-    .sort((a, b) => {
-      if (b.trendingScore !== a.trendingScore)
-        return b.trendingScore - a.trendingScore;
-      if (b.totalSold !== a.totalSold) return b.totalSold - a.totalSold;
-      return b.purchaseFrequencyDays - a.purchaseFrequencyDays;
-    })
-    .slice(skip ?? 0, typeof take === "number" ? (skip ?? 0) + take : undefined)
-    .map((item) => item.productId);
 }
 
 async function getMostViewedProductIds({
@@ -988,31 +840,7 @@ function buildProductWhere({
   }
 
   if (discountOnly) {
-    const now = new Date();
-    and.push({
-      OR: [
-        // Flash Sale aktif: punya discountPrice + flashSaleEndsAt future
-        {
-          AND: [
-            { discountPrice: { not: null } },
-            { flashSaleEndsAt: { gt: now } },
-          ],
-        },
-        // Punya ProductDiscountItem aktif (Promo Toko)
-        {
-          discountItems: {
-            some: {
-              isItemActive: true,
-              discount: {
-                isActive: true,
-                startsAt: { lte: now },
-                endsAt: { gt: now },
-              },
-            },
-          },
-        },
-      ],
-    });
+    and.push(discountOnlyWhere());
   }
 
   // Token-based matching (Tahap 1 search fix) — reuse productSearchWhere()
