@@ -698,6 +698,29 @@ function compareSearchItems(sort: SearchSort, query: string) {
   };
 }
 
+/**
+ * Urutkan dokumen memakai urutan ranking penjualan (`rankedIds`, indeks 0 =
+ * paling laku).
+ *
+ * Produk yang TIDAK ada di `rankedIds` (belum pernah terjual) sengaja TIDAK
+ * dibuang — didorong ke ekor lalu diurut dengan `tiebreak`. Sort tidak boleh
+ * menghilangkan hasil (beda dengan /api/products yang menggabung filter+sort
+ * dalam satu param `popular`).
+ */
+export function orderDocsBySalesRank(
+  docs: ProductSearchDoc[],
+  rankedIds: string[],
+  tiebreak: (a: ProductSearchDoc, b: ProductSearchDoc) => number,
+): ProductSearchDoc[] {
+  const rank = new Map(rankedIds.map((id, index) => [id, index]));
+  return [...docs].sort((a, b) => {
+    const rankA = rank.get(a.id) ?? Infinity;
+    const rankB = rank.get(b.id) ?? Infinity;
+    if (rankA !== rankB) return rankA - rankB;
+    return tiebreak(a, b);
+  });
+}
+
 export function filterSortPaginateSearchDocs(
   docs: ProductSearchDoc[],
   opts: NormalizedSearchOptions,
@@ -876,15 +899,12 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
   // best_seller & trending di-rank dari data penjualan asli (OrderItem),
   // bukan proksi review_count. Pakai `where` yang sama supaya ranking
   // menghormati filter aktif.
-  let salesRank: Map<string, number> | null = null;
+  let rankedIds: string[] = [];
   if (opts.sort === "best_seller" || opts.sort === "trending") {
-    const rankedIds =
+    rankedIds =
       opts.sort === "trending"
         ? await getTrendingProductIds({ productWhere: where })
         : await getBestSellerProductIds({ productWhere: where });
-    if (rankedIds.length > 0) {
-      salesRank = new Map(rankedIds.map((id, index) => [id, index]));
-    }
   }
 
   // Kalau ada candidateIds, sort sesuai urutan kandidat (sudah by similarity).
@@ -895,18 +915,8 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
     items = [...docs].sort(
       (a, b) => (orderMap.get(a.id) ?? Infinity) - (orderMap.get(b.id) ?? Infinity),
     );
-  } else if (salesRank) {
-    const rank = salesRank;
-    const tiebreak = compareSearchItems(opts.sort, q);
-    // Produk tanpa penjualan TIDAK dibuang — didorong ke ekor. Sort tidak
-    // boleh menghilangkan hasil (beda dengan /api/products yang menggabung
-    // filter+sort dalam satu param `popular`).
-    items = [...docs].sort((a, b) => {
-      const rankA = rank.get(a.id) ?? Infinity;
-      const rankB = rank.get(b.id) ?? Infinity;
-      if (rankA !== rankB) return rankA - rankB;
-      return tiebreak(a, b);
-    });
+  } else if (rankedIds.length > 0) {
+    items = orderDocsBySalesRank(docs, rankedIds, compareSearchItems(opts.sort, q));
   } else {
     items = [...docs].sort(compareSearchItems(opts.sort, q));
   }
