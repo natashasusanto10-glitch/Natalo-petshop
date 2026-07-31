@@ -96,6 +96,16 @@ Ditemukan saat investigasi, keduanya menular ke `/products` begitu migrasi:
 **Temuan sampingan (bug pre-existing di stack produk, bukan dibuat PR2).**
 `/api/products?discountOnly=true` **terlalu longgar**: ia mencocokkan produk yang punya baris promo aktif walau harga efektifnya tidak benar-benar turun — respons API-nya sendiri menunjukkan `discountPrice: null` untuk produk-produk itu. Search lebih ketat (menyaring ulang dengan `discount_price < price_min`, sama dengan syarat badge di kartu) sehingga mengembalikan 0 di Preview DB, yang **lebih jujur**. Kalau nanti pelanggan mengeluh "filter diskon kosong", cek dulu apakah memang tidak ada diskon efektif — bukan bug filter.
 
+### 4.8 Keputusan owner 2026-07-31 (sebelum PR3) — pemecahan, filter yang dibuang, urutan default
+
+Setelah investigasi kode penuh, tiga hal dibawa ke owner karena mengubah apa yang pembeli lihat. Semua sudah diputuskan:
+
+1. **PR3 dipecah dua.** **PR3 = perbaikan bloker batas-2000 saja** (backend, kecil, bisa diverifikasi lewat `/search` yang sudah memakai jalur itu). **PR4 = migrasi halaman `/products`.** Alasan: kalau perbaikan mesin punya bug halus, ketahuannya di `/search` dulu, bukan langsung di katalog — halaman paling ramai.
+2. **Filter tanpa padanan di stack search DIBUANG:** `today`, `this-week`, `last-30-days` (dari param `new`) dan `most-searched`, `most-bought` (dari param `popular`). Alasan: app Flutter sendiri tidak punya filter-filter ini, jadi membuangnya justru menyamakan web dengan app sesuai arahan owner. Yang tersisa tetap lengkap: kategori, brand, stok, harga, rating, diskon + sort Terlaris/Terbaru/Rating/Harga↑↓.
+3. **Urutan default `/products` = "Paling Populer"** (`sort=best_seller`, penjualan asli). Pengacakan per-kunjungan (`seed`) dibuang — dengan paginasi berbasis halaman, urutan acak tidak bisa dijamin konsisten antar-halaman dan tidak bisa dijelaskan ke pembeli.
+
+**Koreksi penting atas rencana bloker (opsi (a) versi spec ternyata belum lengkap).** "Ambil produk berdasarkan ranked-ids lebih dulu" kalau ditelan mentah akan **menghapus produk yang belum pernah terjual** — padahal sekarang mereka sengaja dipertahankan dan didorong ke ekor (lihat komentar di `searchProductsFromDb`), dan juga diam-diam ikut menerapkan saringan "layak beli" (`productRankWhere`: harga>0 & stok>0) ke hasil yang tampil. Jadi bentuk benarnya: **kepala terurut-penjualan (diambil by ranked-ids) + ekor belum-terjual (terbaru dulu, dibatasi kuota)**, lalu digabung. Ini yang dikerjakan PR3.
+
 ## 5. Desain per halaman
 
 ### 5.1 `/products` (inti)
