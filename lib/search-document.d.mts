@@ -32,6 +32,7 @@ export function productToSearchDoc(product: {
   brand?: { slug: string; name: string } | null;
   price: number;
   discountPrice?: number | null;
+  memberPrice?: number | null;
   stock: number;
   weightGram: number;
   avgRating: number;

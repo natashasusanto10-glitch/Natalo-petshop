@@ -73,6 +73,10 @@ export type ProductSearchDoc = {
   price_min: number;
   price_max: number;
   discount_price: number | null;
+  /** Harga member (kalau di-set & lebih murah). Tanpa ini, katalog yang
+   *  dilayani search menampilkan harga normal sementara detail & keranjang
+   *  memakai harga member — beda harga untuk produk yang sama. */
+  member_price: number | null;
   stock: number;
   total_stock: number;
   weight_grams: number;
