@@ -50,6 +50,7 @@ test("product search mapper emits the full runtime ProductSearchDoc schema", () 
     "id",
     "image_url",
     "is_active",
+    "member_price",
     "name",
     "price_max",
     "price_min",
