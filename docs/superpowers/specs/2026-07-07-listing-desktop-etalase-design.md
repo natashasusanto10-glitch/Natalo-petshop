@@ -143,6 +143,25 @@ Investigasi kode penuh sebelum PR4 menemukan tiga hal. Dua dibawa ke owner (kedu
 
 **Yang tetap hilang & diterima:** video produk di grid (`ProductSearchDoc` tidak punya field video) → kartu jatuh ke gambar statis di `/products`. Non-fatal, murni kehilangan fitur; dicatat supaya tidak dikira bug.
 
+### 4.10 Hasil PR4 — `/products` sudah pindah; terkirim vs ditunda
+
+**PR4 SELESAI.** Katalog kini dilayani `/api/search`: sidebar filter (kategori/brand/harga/stok/rating/diskon), sortir ala app, chip filter aktif, empty state hangat, bottom-sheet filter & sortir di mobile, infinite-scroll berbasis halaman. Chrome mobile lama (`ProductFilterChips`, `ProductFilterTopDrawer`), grid lama, dan hook cursor lama dihapus (−1038 baris).
+
+**Verifikasi Meilisearch (menutup risiko harga member).** `npx vercel env ls production` dan `.env.local` preview: **tidak ada satu pun variabel `MEILISEARCH_*` di produksi maupun preview** (diperiksa 2026-07-31). Jadi `isMeiliEnabled()` selalu false, semua lalu lintas memakai jalur DB yang memanggil `productToSearchDoc` atas baris Prisma saat request, dan `member_price` pasti terbawa — **tidak perlu reindex**. Kalau Meili nanti diaktifkan, `member_price` WAJIB masuk indeks sebelum dipercaya, atau pill "Member" hilang diam-diam dan katalog menampilkan harga lebih mahal daripada keranjang.
+
+**Terkirim sesuai §5.1:** container 1280, EtalaseBand + breadcrumb + baris trust, sidebar filter (reuse `SearchFilters` + toggle diskon terpisah), bar sortir + hitungan, grid 4 kolom dengan `ProductCard`, chip filter aktif + "Hapus semua", skeleton, empty state (copy ala app), error "Gagal memuat produk" + "Coba lagi", bottom-sheet mobile.
+
+**Ditunda / diubah dari §5.1 — dicatat supaya tidak ditemukan ulang sebagai bug:**
+- **Strip "Terakhir kamu lihat"** di empty state: butuh endpoint riwayat-lihat per-user yang belum ada (`UserProductView` hanya dipakai agregat di `lib/products.ts`). Fitur tersendiri, bukan poles.
+- **Kategori single-select "radio"**: `SearchFilters` dibagi dengan `/search` dan tidak boleh diedit, jadi kontrolnya tetap checkbox sementara perilakunya single-select (`slice(-1)`). Kontrolnya "berbohong" sedikit — mencentang kategori kedua akan melepas yang pertama. Perbaikan sebenarnya butuh prop `singleSelectCategories` di komponen bersama itu.
+- **Tingkat rating 4/3/2 di sheet mobile**: `SearchFilters` hanya menyediakan satu toggle "Rating 4+".
+- **`{N} produk` di baris meta band**: hitungan kini dihitung di klien, sementara band dirender di server — jadi barisnya hanya memuat klaim trust.
+- **Video produk di grid**: dokumen search tak punya field video (§4.9).
+- **Sisa hook mati `top-drawer-open`**: penghapusan `ProductFilterTopDrawer` meninggalkan satu kondisi yang selalu false di `components/SwipeBackProvider.tsx` dan satu aturan tak terjangkau di `app/globals.css`. Keduanya no-op; sengaja tidak disentuh karena `SwipeBackProvider` dipakai seluruh app. Sapu di PR kecil terpisah.
+- **Judul `<h1>` mobile** memakai teks generik "Katalog Produk" untuk konteks kategori/pencarian, sementara desktop memakai judul spesifik yang sudah dihitung halaman.
+
+**Uji sintetis di-atas-batas yang disarankan §4.7 BELUM dijalankan.** Headroom masih 1324/2000 dan `/products` kini bergantung pada jalur itu. Tetap disarankan sebelum katalog mendekati 2000.
+
 ## 5. Desain per halaman
 
 ### 5.1 `/products` (inti)
