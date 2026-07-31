@@ -119,6 +119,30 @@ Setelah investigasi kode penuh, tiga hal dibawa ke owner karena mengubah apa yan
 
 **Koreksi penting atas rencana bloker (opsi (a) versi spec ternyata belum lengkap).** "Ambil produk berdasarkan ranked-ids lebih dulu" kalau ditelan mentah akan **menghapus produk yang belum pernah terjual** — padahal sekarang mereka sengaja dipertahankan dan didorong ke ekor (lihat komentar di `searchProductsFromDb`), dan juga diam-diam ikut menerapkan saringan "layak beli" (`productRankWhere`: harga>0 & stok>0) ke hasil yang tampil. Jadi bentuk benarnya: **kepala terurut-penjualan (diambil by ranked-ids) + ekor belum-terjual (terbaru dulu, dibatasi kuota)**, lalu digabung. Ini yang dikerjakan PR3.
 
+### 4.9 Keputusan owner 2026-07-31 (sebelum PR4) — harga member, link mati, terjemahan param lama
+
+Investigasi kode penuh sebelum PR4 menemukan tiga hal. Dua dibawa ke owner (keduanya sudah diputuskan), satu diputuskan sendiri karena jelas.
+
+**1. Harga member — DIIKUTKAN DI PR4.** `ProductSearchDoc` tidak punya konsep harga member sama sekali (`productToSearchDoc` tidak pernah membaca `product.memberPrice`, beda dari `mapProductListRecord` yang membacanya). Dampak **nol hari ini** — nol produk di katalog memakai harga member (dicek 4 irisan berbeda, termasuk terlaris & terbaru). Tapi begitu owner memasang satu harga member, katalog akan menampilkan harga NORMAL sementara halaman detail & keranjang memakai harga member: **harga beda di dua tempat untuk produk yang sama.** Owner memilih menutupnya sekarang. Murah: tambah `member_price` ke `ProductSearchDoc` + `productToSearchDoc`; jalur DB memanggil `productToSearchDoc` langsung atas baris Prisma saat request, jadi **tidak perlu reindex** (Meili mati). Kalau Meili nanti diaktifkan, field ini wajib ikut reindex.
+
+**2. Tiga menu navigasi desktop SUDAH RUSAK sejak sebelumnya — DIPERBAIKI SEKALIAN.** `/products?sort=promo`, `?sort=terlaris`, `?sort=baru` (di `DesktopCategoryNav`) mengubah URL tapi **tidak menyaring apa pun** — `/products` tidak pernah membaca param `sort`. Sama untuk `?promo=1` (beranda) dan `?diskon=1` (fallback deep-link banner/promo). Owner memilih memperbaikinya di PR4: `terlaris`→`sort=best_seller`, `baru`→`sort=newest`, `promo`/`diskon`→`discount_only=true`. Ini perbaikan, bukan regresi — tapi pelanggan akan melihat hasil berbeda dari sebelumnya di menu-menu itu.
+
+**3. Param lama WAJIB diterjemahkan, bukan diabaikan (diputuskan sendiri — jelas).** Beranda memuat link hidup ke `/products?popular=best-seller` (tile "Terlaris" DAN judul "🏆 Produk Terlaris"), `?popular=trending`, `?new=last-30-days`. Mengabaikannya akan mematikan link beranda. Peta terjemahan:
+
+| Param lama | Jadi | Catatan |
+|---|---|---|
+| `popular=best-seller` / `most-bought` / `most-searched` | `sort=best_seller` | dua terakhir tak punya padanan; terlaris paling dekat |
+| `popular=trending` | `sort=trending` | |
+| `popular=highest-rating` | `sort=rating_desc` | |
+| `new=*` (semua nilai) | `sort=newest` | batas 30-hari dibuang (owner §4.8); "terbaru dulu" tak pernah kosong |
+| `kategori=` | `category=` | **`kategori` tetap param resmi di URL `/products`** — dipakai banner DB, hero, kategori, nav. Jangan ganti. |
+| `category=` | `category=` | tak ada yang menulisnya di repo, tapi grid lama sudah menerimanya → bookmark eksternal mungkin ada |
+| `sort=terlaris` / `baru` / `promo`, `promo=1`, `diskon=1` | lihat poin 2 | sekarang mati, jadi hidup |
+
+**Temuan sampingan yang ikut ditutup:** `weight_grams` di dokumen search adalah `product.weightGram` mentah — `normalizeProductWeight()` (koreksi khusus maxi-cat 20kg) tidak diterapkan, padahal `StoreProduct` menerapkannya dan `ProductCardCta` menulis berat itu ke keranjang (→ ongkir). Saat ini tidak menggigit (nilai di DB sudah benar: 20000g), tapi mapper PR4 tetap menerapkan normalisasi yang sama supaya perilakunya identik apa pun isi DB.
+
+**Yang tetap hilang & diterima:** video produk di grid (`ProductSearchDoc` tidak punya field video) → kartu jatuh ke gambar statis di `/products`. Non-fatal, murni kehilangan fitur; dicatat supaya tidak dikira bug.
+
 ## 5. Desain per halaman
 
 ### 5.1 `/products` (inti)
