@@ -850,6 +850,18 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
     take: candidateIds ? undefined : 2000,
   });
 
+  // Batas keras 2000 baris: begitu katalog melewatinya, potongan "terbaru dulu"
+  // mulai memotong produk yang seharusnya ikut di-rank (query ranking penjualan
+  // TIDAK dibatasi), sehingga best-seller lama bisa hilang diam-diam dan `total`
+  // ikut terpotong. Jangan gagal diam-diam — teriak supaya ketahuan.
+  if (!candidateIds && products.length >= 2000) {
+    console.warn(
+      `[searchProductsFromDb] Katalog mencapai batas 2000 baris (${products.length}). ` +
+        "Hasil & total bisa terpotong, dan sort best_seller/trending bisa kehilangan produk lama. " +
+        "Naikkan batas atau ambil produk berdasarkan ranked-ids lebih dulu.",
+    );
+  }
+
   const allDocs = products.map((product) =>
     mapProductToSearchDoc(product as ProductForSearchDoc),
   );
@@ -950,7 +962,12 @@ export async function searchProducts(opts: SearchOptions) {
     perPage: limit,
   };
 
-  if (isMeiliEnabled()) {
+  // Meili belum mendukung discountOnly & sort "trending" (butuh atribut baru +
+  // reindex — lihat spec §11). Filter yang diam-diam diabaikan lebih berbahaya
+  // daripada error, jadi permintaan seperti itu langsung dilayani DB path yang
+  // memang sudah benar.
+  const meiliCanServe = !normalized.discountOnly && normalized.sort !== "trending";
+  if (isMeiliEnabled() && meiliCanServe) {
     try {
       return await searchProductsFromMeili(normalized);
     } catch (error) {
