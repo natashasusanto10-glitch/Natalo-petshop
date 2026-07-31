@@ -17,6 +17,7 @@ import {
   buildApiSearchParams,
   buildProductsHref,
   parseProductsParams,
+  PRODUCTS_PER_PAGE,
   type ProductsCatalogParams,
 } from "@/lib/products-search-params";
 import { searchDocToStoreProduct } from "@/lib/search-doc-to-product";
@@ -49,23 +50,29 @@ export function ProductsCatalogClient() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
-  // Halaman yang sudah ditambahkan lewat infinite-scroll, di ATAS params.page.
-  const [extraPages, setExtraPages] = useState(0);
+  // Model paginasi digerakkan RESPONS, bukan items.length: nextPage = halaman
+  // berikutnya yang akan diminta, reachedEnd = benar-benar sudah habis menurut
+  // server. Ini mencegah loop tak berhenti saat /products?page=3 (items.length
+  // start jauh di bawah total) atau dedupe menjatuhkan dokumen duplikat.
+  const [nextPage, setNextPage] = useState(params.page + 1);
+  const [reachedEnd, setReachedEnd] = useState(false);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const requestIdRef = useRef(0);
-
-  // Ganti filter/sort → mulai dari awal lagi.
-  useEffect(() => {
-    setExtraPages(0);
-  }, [key]);
 
   useEffect(() => {
     const requestId = ++requestIdRef.current;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+    // Reset state paginasi bersamaan dengan mulainya fetch baru, bukan lewat
+    // efek terpisah — supaya urutannya selalu konsisten dengan `key`.
+    setNextPage(params.page + 1);
+    setReachedEnd(false);
+    setLoadMoreError(null);
 
     fetch(`/api/search?${key}`, { signal: controller.signal })
       .then((response) => {
@@ -77,6 +84,8 @@ export function ProductsCatalogClient() {
         setItems(data.items ?? []);
         setTotal(data.total ?? 0);
         setFacets(data.facets ?? EMPTY_FACETS);
+        const totalPages = Math.max(1, Math.ceil((data.total ?? 0) / PRODUCTS_PER_PAGE));
+        setReachedEnd((data.items ?? []).length < PRODUCTS_PER_PAGE || params.page >= totalPages);
       })
       .catch((cause) => {
         if (cause instanceof Error && cause.name === "AbortError") return;
@@ -88,31 +97,47 @@ export function ProductsCatalogClient() {
       });
 
     return () => controller.abort();
-  }, [key]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, retryNonce]);
 
   const loadedCount = items.length;
-  const hasMore = loadedCount < total;
+  const hasMore = !reachedEnd;
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || loading || !hasMore) return;
+    if (loadingMore || loading || reachedEnd) return;
+    const totalPages = Math.max(1, Math.ceil(total / PRODUCTS_PER_PAGE));
+    if (nextPage > totalPages) {
+      setReachedEnd(true);
+      return;
+    }
     setLoadingMore(true);
-    const nextPage = params.page + extraPages + 1;
+    setLoadMoreError(null);
+    // Tangkap requestId SEBELUM fetch: kalau filter/sort berubah selagi
+    // permintaan ini masih berjalan, requestIdRef.current akan berbeda saat
+    // respons datang, dan SEMUA penulisan state di bawah dibatalkan supaya
+    // produk dari filter lama tidak menempel ke hasil filter baru.
+    const requestId = requestIdRef.current;
     const nextKey = buildApiSearchParams({ ...params, page: nextPage }).toString();
     try {
       const response = await fetch(`/api/search?${nextKey}`);
       if (!response.ok) throw new Error("Gagal memuat produk");
       const data = (await response.json()) as SearchResponse;
+      if (requestId !== requestIdRef.current) return;
       setItems((prev) => {
         const seen = new Set(prev.map((item) => item.id));
         return [...prev, ...(data.items ?? []).filter((item) => !seen.has(item.id))];
       });
-      setExtraPages((value) => value + 1);
+      setNextPage((value) => value + 1);
+      if ((data.items ?? []).length < PRODUCTS_PER_PAGE || nextPage >= totalPages) {
+        setReachedEnd(true);
+      }
     } catch {
-      setError("Gagal memuat produk");
+      if (requestId !== requestIdRef.current) return;
+      setLoadMoreError("Gagal memuat produk tambahan");
     } finally {
-      setLoadingMore(false);
+      if (requestId === requestIdRef.current) setLoadingMore(false);
     }
-  }, [extraPages, hasMore, loading, loadingMore, params]);
+  }, [loading, loadingMore, nextPage, params, reachedEnd, total]);
 
   useEffect(() => {
     const node = loaderRef.current;
@@ -128,11 +153,24 @@ export function ProductsCatalogClient() {
   }, [hasMore, loadMore]);
 
   function apply(next: ProductsCatalogParams) {
-    router.push(buildProductsHref({ ...next, page: 1 }), { scroll: false });
+    router.replace(buildProductsHref({ ...next, page: 1 }), { scroll: false });
   }
 
   function reset() {
-    router.push(params.q ? buildProductsHref({ ...params, q: params.q, categorySlugs: [], brandSlugs: [], minPrice: undefined, maxPrice: undefined, inStock: false, minRating: undefined, discountOnly: false, page: 1 }) : "/products", { scroll: false });
+    router.replace(
+      buildProductsHref({
+        ...params,
+        categorySlugs: [],
+        brandSlugs: [],
+        minPrice: undefined,
+        maxPrice: undefined,
+        inStock: false,
+        minRating: undefined,
+        discountOnly: false,
+        page: 1,
+      }),
+      { scroll: false },
+    );
   }
 
   const filters: ActiveFilters = {
@@ -232,7 +270,7 @@ export function ProductsCatalogClient() {
               <p className="text-sm font-bold text-red-600">Gagal memuat produk</p>
               <button
                 type="button"
-                onClick={() => router.refresh()}
+                onClick={() => setRetryNonce((value) => value + 1)}
                 className="mt-3 rounded-full bg-red-600 px-4 py-2 text-xs font-black text-white"
               >
                 Coba lagi
@@ -267,7 +305,19 @@ export function ProductsCatalogClient() {
               <div ref={loaderRef} className="h-10" aria-hidden="true" />
 
               {hasMore && (
-                <div className="flex justify-center py-6">
+                <div className="flex flex-col items-center gap-2 py-6">
+                  {loadMoreError && (
+                    <div className="flex items-center gap-2 text-xs font-semibold text-red-600">
+                      <span>{loadMoreError}</span>
+                      <button
+                        type="button"
+                        onClick={() => void loadMore()}
+                        className="rounded-full border border-red-200 bg-white px-3 py-1 font-black text-red-600"
+                      >
+                        Coba lagi
+                      </button>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => void loadMore()}
@@ -299,7 +349,7 @@ export function ProductsCatalogClient() {
             onClick={() => setFilterOpen(false)}
             className="h-11 w-full rounded-full bg-natalo-600 text-sm font-black text-white active:bg-natalo-700"
           >
-            Tampilkan {total} produk
+            {loading ? "Menampilkan hasil..." : `Tampilkan ${total} produk`}
           </button>
         }
       >
