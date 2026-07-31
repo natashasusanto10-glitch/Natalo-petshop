@@ -9,6 +9,16 @@ import type { ProductsCatalogParams } from "@/lib/products-search-params";
  * Baris chip filter aktif. Nilainya polos ("Whiskas", bukan "Brand: Whiskas")
  * mengikuti aturan badge di spec — jangan ulang nama dimensinya.
  */
+
+// Chip dirender dari params URL sebelum facets datang dari API, jadi nama
+// slug mentah bisa sempat tampil; rapikan sebagai cadangan sampai facets siap.
+function prettifySlug(slug: string): string {
+  return slug
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 export function ProductsActiveFilterChips({
   params,
   facets,
@@ -36,14 +46,22 @@ export function ProductsActiveFilterChips({
       {params.categorySlugs.map((slug) => (
         <FilterChip
           key={`category-${slug}`}
-          label={facets?.categories.find((c) => c.slug === slug)?.name ?? slug}
-          onRemove={() => onChange({ ...params, categorySlugs: [], page: 1 })}
+          label={
+            facets?.categories.find((c) => c.slug === slug)?.name ?? prettifySlug(slug)
+          }
+          onRemove={() =>
+            onChange({
+              ...params,
+              categorySlugs: params.categorySlugs.filter((value) => value !== slug),
+              page: 1,
+            })
+          }
         />
       ))}
       {params.brandSlugs.map((slug) => (
         <FilterChip
           key={`brand-${slug}`}
-          label={facets?.brands.find((b) => b.slug === slug)?.name ?? slug}
+          label={facets?.brands.find((b) => b.slug === slug)?.name ?? prettifySlug(slug)}
           onRemove={() =>
             onChange({
               ...params,
