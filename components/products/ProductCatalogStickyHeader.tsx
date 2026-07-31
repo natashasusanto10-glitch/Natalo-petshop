@@ -5,14 +5,8 @@ import { CartCount } from "@/components/CartCount";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ProductSearchBar } from "@/components/products/ProductSearchBar";
 
-type CategoryOption = {
-  slug: string;
-  name: string;
-};
-
 type Props = {
   brandName: string;
-  categories: CategoryOption[];
   activeBrandName?: string;
   query: string;
   isSearchResult: boolean;
@@ -29,7 +23,6 @@ type Props = {
  */
 export function ProductCatalogStickyHeader({
   brandName,
-  categories: _categories,
   activeBrandName,
   query,
   isSearchResult,

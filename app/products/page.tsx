@@ -41,8 +41,12 @@ export default async function ProductsPage({
   const categorySlug = params.categorySlugs[0] ?? null;
   const brandSlug = params.brandSlugs[0] ?? null;
 
-  const [categories, activeBrand, activeCategory] = await Promise.all([
-    prisma.category.findMany({ orderBy: { name: "asc" } }).catch(() => []),
+  // Hanya nama brand & kategori aktif yang dibutuhkan — untuk judul band.
+  // Daftar kategori penuh TIDAK diambil lagi: pemakainya dulu baris chip di
+  // sticky header, yang sudah diganti sidebar filter + sheet mobile. Halaman
+  // ini force-dynamic, jadi query yang tak terpakai berarti satu full-scan
+  // Category per kunjungan.
+  const [activeBrand, activeCategory] = await Promise.all([
     brandSlug
       ? prisma.brand
           .findFirst({ where: { slug: brandSlug, isActive: true }, select: { name: true } })
@@ -54,11 +58,6 @@ export default async function ProductsPage({
           .catch(() => null)
       : Promise.resolve(null),
   ]);
-
-  const categoriesForHeader = categories.map((category) => ({
-    slug: category.slug,
-    name: category.name,
-  }));
 
   const heading = etalaseHeading({
     brandName: activeBrand?.name,
@@ -82,7 +81,6 @@ export default async function ProductsPage({
     >
       <ProductCatalogStickyHeader
         brandName={process.env.NEXT_PUBLIC_BRAND_NAME || "Pet Shop"}
-        categories={categoriesForHeader}
         activeBrandName={activeBrand?.name}
         query={params.q}
         isSearchResult={isSearchResult}
