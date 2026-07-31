@@ -17,6 +17,12 @@ import { Meilisearch } from "meilisearch";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
+  discountOnlyWhere,
+  getBestSellerProductIds,
+  getTrendingProductIds,
+} from "@/lib/product-ranking";
+import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
+import {
   normalizeSearchText,
   tokenizeSearchQuery,
   tokenizedSearchWhere,
@@ -420,7 +426,8 @@ export type SearchSort =
   | "price_desc"
   | "newest"
   | "rating_desc"
-  | "best_seller";
+  | "best_seller"
+  | "trending";
 
 export interface SearchOptions {
   q?: string;
@@ -430,6 +437,7 @@ export interface SearchOptions {
   maxPrice?: number;
   inStock?: boolean;
   minRating?: number;
+  discountOnly?: boolean;
   sort?: SearchSort;
   page?: number;
   perPage?: number;
@@ -445,7 +453,7 @@ export type SearchFacets = {
 export type NormalizedSearchOptions = Required<
   Pick<SearchOptions, "q" | "categorySlug" | "brandSlug" | "sort" | "page" | "perPage">
 > &
-  Pick<SearchOptions, "minPrice" | "maxPrice" | "inStock" | "minRating">;
+  Pick<SearchOptions, "minPrice" | "maxPrice" | "inStock" | "minRating" | "discountOnly">;
 
 type ProductForSearchDoc = NonNullable<Awaited<ReturnType<typeof prisma.product.findFirst>>> & {
   category: { id: string; name: string; slug: string } | null;
@@ -797,6 +805,10 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
 
   const where: Prisma.ProductWhereInput = {
     isActive: true,
+    // Produk yang masih setengah jadi (creationState "creating") TIDAK boleh
+    // bocor ke pelanggan. /api/products sudah pakai guard ini; search belum,
+    // jadi produk stuck bisa muncul di /search. Samakan.
+    ...productIsVisibleWhere(),
     ...(candidateIds ? { id: { in: candidateIds } } : {}),
     ...(opts.categorySlug.length > 0 ? { category: { slug: { in: opts.categorySlug } } } : {}),
     ...(opts.brandSlug.length > 0 ? { brand: { slug: { in: opts.brandSlug } } } : {}),
@@ -819,20 +831,61 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
       ? { avgRating: { gte: opts.minRating } }
       : undefined;
 
-  const andFilters = [priceWhere, stockWhere, ratingWhere].filter(
+  const discountWhere: Prisma.ProductWhereInput | undefined = opts.discountOnly
+    ? discountOnlyWhere()
+    : undefined;
+
+  const andFilters = [priceWhere, stockWhere, ratingWhere, discountWhere].filter(
     (f): f is Prisma.ProductWhereInput => Boolean(f),
   );
   if (andFilters.length > 0) where.AND = andFilters;
 
+  // NOTE: tanpa orderBy, `take: 2000` mengambil 2000 baris ARBITRER — begitu
+  // katalog lewat 2000 produk, hasilnya jadi non-deterministik. Beri urutan
+  // tetap (terbaru dulu) supaya potongannya stabil & bisa dijelaskan.
   const products = await prisma.product.findMany({
     where,
     include: getProductSearchInclude(),
+    orderBy: [{ createdAt: "desc" }, { id: "asc" }],
     take: candidateIds ? undefined : 2000,
   });
 
-  const docs = products.map((product) =>
+  // Batas keras 2000 baris: begitu katalog melewatinya, potongan "terbaru dulu"
+  // mulai memotong produk yang seharusnya ikut di-rank (query ranking penjualan
+  // TIDAK dibatasi), sehingga best-seller lama bisa hilang diam-diam dan `total`
+  // ikut terpotong. Jangan gagal diam-diam — teriak supaya ketahuan.
+  if (!candidateIds && products.length >= 2000) {
+    console.warn(
+      `[searchProductsFromDb] Katalog mencapai batas 2000 baris (${products.length}). ` +
+        "Hasil & total bisa terpotong, dan sort best_seller/trending bisa kehilangan produk lama. " +
+        "Naikkan batas atau ambil produk berdasarkan ranked-ids lebih dulu.",
+    );
+  }
+
+  const allDocs = products.map((product) =>
     mapProductToSearchDoc(product as ProductForSearchDoc),
   );
+  // `where` di atas sudah menyaring kasar; di sini disamakan persis dengan
+  // badge diskon di kartu produk (butuh harga efektif yang benar-benar turun).
+  const docs = opts.discountOnly
+    ? allDocs.filter(
+        (doc) => doc.discount_price !== null && doc.discount_price < doc.price_min,
+      )
+    : allDocs;
+
+  // best_seller & trending di-rank dari data penjualan asli (OrderItem),
+  // bukan proksi review_count. Pakai `where` yang sama supaya ranking
+  // menghormati filter aktif.
+  let salesRank: Map<string, number> | null = null;
+  if (opts.sort === "best_seller" || opts.sort === "trending") {
+    const rankedIds =
+      opts.sort === "trending"
+        ? await getTrendingProductIds({ productWhere: where })
+        : await getBestSellerProductIds({ productWhere: where });
+    if (rankedIds.length > 0) {
+      salesRank = new Map(rankedIds.map((id, index) => [id, index]));
+    }
+  }
 
   // Kalau ada candidateIds, sort sesuai urutan kandidat (sudah by similarity).
   // Kalau opts.sort bukan "relevance", override dengan compareSearchItems.
@@ -842,6 +895,18 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
     items = [...docs].sort(
       (a, b) => (orderMap.get(a.id) ?? Infinity) - (orderMap.get(b.id) ?? Infinity),
     );
+  } else if (salesRank) {
+    const rank = salesRank;
+    const tiebreak = compareSearchItems(opts.sort, q);
+    // Produk tanpa penjualan TIDAK dibuang — didorong ke ekor. Sort tidak
+    // boleh menghilangkan hasil (beda dengan /api/products yang menggabung
+    // filter+sort dalam satu param `popular`).
+    items = [...docs].sort((a, b) => {
+      const rankA = rank.get(a.id) ?? Infinity;
+      const rankB = rank.get(b.id) ?? Infinity;
+      if (rankA !== rankB) return rankA - rankB;
+      return tiebreak(a, b);
+    });
   } else {
     items = [...docs].sort(compareSearchItems(opts.sort, q));
   }
@@ -876,6 +941,7 @@ export async function searchProducts(opts: SearchOptions) {
     maxPrice,
     inStock,
     minRating,
+    discountOnly,
     sort = "relevance",
     page = 1,
     perPage = 24,
@@ -890,12 +956,18 @@ export async function searchProducts(opts: SearchOptions) {
     maxPrice,
     inStock,
     minRating,
+    discountOnly,
     sort,
     page,
     perPage: limit,
   };
 
-  if (isMeiliEnabled()) {
+  // Meili belum mendukung discountOnly & sort "trending" (butuh atribut baru +
+  // reindex — lihat spec §11). Filter yang diam-diam diabaikan lebih berbahaya
+  // daripada error, jadi permintaan seperti itu langsung dilayani DB path yang
+  // memang sudah benar.
+  const meiliCanServe = !normalized.discountOnly && normalized.sort !== "trending";
+  if (isMeiliEnabled() && meiliCanServe) {
     try {
       return await searchProductsFromMeili(normalized);
     } catch (error) {

@@ -1,6 +1,6 @@
 # Listing & Discovery Desktop — "Etalase Natalo / Rak Etalase"
 
-**Tanggal:** 2026-07-07 (revisi 2 — konvergensi ke stack search + parity filter Flutter)
+**Tanggal:** 2026-07-07 (revisi 3 — arahan parity Flutter: carve-out backend dikerjakan, bukan ditunda)
 **Status:** Disetujui (arah desain), menunggu review spec
 **Cakupan:** Halaman discovery desktop — `/products`, `/kategori`, `/brands`, `/search`. Desktop premium; mobile web dipertahankan & dipoles. **Tidak menyentuh Flutter, schema DB, atau logika transaksi.**
 
@@ -62,12 +62,39 @@ Benang merah tunggal: **garis "shelf-line" 2px biru natalo `#1E5FBF`** di bawah 
 ### 4.3 Paginasi
 Search bersifat **page-based** (`page`/`per_page`, balikan `total`/`page`/`per_page`), sedangkan `/products` sekarang cursor/infinite (`useInfiniteProducts`). `/products` diadaptasi ke pola page-based: infinite-scroll tetap (IntersectionObserver existing) tapi menaikkan `page++` alih-alih cursor; tombol "Muat lebih banyak" sebagai fallback. `useInfiniteProducts` diganti/di-fork jadi `useInfiniteSearch` (hook baru client-only) atau `/products` memakai pola fetch `/search` yang sudah ada.
 
-### 4.4 Dua carve-out (butuh sentuhan backend read-only — **default: DITUNDA**)
-Semua item lain frontend-only. Dua ini **bukan** bawaan search:
-1. **Diskon-saja** — ada di `/api/products` (`discountOnly`), tak ada di search. Untuk memasangnya di search: tambah param `discount_only` + satu cabang `where` di DB-fallback `searchProductsFromDb`, **mereuse where-logic diskon yang sudah ada** (`lib/products.ts:964–990`). Kecil, read-only, tanpa reindex (path Meili menyusul terpisah bila Meili diaktifkan).
-2. **"Paling Populer" berbasis penjualan asli** — `best_seller` di search sekarang proksi jumlah-ulasan/rating (bukan penjualan). Penjualan asli ada di `/api/products` (`popular=best-seller`, agregasi `OrderItem`). Menyamakan butuh agregasi `OrderItem` di DB-fallback search (sedang, read-only) atau indeks `sold_count` (lebih besar).
+### 4.4 Carve-out backend — **DIKERJAKAN (revisi 3)**
 
-**Keputusan owner (2026-07-07): DITUNDA.** PR1–PR2 dikerjakan tanpa dua carve-out ini — label "Paling Populer" sementara pakai proksi `best_seller` yang ada (semantik: rating/ulasan, bukan penjualan asli), dan "Diskon-saja" **tidak** dipasang di PR1–PR2. **PR3 di luar cakupan implementasi saat ini** (jadi follow-up bila owner meminta parity penuh).
+**Arahan owner (2026-07-19): "web saya juga bisa sama dengan Flutter saya".** Target = **parity penuh dengan app Flutter**, bukan sekadar redesign visual. Karena itu keputusan "DITUNDA" di revisi 2 **dibatalkan** — migrasi `/products` ke stack search tidak boleh menurunkan kualitas apa pun, jadi kekurangan search ditutup lebih dulu.
+
+Yang kurang di search dibanding `/api/products` (semua **read-only additif**, tanpa endpoint/schema baru, tanpa reindex karena Meili OFF → `searchProductsFromDb` adalah jalur hidup):
+1. **Diskon-saja** — `where` fragment mandiri di `lib/products.ts` (Flash Sale aktif ATAU Promo Toko aktif). Flutter punya toggle "Sedang promo / diskon".
+2. **"Paling Populer" penjualan asli** — search sekarang proksi `review_count`. Asli = agregasi `OrderItem` (`getBestSellerProductIds`).
+3. **Trending** — skor 14 hari (totalSold·0.5 + pembeli unik·0.3 + hari-beli·0.2), dipakai tile "Trending" di beranda.
+
+**Kendala teknis penting:** `lib/products.ts` sudah `import { productSearchWhere } from "@/lib/search"`, jadi `lib/search.ts` **TIDAK BOLEH** import balik dari `lib/products.ts` (circular). Solusi: ekstrak fungsi ranking + where-diskon ke modul bersama baru `lib/product-ranking.ts` yang di-import kedua sisi.
+
+### 4.5 Bug pre-existing yang wajib ikut diperbaiki
+Ditemukan saat investigasi, keduanya menular ke `/products` begitu migrasi:
+1. **Produk belum jadi bocor ke pelanggan** — `searchProductsFromDb` hanya filter `isActive: true`, tidak memakai `productIsVisibleWhere()` (`creationState: "ready"`) seperti `/api/products`. Akibatnya produk yang masih `creating` bisa tampil di `/search` **hari ini**, dan akan menyebar ke `/products`. Wajib difix di PR2.
+2. **`take: 2000` tanpa `orderBy`** — untuk browse tanpa kata kunci, search memuat 2000 baris **arbitrer** lalu sort di JS. Aman selama katalog < 2000 produk (sekarang ±1.300), tapi diam-diam salah setelah lewat. Minimal: beri `orderBy` deterministik + catat batasnya; ideal: ranking-id-first untuk sort penjualan.
+
+### 4.6 Gotcha implementasi
+- `buildDbProductWhere` & `buildDbSearchPageArgs` (`lib/search.ts:288–342`) **diekspor tapi tidak dipakai** oleh `searchProductsFromDb` (yang membangun `where` inline di 799–826). Menambah filter di sana = **kode mati diam-diam**. Tambahkan di builder inline, atau rapikan supaya DB path benar-benar memakainya.
+- `discountOnly` versi `where` bisa meloloskan produk yang `discount_price`-nya ternyata `null` (kasus varian). Untuk sama persis dengan badge kartu, saring juga setelah map: `doc.discount_price !== null`.
+- `trending` punya filter keras `purchaseFrequencyDays >= 2` → bisa balik sedikit/0 item; siapkan fallback supaya halaman tidak tampak "kosong".
+
+### 4.7 Hasil PR2 + syarat wajib sebelum PR3 (dari review akhir PR2)
+
+**PR2 SELESAI** — search kini setara: `best_seller` pakai penjualan asli (top-2 identik dengan `/api/products?popular=best-seller`), `trending` ada, `discount_only` ada, produk `creating` tidak lagi bocor, `take: 2000` punya urutan deterministik. Diverifikasi live di Preview DB (1324 produk aktif).
+
+**🚧 BLOKER WAJIB UNTUK PR3 — batas 2000 baris.**
+`searchProductsFromDb` mengambil maksimal **2000** produk (terbaru dulu), tapi query ranking penjualan **tidak dibatasi**. Selama katalog < 2000 aman. Begitu lewat, best-seller lama bisa di-rank #1 tapi tidak ikut terambil → hilang diam-diam, dan `total` ikut terpotong. **Headroom sekarang: 1324 / 2000 (~676 produk lagi).** PR2 sudah memasang `console.warn` saat menyentuh batas supaya gagalnya berisik, bukan senyap. **PR3 tidak boleh memindahkan `/products` (halaman paling ramai) ke stack ini sebelum** salah satu dikerjakan: (a) ambil produk berdasarkan ranked-ids lebih dulu untuk sort penjualan, atau (b) naikkan batas + pastikan alarm terpantau.
+
+**Keterbatasan Meilisearch (Meili OFF sekarang — dicatat supaya tidak jadi jebakan).**
+`searchProductsFromMeili` belum mendukung `discountOnly` maupun `sort=trending`, dan `filterSearchDocs` hanya cek `is_active` sehingga **fix visibilitas `creationState: "ready"` TIDAK berlaku di jalur Meili**. PR2 sudah menambahkan guard: permintaan `discountOnly`/`trending` langsung dilayani DB path (filter yang diam-diam diabaikan lebih berbahaya daripada error). Kalau nanti Meili diaktifkan, `creationState` harus masuk dokumen + reindex sebelum dipercaya.
+
+**Temuan sampingan (bug pre-existing di stack produk, bukan dibuat PR2).**
+`/api/products?discountOnly=true` **terlalu longgar**: ia mencocokkan produk yang punya baris promo aktif walau harga efektifnya tidak benar-benar turun — respons API-nya sendiri menunjukkan `discountPrice: null` untuk produk-produk itu. Search lebih ketat (menyaring ulang dengan `discount_price < price_min`, sama dengan syarat badge di kartu) sehingga mengembalikan 0 di Preview DB, yang **lebih jujur**. Kalau nanti pelanggan mengeluh "filter diskon kosong", cek dulu apakah memang tidak ada diskon efektif — bukan bug filter.
 
 ## 5. Desain per halaman
 
@@ -116,7 +143,8 @@ Disadur (read-only) dari `flutter_app/lib/...`, diterjemahkan ke token web:
   - `ProductsInfiniteGrid` → 4-up grid + lit-shelf + baca param filter penuh dari URL.
 - **Baru**: `EtalaseBand` (band header reusable, slug→tagline map); `LitShelf` utility/kelas (pedestal hangat + shelf-line); trust-meta line; `RecentlyViewedStrip` (localStorage, client-only).
 - **Edit terstruktur**: `ProductCatalogStickyHeader` (render search+chip di semua breakpoint) → suppress search+chip di `md+` setelah sidebar desktop punya filtering.
-- **Backend read-only (opsional, PR3)**: `lib/search.ts` DB-fallback → param `discount_only` + ordering best-seller penjualan-asli (mereuse logika `lib/products.ts`).
+- **Backend read-only (PR2, wajib untuk parity)**: modul bersama **baru** `lib/product-ranking.ts` (dipakai `lib/products.ts` + `lib/search.ts`, menghindari circular import) → best-seller penjualan-asli, trending, where-diskon; `searchProductsFromDb` + `/api/search` dapat `discount_only`/`sort=trending` & fix visibilitas.
+- **Legacy mobile `/products` yang dipensiunkan di `md+` (PR3)**: `ProductFilterChips` (222 baris) & `ProductFilterTopDrawer` (569 baris) tetap untuk mobile; jangan dihapus, cukup di-`md:hidden` supaya perilaku mobile utuh.
 
 ## 8. Verifikasi (wajib sebelum klaim selesai)
 1. `npm run lint` bersih; `npx tsc --noEmit` tanpa error baru; `npx next build` compile sukses.
@@ -125,17 +153,35 @@ Disadur (read-only) dari `flutter_app/lib/...`, diterjemahkan ke token web:
 4. Cek filter benar-benar memfilter via URL `/api/search?...` (network) & jumlah hasil berubah.
 5. `git diff --name-only` — tanpa `flutter_app/**`, tanpa `prisma/schema.prisma`, tanpa logika transaksi; bila PR3 diambil, perubahan `lib/search.ts` hanya read-only additif.
 
-## 9. Sequencing (3 PR)
-- **PR1 (visual & container, risiko rendah)**: swap container 1280 (products/kategori/brands/search), `EtalaseBand`, kartu `LitShelf` hangat + token kartu ala app, ekstrak `FilterChip`, dropdown "Urutkan" (+ "Rating Tertinggi" di `/search`), lebarkan `/brands` & `/kategori`.
-- **PR2 (fungsional inti, frontend-only)**: alihkan `/products` ke stack search; reuse `SearchFilters` di `/products` (kategori/brand/stok/harga/rating); hook page-based; chip aktif + reset; suppress `ProductCatalogStickyHeader` search/chip di `md+`; bottom-sheet filter/sort mobile; empty/recently-viewed.
-- **PR3 (DITUNDA — di luar cakupan sekarang)**: param `discount_only` + best-seller penjualan-asli di DB-fallback search; toggle Diskon-saja di `SearchFilters`. Follow-up bila owner minta parity penuh.
+## 9. Sequencing (3 PR — revisi 3)
+- **PR1 (visual & container, risiko rendah) — ✅ MERGED (PR #187)**: swap container 1280 (products/kategori/brands/search), `EtalaseBand`, kartu `LitShelf` hangat + token kartu ala app, ekstrak `FilterChip`, opsi sort "Rating Tertinggi" di `/search`, lebarkan `/brands` & `/kategori`.
+- **PR2 (parity backend, read-only additif)**: modul bersama `lib/product-ranking.ts` (best-seller penjualan-asli, trending, where-diskon) dipakai `lib/products.ts` **dan** `lib/search.ts`; `searchProductsFromDb` dapat `discount_only`, `best_seller` asli, `trending`; **fix bug visibilitas `creationState: "ready"`** (§4.5.1) + `orderBy` deterministik (§4.5.2); param baru di `/api/search`. Unit test untuk bagian murni. Tanpa endpoint/schema baru.
+- **PR3 (frontend `/products`)**: alihkan `/products` ke stack search (kompatibel mundur untuk `?kategori=`/`?brand=`/`?new=`/`?popular=` — lihat §9.1); reuse `SearchFilters` + toggle Diskon-saja; hook page-based; band Etalase di `/products`; chip aktif + reset; suppress `ProductCatalogStickyHeader` search/chip di `md+`; bottom-sheet filter/sort mobile; empty state + "Terakhir kamu lihat".
+
+### 9.1 Kompatibilitas URL (WAJIB — jangan sampai link lama mati)
+`/products` dipakai banyak entry point. Semua ini **harus tetap jalan** setelah migrasi:
+| URL lama | Dipakai oleh | Terjemahan ke search |
+|---|---|---|
+| `?kategori=<slug>` | `CategoryTabPage` (×2), `DesktopCategoryNav`, kartu kategori beranda, banner | `category=<slug>` |
+| `?brand=<slug>` | redirect `/brand/[slug]`, `lib/brand-catalog.ts`, banner | `brand=<slug>` |
+| `?q=` | `ProductSearchInput` | `q=` |
+| `?new=last-30-days` | tile beranda "Produk Baru" | `sort=newest` |
+| `?popular=best-seller` | tile beranda "Terlaris" + `SectionHeader` | `sort=best_seller` (asli, setelah PR2) |
+| `?popular=trending` | tile beranda "Trending" | `sort=trending` (setelah PR2) |
+| `?sort=terlaris\|baru\|promo` | `DesktopCategoryNav` | **sekarang no-op** (halaman tak parse `sort`) → petakan `terlaris`→`best_seller`, `baru`→`newest`, `promo`→`discount_only=true` |
+| `?promo=1` / `?diskon=1` | beranda, `/promo/[id]` fallback, banner | **sekarang no-op** → `discount_only=true` |
+Catatan: tiga baris terakhir adalah **link yang sudah rusak hari ini** (halaman tak pernah membaca `sort`/`promo`/`diskon`); PR2+PR3 sekalian memperbaikinya.
 
 ## 10. Risiko & mitigasi
 - Distinctiveness jangan hanya di `:hover` → lit-shelf **statis**. ✓
 - Jangan tumpuk 6–7 band → satu baris meta ringkas. ✓
 - Konvergensi ke search: pastikan `q=""` browse & fallback-DB benar di preview (Meili mati) — verifikasi network. ✓
 - Paginasi berubah (cursor→page): uji infinite-scroll & "Muat lebih banyak" tak dobel-fetch / tak lompat. ✓
-- Default "Paling Populer" pakai proksi rating bila PR3 ditunda — beri tahu owner semantiknya (bukan penjualan asli) di review gate. ✓
+- Default "Paling Populer" proksi rating → **dibatalkan**: PR2 memasang penjualan asli, jadi tak ada penurunan semantik. ✓
+- **Link lama mati** saat `/products` pindah stack → tabel kompatibilitas URL §9.1 wajib dipenuhi & diverifikasi satu per satu. ✓
+- **Produk `creating` bocor ke pelanggan** (§4.5.1) → fix di PR2, verifikasi `/search` juga ikut bersih. ✓
+- **Circular import** `search` ⇄ `products` → modul bersama `lib/product-ranking.ts`. ✓
+- Menambah filter di `buildDbProductWhere` = kode mati (§4.6) → edit builder inline di `searchProductsFromDb`. ✓
 - Jangan sembunyikan harga/CTA di hover; jangan 5 kolom. ✓
 - Jangan tinggalkan `/search` di 1152 → migrasi sekalian. ✓
 - Klaim trust = janji → hanya yang dikonfirmasi owner (§1); rating konstanta. ✓
