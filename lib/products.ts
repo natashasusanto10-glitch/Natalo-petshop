@@ -102,7 +102,7 @@ export type StoreProduct = {
  */
 export const FLASH_SALE_MIN_DISCOUNT_PERCENT = 20;
 
-function normalizeProductWeight(
+export function normalizeProductWeight(
   name: string,
   slug: string,
   weightGram: number
