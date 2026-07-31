@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { BottomSheet } from "@/components/BottomSheet";
 import { ProductCard } from "@/components/ProductCard";
 import {
@@ -51,6 +52,7 @@ export function ProductsCatalogClient() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [loadMoreBlocked, setLoadMoreBlocked] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
 
@@ -62,6 +64,10 @@ export function ProductsCatalogClient() {
   const [reachedEnd, setReachedEnd] = useState(false);
   const loaderRef = useRef<HTMLDivElement | null>(null);
   const requestIdRef = useRef(0);
+  // Kunci konkuren sinkron: state loadingMore belum ter-update dalam tick
+  // yang sama, jadi dua panggilan berbarengan (klik tombol + observer) bisa
+  // lolos guard berbasis state dan sama-sama fetch halaman yang sama.
+  const loadingMoreRef = useRef(false);
 
   useEffect(() => {
     const requestId = ++requestIdRef.current;
@@ -73,6 +79,7 @@ export function ProductsCatalogClient() {
     setNextPage(params.page + 1);
     setReachedEnd(false);
     setLoadMoreError(null);
+    setLoadMoreBlocked(false);
 
     fetch(`/api/search?${key}`, { signal: controller.signal })
       .then((response) => {
@@ -104,14 +111,17 @@ export function ProductsCatalogClient() {
   const hasMore = !reachedEnd;
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || loading || reachedEnd) return;
+    if (loadingMore || loading || reachedEnd || loadMoreBlocked || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
     const totalPages = Math.max(1, Math.ceil(total / PRODUCTS_PER_PAGE));
     if (nextPage > totalPages) {
       setReachedEnd(true);
+      loadingMoreRef.current = false;
       return;
     }
     setLoadingMore(true);
     setLoadMoreError(null);
+    setLoadMoreBlocked(false);
     // Tangkap requestId SEBELUM fetch: kalau filter/sort berubah selagi
     // permintaan ini masih berjalan, requestIdRef.current akan berbeda saat
     // respons datang, dan SEMUA penulisan state di bawah dibatalkan supaya
@@ -134,14 +144,18 @@ export function ProductsCatalogClient() {
     } catch {
       if (requestId !== requestIdRef.current) return;
       setLoadMoreError("Gagal memuat produk tambahan");
+      setLoadMoreBlocked(true);
     } finally {
+      // Ref dilepas tanpa syarat: permintaan basi pun wajib melepas kunci,
+      // supaya konkurensi tidak nyangkut selamanya.
+      loadingMoreRef.current = false;
       if (requestId === requestIdRef.current) setLoadingMore(false);
     }
-  }, [loading, loadingMore, nextPage, params, reachedEnd, total]);
+  }, [loading, loadingMore, loadMoreBlocked, nextPage, params, reachedEnd, total]);
 
   useEffect(() => {
     const node = loaderRef.current;
-    if (!node || !hasMore) return;
+    if (!node || !hasMore || loadMoreBlocked) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) void loadMore();
@@ -150,7 +164,7 @@ export function ProductsCatalogClient() {
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasMore, loadMore]);
+  }, [hasMore, loadMore, loadMoreBlocked]);
 
   function apply(next: ProductsCatalogParams) {
     router.replace(buildProductsHref({ ...next, page: 1 }), { scroll: false });
@@ -311,7 +325,14 @@ export function ProductsCatalogClient() {
                       <span>{loadMoreError}</span>
                       <button
                         type="button"
-                        onClick={() => void loadMore()}
+                        onClick={() => {
+                          // Cukup lepas blokir + error: observer akan menembak
+                          // ulang secara alami karena sentinel masih terlihat,
+                          // menghindari closure loadMore yang masih membaca
+                          // loadMoreBlocked lama kalau dipanggil langsung di sini.
+                          setLoadMoreError(null);
+                          setLoadMoreBlocked(false);
+                        }}
                         className="rounded-full border border-red-200 bg-white px-3 py-1 font-black text-red-600"
                       >
                         Coba lagi
@@ -329,7 +350,16 @@ export function ProductsCatalogClient() {
                 </div>
               )}
 
-              {!hasMore && (
+              {!hasMore && params.page > 1 && (
+                <p className="py-6 text-center text-sm font-semibold text-gray-500">
+                  Menampilkan sebagian katalog mulai halaman {params.page}.{" "}
+                  <Link href="/products" className="font-bold text-natalo-700 underline">
+                    Lihat dari awal
+                  </Link>
+                </p>
+              )}
+
+              {!hasMore && params.page <= 1 && (
                 <p className="py-6 text-center text-sm font-semibold text-gray-400">
                   Semua produk sudah ditampilkan.
                 </p>
