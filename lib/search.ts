@@ -73,6 +73,15 @@ export type ProductSearchDoc = {
   price_min: number;
   price_max: number;
   discount_price: number | null;
+  /** Harga member apa adanya dari DB (null kalau tidak di-set / bukan angka
+   *  positif). SENGAJA tidak dibandingkan dengan harga normal di sini —
+   *  `mapProductListRecord` untuk /api/products juga tidak, jadi kartu di
+   *  katalog berperilaku sama persis dengan kartu di beranda.
+   *
+   *  Tanpa field ini, katalog yang dilayani search menampilkan harga normal
+   *  sementara detail & keranjang memakai harga member — beda harga untuk
+   *  produk yang sama. */
+  member_price: number | null;
   stock: number;
   total_stock: number;
   weight_grams: number;

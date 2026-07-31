@@ -25,6 +25,7 @@ function doc(overrides: Partial<ProductSearchDoc>): ProductSearchDoc {
     price_min: 120000,
     price_max: 120000,
     discount_price: null,
+    member_price: null,
     stock: 5,
     total_stock: 5,
     weight_grams: 500,
@@ -308,4 +309,12 @@ test("rank wins over tiebreak, and tiebreak only orders the unranked tail", () =
     ordered.map((item) => item.id),
     ["ranked", "cheap", "pricey"],
   );
+});
+
+test("search doc carries member_price so the catalog can show the member pill", () => {
+  const withMember = doc({ id: "m", slug: "m", price_min: 100_000, member_price: 80_000 });
+  const withoutMember = doc({ id: "n", slug: "n", price_min: 100_000 });
+
+  assert.equal(withMember.member_price, 80_000);
+  assert.equal(withoutMember.member_price, null);
 });
