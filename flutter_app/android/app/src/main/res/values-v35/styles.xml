@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 15+ (API 35): edge-to-edge di-enforce oleh sistem.
+     statusBarColor / navigationBarColor / windowDrawsSystemBarBackgrounds
+     DEPRECATED dan diabaikan — varian ini menghapusnya supaya Play Console
+     tidak flag "deprecated APIs for edge-to-edge". Warna system bar saat
+     app jalan di-handle Flutter (main.dart SystemChrome edgeToEdge +
+     statusBarColor transparent). Splash pakai windowSplashScreenBackground
+     (API 31+ splash screen resmi) yang tetap valid. -->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowSplashScreenBackground">#1E5FBF</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/android12splash</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">#1E5FBF</item>
+    </style>
+</resources>
