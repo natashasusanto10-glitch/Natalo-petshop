@@ -66,6 +66,30 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "api.qrserver.com" },
     ],
   },
+  async redirects() {
+    // Canonical apex → www, TAPI kecualikan /.well-known/*.
+    //
+    // KENAPA: verifikasi Android App Links (autoVerify="true") dan iOS
+    // Universal Links TIDAK mengikuti redirect. Selama apex
+    // natalopetshop.com dijawab 307 ke www, Play Console melaporkan
+    // "1 domain not verified / Failed domain checks" untuk apex — walau
+    // file di www sendiri sudah benar. File-nya WAJIB dijawab 200 langsung
+    // di host yang tercantum di intent-filter.
+    //
+    // PENTING: redirect ini hanya berlaku kalau redirect apex→www di
+    // dashboard Vercel (Project → Domains) DIMATIKAN. Redirect level
+    // domain Vercel jalan di edge sebelum Next.js, jadi tidak bisa
+    // dikecualikan per-path dari sini.
+    return [
+      {
+        // Named group `path` wajib — destination memakai `:path*`.
+        source: "/:path((?!\\.well-known).*)",
+        has: [{ type: "host", value: "natalopetshop.com" }],
+        destination: "https://www.natalopetshop.com/:path",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     // Security headers di-apply ke SEMUA path (source "/:path*").
     // Mandatory hardening untuk production. Reference: OWASP Secure Headers.
