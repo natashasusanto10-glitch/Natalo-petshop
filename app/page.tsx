@@ -410,6 +410,20 @@ async function getFallbackHomeCategories(limit = 6): Promise<HomeCategory[]> {
     .catch(() => []);
 }
 
+/**
+ * Batas jumlah produk terlaris yang dipakai menyimpulkan kategori populer.
+ *
+ * Query ini dulu TANPA batas: seluruh riwayat penjualan sejak toko berdiri
+ * di-groupBy tiap kali halaman depan dibangun ulang, lalu SEMUA id produk
+ * hasil groupBy dipakai sebagai `IN (...)` di query berikutnya — biaya yang
+ * tumbuh selamanya seiring bertambahnya pesanan.
+ *
+ * Kita hanya perlu `limit` kategori teratas (default 6). Produk peringkat
+ * ke-500+ tidak mungkin mengubah 6 besar itu, jadi cap ini praktis tidak
+ * mengubah hasil sambil membuat biayanya tetap.
+ */
+const POPULAR_CATEGORY_PRODUCT_CAP = 500;
+
 async function getPopularCategories(limit = 6): Promise<HomeCategory[]> {
   try {
     const soldRows = await prisma.orderItem.groupBy({
@@ -425,7 +439,19 @@ async function getPopularCategories(limit = 6): Promise<HomeCategory[]> {
         },
       },
       _sum: { quantity: true },
+      // Ambil yang terlaris dulu supaya pemotongan di bawah membuang ekor yang
+      // paling tidak berpengaruh, bukan baris acak.
+      orderBy: { _sum: { quantity: "desc" } },
+      take: POPULAR_CATEGORY_PRODUCT_CAP,
     });
+
+    if (soldRows.length === POPULAR_CATEGORY_PRODUCT_CAP) {
+      // Jangan memotong diam-diam: kategori dengan banyak produk laris tipis
+      // secara teori bisa kalah kalau ekornya terpotong.
+      console.warn(
+        `[home] Kategori populer menyentuh cap ${POPULAR_CATEGORY_PRODUCT_CAP} produk terlaris; peringkat kategori mungkin tidak memakai ekor penjualan.`,
+      );
+    }
 
     if (soldRows.length === 0) return getFallbackHomeCategories(limit);
 
@@ -501,21 +527,49 @@ function discountPercent(price: number, discountPrice: number | null) {
   return Math.round(((price - discountPrice) / price) * 100);
 }
 
-async function getFlashSaleProducts(limit = 7): Promise<StoreProduct[]> {
+/**
+ * Batas baris kandidat Flash Sale yang ditarik dari DB.
+ *
+ * Query ini dulu TANPA batas: seluruh produk berdiskon ditarik utuh (termasuk
+ * kolom `description` yang panjang) hanya untuk menampilkan 7 kartu — tercatat
+ * di Sentry sebagai "Slow DB Query" pada `GET /` dan bikin halaman depan
+ * kadang tak terbuka. Cap ini yang mengubahnya jadi biaya tetap.
+ *
+ * Kenapa tidak langsung `take: limit`? Tier-2 diurutkan per-diskon-% di JS
+ * (nilai turunan, tak bisa di-ORDER BY di SQL), jadi pool kandidat harus lebih
+ * besar dari `limit`. 200 memberi ruang lega dibanding 7 kartu yang dipakai.
+ */
+const FLASH_SALE_CANDIDATE_CAP = 200;
+
+/** Hanya kolom yang benar-benar dirender kartu Flash Sale + kolom pengurutan. */
+type FlashSaleCard = Pick<
+  StoreProduct,
+  "id" | "name" | "slug" | "price" | "discountPrice" | "imageUrl"
+>;
+
+async function getFlashSaleProducts(limit = 7): Promise<FlashSaleCard[]> {
   try {
     const now = new Date();
     const products = await prisma.product.findMany({
       where: {
         isActive: true,
         price: { gt: 0 },
-        discountPrice: { not: null },
         // 3-tier eligibility:
         // - flashSaleEndsAt > now() → explicit Flash Sale (any discount %)
         // - flashSaleEndsAt IS NULL → auto-include (filter by % di .filter())
         // - flashSaleEndsAt expired → exclude (SQL filter di sini)
         OR: [
-          { flashSaleEndsAt: null },
-          { flashSaleEndsAt: { gt: now } },
+          // Tier 2 — tanpa tanggal: wajib harga benar-benar turun. Dulu syaratnya
+          // cuma `discountPrice != null`, yang ikut menarik baris ber-diskon-semu
+          // (discountPrice >= price) — selalu dibuang lagi oleh discountPercent()
+          // di bawah, jadi murni beban DB.
+          {
+            flashSaleEndsAt: null,
+            discountPrice: { not: null, lt: prisma.product.fields.price },
+          },
+          // Tier 1 — ditandai admin: tetap `not: null` saja, supaya perilaku
+          // persis seperti sebelumnya (dipertahankan apa adanya).
+          { flashSaleEndsAt: { gt: now }, discountPrice: { not: null } },
         ],
       },
       orderBy: [
@@ -523,10 +577,28 @@ async function getFlashSaleProducts(limit = 7): Promise<StoreProduct[]> {
         { updatedAt: "desc" },
         { createdAt: "desc" },
       ],
-      include: {
-        category: { select: { slug: true } },
+      // `description`/`gallery` sengaja TIDAK diambil: kartu Flash Sale tidak
+      // merendernya, dan deskripsi produk adalah kolom terberat di tabel ini.
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        price: true,
+        discountPrice: true,
+        imageUrl: true,
+        flashSaleEndsAt: true,
+        updatedAt: true,
       },
+      take: FLASH_SALE_CANDIDATE_CAP,
     });
+
+    if (products.length === FLASH_SALE_CANDIDATE_CAP) {
+      // Jangan pernah memotong diam-diam: kalau cap tersentuh, produk diskon
+      // tinggi yang lebih lama bisa kalah dari yang lebih baru diperbarui.
+      console.warn(
+        `[home] Flash Sale menyentuh cap kandidat ${FLASH_SALE_CANDIDATE_CAP}; urutan diskon-tertinggi mungkin tidak lengkap.`,
+      );
+    }
 
     return products
       .filter((product) => {
@@ -562,19 +634,9 @@ async function getFlashSaleProducts(limit = 7): Promise<StoreProduct[]> {
         id: product.id,
         name: product.name,
         slug: product.slug,
-        description: product.description,
         price: product.price,
         discountPrice: product.discountPrice,
-        memberPrice: product.memberPrice,
-        stock: product.stock,
-        weightGram: product.weightGram,
         imageUrl: product.imageUrl,
-        gallery: product.gallery ?? [],
-        hasVariants: product.hasVariants,
-        avgRating: product.avgRating,
-        reviewCount: product.reviewCount,
-        categorySlug: product.category?.slug ?? null,
-        flashSaleEndsAt: product.flashSaleEndsAt?.toISOString() ?? null,
       }));
   } catch {
     return [];
