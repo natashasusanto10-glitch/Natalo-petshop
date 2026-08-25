@@ -428,6 +428,33 @@ class ProductService {
     }
   }
 
+  /// Produk terlaris SUNGGUHAN — peringkat dari seluruh katalog.
+  ///
+  /// Dulu Beranda mengurutkan sendiri hasil [fetchHomeProductsRaw] by
+  /// soldCount. Itu keliru: daftar itu diambil tanpa filter, jadi urutan
+  /// bawaannya Flash Sale dulu lalu createdAt desc — 48 produk TERBARU.
+  /// Produk terlaris yang lebih tua tidak pernah masuk kandidat, jadi
+  /// "Produk Terlaris" sebenarnya berarti "terlaris di antara 48 produk
+  /// terbaru". `popular=best-seller` mengelompokkan OrderItem berbayar di
+  /// seluruh katalog dan mengurutkannya by total kuantitas terjual.
+  ///
+  /// Kontrak null-vs-[] sama seperti fetchHomeProductsRaw: null = gagal
+  /// fetch (pertahankan data lama), [] = sukses tapi memang kosong.
+  Future<List<Map<String, dynamic>>?> fetchBestSellersRaw({
+    int limit = 8,
+  }) async {
+    try {
+      final data = await apiClient.getJson(
+        '/api/products',
+        timeout: const Duration(seconds: 15),
+        query: {'popular': 'best-seller', 'limit': '$limit'},
+      );
+      return extractRawList(data, const ['items', 'data', 'products']);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Varian raw fetchBrands — lihat kontrak null-vs-[] di fetchHomeProductsRaw.
   Future<List<Map<String, dynamic>>?> fetchBrandsRaw({
     String? category,
