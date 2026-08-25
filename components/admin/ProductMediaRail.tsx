@@ -28,18 +28,38 @@ export function ProductMediaRail({ images, video, onImagesChange, onVideoIntentC
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  /** Jumlah slot skeleton yang masih berputar (foto sedang di-upload). */
+  const [pending, setPending] = useState(0);
   useEffect(() => { if (!preview) return; const close = (event: KeyboardEvent) => { if (event.key === "Escape") setPreview(null); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [preview]);
 
   async function addFiles(files: FileList | null) {
     if (!files) return;
-    const incoming = Array.from(files).slice(0, 9 - images.length);
-    const result = await uploadProductImageFiles(incoming, 9 - images.length);
-    const urls = result.uploaded;
+    const remaining = 9 - images.length;
+    const incoming = Array.from(files).slice(0, remaining);
+    if (incoming.length === 0) return;
+
+    setError(null);
+    setPending(incoming.length);
+
+    // Slot per-index, bukan array yang di-push: dengan upload paralel, foto
+    // kecil bisa selesai duluan. Menyimpan per index lalu memfilter membuat
+    // urutan tampil selalu sesuai urutan pilih — termasuk foto cover.
+    const slots = new Array<string | undefined>(incoming.length);
+
+    const result = await uploadProductImageFiles(incoming, remaining, (settled) => {
+      // Satu skeleton hilang tiap satu file tuntas — foto terisi bertahap,
+      // bukan diam lama lalu muncul serentak.
+      setPending((count) => Math.max(0, count - 1));
+      if (!settled.url) return;
+      slots[settled.index] = settled.url;
+      onImagesChange([...images, ...slots.filter((url): url is string => Boolean(url))].slice(0, 9));
+    });
+
+    setPending(0);
     // Sebutkan file + alasannya. Pesan lama ("Sebagian foto gagal di-upload.")
     // tidak menyebut apa pun, jadi mustahil dibedakan antara file kebesaran,
     // format ditolak, atau server sedang sibuk.
     setError(result.errors.length ? result.errors.join(" · ") : null);
-    onImagesChange([...images, ...urls].slice(0, 9));
   }
 
   return <div className="space-y-3">
@@ -50,7 +70,15 @@ export function ProductMediaRail({ images, video, onImagesChange, onVideoIntentC
         {index === 0 ? <span className="absolute bottom-0 inset-x-0 bg-zinc-950/75 py-0.5 text-[10px] font-semibold text-white">Cover</span> : null}
         </button><button type="button" aria-label={index === 0 ? "Hapus foto cover" : `Hapus foto ${index + 1}`} onClick={() => { if (canRemoveImage(images)) onImagesChange(removeImageAt(images, index)); }} className="absolute right-1 top-1 rounded-full bg-white/95 px-1.5 text-xs font-bold text-zinc-700 shadow">×</button>
       </div>)}
-      {images.length < 9 ? <button type="button" aria-label="Tambah foto" onClick={() => fileRef.current?.click()} className="flex h-20 w-20 flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 text-xs text-zinc-500">＋<span>{images.length}/9</span></button> : null}
+      {/* Slot skeleton berputar — muncul seketika saat foto dipilih supaya
+          admin tahu upload sedang jalan, lalu hilang satu per satu diganti
+          foto aslinya. Tanpa ini layar diam total selama upload. */}
+      {Array.from({ length: pending }).map((_, index) => (
+        <div key={`pending-${index}`} role="status" aria-label="Mengunggah foto" className="flex h-20 w-20 items-center justify-center rounded-xl border border-dashed border-natalo-300 bg-natalo-50/60">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-natalo-200 border-t-natalo-600" />
+        </div>
+      ))}
+      {images.length + pending < 9 ? <button type="button" aria-label="Tambah foto" disabled={pending > 0} onClick={() => fileRef.current?.click()} className="flex h-20 w-20 flex-col items-center justify-center rounded-xl border border-dashed border-zinc-300 text-xs text-zinc-500 disabled:opacity-50">＋<span>{images.length + pending}/9</span></button> : null}
     </div>
     <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="hidden" onChange={(event) => { void addFiles(event.target.files); event.currentTarget.value = ""; }} />
     <div className="flex items-center gap-2">
