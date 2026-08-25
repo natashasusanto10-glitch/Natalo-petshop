@@ -397,6 +397,21 @@ export default async function AdminProductsPage({
 
             const productMeta = (
               <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                {/* SKU Induk — Product.sku, sudah ikut ter-fetch (Prisma
+                    mengembalikan semua field scalar) jadi tidak menambah
+                    query. Ditampilkan walau kosong (sebagai "—") supaya
+                    produk yang SKU-nya belum diisi langsung kelihatan.
+                    SKU per varian ada di ProductVariant.sku — tampil di
+                    modal "Edit Stok/Harga Varian", bukan di baris ini. */}
+                <span className="text-zinc-400">
+                  SKU{" "}
+                  {product.sku ? (
+                    <span className="font-mono text-zinc-600">{product.sku}</span>
+                  ) : (
+                    <span className="text-zinc-300">—</span>
+                  )}
+                </span>
+                <span className="text-zinc-300">·</span>
                 {isRecentlyEdited && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-natalo-50 px-2 py-0.5 text-[10px] font-semibold text-natalo-700">
                     <span className="h-1.5 w-1.5 rounded-full bg-natalo-500" aria-hidden="true" />

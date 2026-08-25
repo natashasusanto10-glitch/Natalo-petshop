@@ -73,6 +73,15 @@ export function VariantInlineEditCell({
   const [attributes, setAttributes] = useState<VariantAttribute[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  /**
+   * Nilai "Ubah Massal" — diterapkan ke SEMUA varian sekaligus.
+   *
+   * Restock 12 varian ke angka yang sama sebelumnya berarti mengetik 12
+   * kali. Ini cuma mengisi draft; tidak menyimpan apa pun sampai tombol
+   * Simpan ditekan, jadi admin masih bisa mengoreksi satu-dua varian
+   * setelah menerapkan, atau membatalkan seluruhnya lewat Tutup.
+   */
+  const [bulkValue, setBulkValue] = useState("");
   // ROOT CAUSE bug "modal blur/transparan" yg user lapor di tab Arsip:
   // row produk archived punya className `opacity-70` (lihat
   // app/admin/(protected)/products/page.tsx:475). CSS opacity CASCADES
@@ -95,6 +104,9 @@ export function VariantInlineEditCell({
   async function openEditor() {
     setOpen(true);
     setError(null);
+    // Reset supaya nilai massal dari sesi edit sebelumnya tidak nyangkut
+    // dan tak sengaja diterapkan ke produk lain.
+    setBulkValue("");
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/products/${productId}/variants`);
@@ -119,12 +131,23 @@ export function VariantInlineEditCell({
     }
   }
 
-  function updateDraft(id: string, raw: string) {
+  /** Normalisasi input angka — sama untuk field per-varian maupun massal. */
+  function formatDraftValue(raw: string) {
     const clean = raw.replace(/\./g, "").replace(/[^\d]/g, "");
-    setDrafts((current) => ({
-      ...current,
-      [id]: field === "price" && clean ? Number(clean).toLocaleString("id-ID") : clean,
-    }));
+    return field === "price" && clean
+      ? Number(clean).toLocaleString("id-ID")
+      : clean;
+  }
+
+  function updateDraft(id: string, raw: string) {
+    setDrafts((current) => ({ ...current, [id]: formatDraftValue(raw) }));
+  }
+
+  /** Isi draft SEMUA varian dengan nilai massal. Belum menyimpan. */
+  function applyBulkToAll() {
+    const next = formatDraftValue(bulkValue);
+    if (next === "") return;
+    setDrafts(Object.fromEntries(variants.map((variant) => [variant.id, next])));
   }
 
   async function save() {
@@ -237,7 +260,44 @@ export function VariantInlineEditCell({
                 Varian tidak ditemukan.
               </p>
             ) : (
-              <div className="mt-5 max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+              <>
+              {/* Ubah Massal — isi semua varian sekaligus. Sengaja hanya
+                  mengisi draft, bukan langsung menyimpan, supaya admin bisa
+                  mengoreksi satu-dua varian sesudahnya. */}
+              <div className="mt-5 flex items-center gap-2 rounded-xl bg-zinc-50 p-3">
+                <label
+                  htmlFor={`bulk-${productId}-${field}`}
+                  className="shrink-0 text-xs font-bold text-zinc-700"
+                >
+                  Ubah massal
+                </label>
+                <input
+                  id={`bulk-${productId}-${field}`}
+                  type="text"
+                  inputMode="numeric"
+                  value={bulkValue}
+                  disabled={saving}
+                  placeholder={field === "price" ? "Harga" : "Stok"}
+                  onChange={(e) => setBulkValue(formatDraftValue(e.target.value))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      applyBulkToAll();
+                    }
+                  }}
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-right text-sm font-semibold outline-none focus:border-zinc-950 disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  disabled={saving || bulkValue.trim() === ""}
+                  onClick={applyBulkToAll}
+                  className="shrink-0 rounded-full bg-natalo-600 px-3 py-2 text-xs font-bold text-white hover:bg-natalo-700 disabled:opacity-40"
+                >
+                  Terapkan ke semua
+                </button>
+              </div>
+
+              <div className="mt-3 max-h-[55vh] space-y-2 overflow-y-auto pr-1">
                 {variants.map((variant) => (
                   <div
                     key={variant.id}
@@ -263,6 +323,7 @@ export function VariantInlineEditCell({
                   </div>
                 ))}
               </div>
+              </>
             )}
 
             {error && <p className="mt-3 text-sm font-semibold text-red-600">{error}</p>}
