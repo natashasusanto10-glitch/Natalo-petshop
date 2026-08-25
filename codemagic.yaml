@@ -29,14 +29,24 @@ workflows:
       # yang berarti membuang pengguna iOS 13/14) — bukan sesuatu yang
       # terjadi diam-diam karena CI mengunduh rilis baru.
       flutter: 3.44.7
-      # CATATAN: `xcode: latest` punya penyakit yang SAMA — Xcode baru bisa
-      # mengubah perilaku build tanpa perubahan kode. Sengaja BELUM dipatok
-      # di sini supaya perbaikan ini hanya mengubah satu variabel; kalau
-      # dipatok bersamaan dan build tetap gagal, tak ketahuan mana
-      # penyebabnya. Patok setelah build ini terbukti hijau, dengan versi
-      # Xcode yang benar-benar tersedia di Codemagic.
-      xcode: latest
-      cocoapods: default
+      # Xcode & CocoaPods DIPATOK ke versi yang BENAR-BENAR menghasilkan
+      # build sukses (25 Agustus 2026, rilis 1.0.189 diterima App Store
+      # Connect). Angkanya diambil dari log build itu, bukan dari
+      # dokumentasi atau dari Mac siapa pun:
+      #
+      #   == Use Xcode 26.4 ==      -> xcodebuild 26.4.1 (build 17E202)
+      #   cocoapods (1.16.2)
+      #
+      # Dipatok "26.4" — itu pengenal yang dipakai Codemagic sendiri di log;
+      # "26.4.1" adalah versi patch yang dilaporkan xcodebuild, bukan nilai
+      # konfigurasi yang valid.
+      #
+      # `latest`/`default` punya penyakit yang SAMA dengan `flutter: stable`
+      # di atas: rilis baru dari pihak ketiga bisa mematahkan build tanpa
+      # satu pun perubahan di repo ini. Itu persis yang terjadi 19 Agustus
+      # dan menghabiskan berhari-hari untuk didiagnosis.
+      xcode: 26.4
+      cocoapods: 1.16.2
       # Code signing handled explicitly via script step di bawah —
       # `app-store-connect fetch-signing-files --create`. Pre-build
       # `ios_signing` block dinonaktifkan supaya error spesifik dari
