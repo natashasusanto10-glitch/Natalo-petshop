@@ -4,10 +4,16 @@
 # pod, dan errornya muncul sebagai "could not find compatible versions for
 # pod Flutter" yang menyesatkan.
 #
-# 13.0 dipilih supaya SAMA dengan IPHONEOS_DEPLOYMENT_TARGET di
-# Runner.xcodeproj (keenam konfigurasi) dan dengan ios.deployment_target
-# milik firebase_core. Kalau dinaikkan, naikkan juga di Xcode project.
-platform :ios, '13.0'
+# WAJIB sama dengan IPHONEOS_DEPLOYMENT_TARGET di Runner.xcodeproj (keenam
+# konfigurasi). Kalau salah satu diubah, ubah keduanya.
+#
+# Dinaikkan 13.0 -> 15.0 bersama upgrade Flutter 3.47.1, yang pod-nya
+# menuntut iOS 15.0. Apple juga mewajibkan MinimumOSVersion 15.0 untuk
+# semua app mulai Spring 2027 (warning 90068 di log unggah), jadi ini
+# arah yang sama, bukan pengorbanan sia-sia.
+#
+# KONSEKUENSI: pengguna iOS 13 & 14 tidak bisa lagi memasang pembaruan.
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
