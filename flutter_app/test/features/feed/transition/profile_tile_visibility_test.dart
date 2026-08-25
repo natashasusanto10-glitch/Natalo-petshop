@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/features/feed/transition/profile_tile_visibility.dart';
 
@@ -55,7 +56,7 @@ void main() {
               height: 600,
               child: ListView(
                 controller: scrollController,
-                cacheExtent: 5000,
+                scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
                 children: List.generate(20, (index) {
                   return SizedBox(
                     key: index == 15 ? tileKey : null,
@@ -99,7 +100,7 @@ void main() {
                 height: 600,
                 child: ListView(
                   controller: scrollController,
-                  cacheExtent: 5000,
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
                   children: List.generate(20, (index) {
                     return SizedBox(
                       key: index == 2 ? tileKey : null,
@@ -155,7 +156,7 @@ void main() {
                       height: 600,
                       child: ListView(
                         controller: innerController,
-                        cacheExtent: 5000,
+                        scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
                         children: List.generate(20, (index) {
                           return SizedBox(
                             key: index == 15 ? tileKey : null,

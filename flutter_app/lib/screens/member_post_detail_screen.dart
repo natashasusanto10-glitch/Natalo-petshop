@@ -5,6 +5,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:video_player/video_player.dart';
@@ -1153,9 +1154,14 @@ class _MemberPostDetailScreenState extends State<MemberPostDetailScreen>
                             onRefresh: _refreshPosts,
                             child: ListView.separated(
                               controller: _scrollController,
-                              cacheExtent: _maximumEstimatedPostExtent(
-                                      MediaQuery.sizeOf(context).width) *
-                                  2,
+                              // `cacheExtent: double` lama berarti PIKSEL
+                              // (CacheExtentStyle.pixel), jadi padanannya
+                              // ScrollCacheExtent.pixels — bukan .viewport.
+                              scrollCacheExtent: ScrollCacheExtent.pixels(
+                                _maximumEstimatedPostExtent(
+                                        MediaQuery.sizeOf(context).width) *
+                                    2,
+                              ),
                               // Top: media post pertama mulai TEPAT di bawah header (status
                               // bar + toolbar), jadi saat pertama buka media tidak "over ke
                               // atas" / kepotong — framing 9:16 utuh (paritas IG). Saat

@@ -1075,7 +1075,13 @@ class _CartScreenState extends State<CartScreen>
                   if (showVoucherArea)
                     SizeTransition(
                       sizeFactor: _chromeAnim,
-                      axisAlignment: 1,
+                      // Dulu `axisAlignment: 1` (usang sejak v3.41). Pemetaan
+                      // resmi dari dokumentasi SizeTransition: untuk
+                      // Axis.vertical (default), `axisAlignment: x` menjadi
+                      // AlignmentDirectional(-1.0, x) — di sini (-1, 1),
+                      // yaitu bottomStart. Bukan sekadar ganti nama: tipenya
+                      // berubah dari double ke Alignment.
+                      alignment: AlignmentDirectional.bottomStart,
                       child: _StickyVoucherBar(
                         hasSelection: _selectedItems.isNotEmpty,
                         loading: _loadingVouchers,
@@ -1099,7 +1105,9 @@ class _CartScreenState extends State<CartScreen>
                   // pindah ke pil melayang selama scroll (pola condense).
                   SizeTransition(
                     sizeFactor: _chromeAnim,
-                    axisAlignment: 1,
+                    // Lihat catatan pemetaan di SizeTransition voucher bar
+                    // di atas — sumbu vertikal, axisAlignment 1 -> (-1, 1).
+                    alignment: AlignmentDirectional.bottomStart,
                     child: _CartSummaryBar(
                       grandTotal: _grandTotal,
                       totalSaving: _totalVoucherSaving,

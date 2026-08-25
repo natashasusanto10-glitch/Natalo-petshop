@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 
 /// Scroll view keranjang berbasis **center-sliver**.
 ///
@@ -89,7 +90,7 @@ class _CartScrollViewState extends State<CartScrollView> {
     return CustomScrollView(
       controller: widget.controller,
       center: _centerKey,
-      cacheExtent: widget.cacheExtent,
+      scrollCacheExtent: ScrollCacheExtent.pixels(widget.cacheExtent),
       slivers: [
         // ── SEBELUM center (urutan sliver = visual atas→bawah) ──
         ...widget.leadingSlivers,
