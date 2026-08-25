@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_test/flutter_test.dart';
 
 // EKSPERIMEN (TUGAS 2) — Hipotesis: "ListView(children:[...]) native dengan
@@ -40,7 +41,7 @@ Future<StateSetter> _pumpCart(
               setStateRef = setState;
               return ListView(
                 controller: controller,
-                cacheExtent: cacheExtent,
+                scrollCacheExtent: ScrollCacheExtent.pixels(cacheExtent),
                 children: [
                   for (final k in cartKeys) _card(k),
                   _card('GIANT', height: kGiantHeight),

@@ -121,7 +121,7 @@ void main() {
     final texts = tester.widgetList<Text>(find.byType(Text));
     for (final t in texts) {
       final w = t.style?.fontWeight;
-      expect(w == null || w.index <= FontWeight.w600.index, isTrue,
+      expect(w == null || w.value <= FontWeight.w600.value, isTrue,
           reason: 'teks "${t.data}" memakai $w');
     }
   });
