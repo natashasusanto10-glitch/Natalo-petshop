@@ -15,8 +15,8 @@ typedef RawListFetcher = Future<List<Map<String, dynamic>>?> Function();
 
 /// Snapshot data Beranda — stale-while-revalidate (SWR) ala Shopee/IG.
 ///
-/// Satu-satunya pemilik data home (produk limit 48 + brands + categories +
-/// banners). Beranda render langsung dari sini: pindah tab = instan dari
+/// Satu-satunya pemilik data home (produk limit 48 + terlaris + brands +
+/// categories + banners). Beranda render langsung dari sini: pindah tab = instan dari
 /// memori (singleton hidup terus), cold start = instan dari disk
 /// ([loadFromDisk] dipanggil main.dart), refresh jalan diam-diam.
 ///
@@ -34,6 +34,12 @@ class HomeSnapshotStore extends ChangeNotifier {
   static const softThrottle = Duration(seconds: 30);
 
   List<Product> products = const [];
+
+  /// Produk terlaris dari SELURUH katalog (endpoint popular=best-seller).
+  /// Dipisah dari [products] karena [products] adalah 48 produk TERBARU —
+  /// mengurutkannya by soldCount hanya menghasilkan "terlaris di antara
+  /// yang terbaru", bukan terlaris sebenarnya.
+  List<Product> bestSellers = const [];
   List<PetBrand> brands = const [];
   List<HomeCategory> categories = const [];
   List<HomeBanner> banners = const [];
@@ -54,12 +60,15 @@ class HomeSnapshotStore extends ChangeNotifier {
   // disk saat hydrate supaya persist berikutnya tidak menghapus bagian
   // yang belum pernah di-fetch ulang (kasus gagal parsial).
   List<Map<String, dynamic>> _rawProducts = const [];
+  List<Map<String, dynamic>> _rawBestSellers = const [];
   List<Map<String, dynamic>> _rawBrands = const [];
   List<Map<String, dynamic>> _rawCategories = const [];
   List<Map<String, dynamic>> _rawBanners = const [];
 
   @visibleForTesting
   RawListFetcher? debugProductsFetcher;
+  @visibleForTesting
+  RawListFetcher? debugBestSellersFetcher;
   @visibleForTesting
   RawListFetcher? debugBrandsFetcher;
   @visibleForTesting
@@ -90,20 +99,27 @@ class HomeSnapshotStore extends ChangeNotifier {
       }
 
       List<Product> parsedProducts;
+      List<Product> parsedBestSellers;
       List<PetBrand> parsedBrands;
       List<HomeCategory> parsedCategories;
       List<HomeBanner> parsedBanners;
       List<Map<String, dynamic>> rawProducts;
+      List<Map<String, dynamic>> rawBestSellers;
       List<Map<String, dynamic>> rawBrands;
       List<Map<String, dynamic>> rawCategories;
       List<Map<String, dynamic>> rawBanners;
       try {
         final decoded = jsonDecode(rawString) as Map<String, dynamic>;
         rawProducts = section(decoded, 'products');
+        // Snapshot lama (dibuat sebelum bagian ini ada) tidak punya key-nya:
+        // section() mengembalikan [] dan daftar terlaris terisi saat refresh
+        // pertama. Tidak perlu membuang snapshot lama.
+        rawBestSellers = section(decoded, 'bestSellers');
         rawBrands = section(decoded, 'brands');
         rawCategories = section(decoded, 'categories');
         rawBanners = section(decoded, 'banners');
         parsedProducts = rawProducts.map(Product.fromApiJson).toList();
+        parsedBestSellers = rawBestSellers.map(Product.fromApiJson).toList();
         parsedBrands = rawBrands.map(PetBrand.fromApiJson).toList();
         parsedCategories =
             rawCategories.map(HomeCategory.fromApiJson).toList();
@@ -117,10 +133,12 @@ class HomeSnapshotStore extends ChangeNotifier {
       if (hasContent) return; // guard race — data segar sudah masuk duluan
 
       products = parsedProducts;
+      bestSellers = parsedBestSellers;
       brands = parsedBrands;
       categories = parsedCategories;
       banners = parsedBanners;
       _rawProducts = rawProducts;
+      _rawBestSellers = rawBestSellers;
       _rawBrands = rawBrands;
       _rawCategories = rawCategories;
       _rawBanners = rawBanners;
@@ -147,15 +165,18 @@ class HomeSnapshotStore extends ChangeNotifier {
     try {
       final results = await Future.wait<List<Map<String, dynamic>>?>([
         debugProductsFetcher?.call() ?? productService.fetchHomeProductsRaw(),
+        debugBestSellersFetcher?.call() ??
+            productService.fetchBestSellersRaw(),
         debugBrandsFetcher?.call() ?? productService.fetchBrandsRaw(),
         debugCategoriesFetcher?.call() ??
             productService.fetchCategoriesRaw(),
         debugBannersFetcher?.call() ?? productService.fetchBannersRaw(),
       ]);
       final rawProducts = results[0];
-      final rawBrands = results[1];
-      final rawCategories = results[2];
-      final rawBanners = results[3];
+      final rawBestSellers = results[1];
+      final rawBrands = results[2];
+      final rawCategories = results[3];
+      final rawBanners = results[4];
 
       if (rawProducts == null) {
         lastRefreshFailed = true;
@@ -165,6 +186,12 @@ class HomeSnapshotStore extends ChangeNotifier {
 
       products = rawProducts.map(Product.fromApiJson).toList();
       _rawProducts = rawProducts;
+      // Terlaris gagal sendirian BUKAN kegagalan refresh — pertahankan
+      // daftar lama, sama seperti brands/categories/banners.
+      if (rawBestSellers != null) {
+        bestSellers = rawBestSellers.map(Product.fromApiJson).toList();
+        _rawBestSellers = rawBestSellers;
+      }
       if (rawBrands != null) {
         brands = rawBrands.map(PetBrand.fromApiJson).toList();
         _rawBrands = rawBrands;
@@ -201,6 +228,7 @@ class HomeSnapshotStore extends ChangeNotifier {
           // kedaluwarsa; keputusan produk: umur snapshot tanpa batas.
           'savedAt': DateTime.now().toIso8601String(),
           'products': _rawProducts,
+          'bestSellers': _rawBestSellers,
           'brands': _rawBrands,
           'categories': _rawCategories,
           'banners': _rawBanners,
@@ -213,6 +241,7 @@ class HomeSnapshotStore extends ChangeNotifier {
   @visibleForTesting
   void resetForTest() {
     products = const [];
+    bestSellers = const [];
     brands = const [];
     categories = const [];
     banners = const [];
@@ -220,10 +249,12 @@ class HomeSnapshotStore extends ChangeNotifier {
     lastRefreshFailed = false;
     _lastSuccessAt = null;
     _rawProducts = const [];
+    _rawBestSellers = const [];
     _rawBrands = const [];
     _rawCategories = const [];
     _rawBanners = const [];
     debugProductsFetcher = null;
+    debugBestSellersFetcher = null;
     debugBrandsFetcher = null;
     debugCategoriesFetcher = null;
     debugBannersFetcher = null;

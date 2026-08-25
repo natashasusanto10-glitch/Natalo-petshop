@@ -666,29 +666,23 @@ class _HomeScreenState extends State<HomeScreen> {
                           return bPct.compareTo(aPct);
                         });
                   final flashSaleVisible = flashSale.take(8).toList();
-                  // Produk Terlaris — ranked by SOLD COUNT (jumlah terjual) sebagai
-                  // primary key. Tie-break ke reviewCount kalau soldCount sama
-                  // (mis. saat API list endpoint return soldCount=0 — fallback
-                  // graceful ke review-based ranking yang previously hardcoded).
+                  // Produk Terlaris — 8 teratas APA ADANYA dari endpoint
+                  // popular=best-seller, yang memeringkat SELURUH katalog by
+                  // kuantitas terjual pada pesanan berbayar.
                   //
-                  // Filter: utamakan products dengan soldCount > 0 di top — yang
-                  // benar2 "laris" muncul lebih dulu. Kalau API belum return
-                  // soldCount yang valid, section fallback ke review-based.
-                  final rankedBySold = [...products]..sort((a, b) {
-                      // Primary: soldCount desc (yang paling banyak terjual)
-                      final byCount = b.soldCount.compareTo(a.soldCount);
-                      if (byCount != 0) return byCount;
-                      // Tie-break: reviewCount desc
-                      return b.reviewCount.compareTo(a.reviewCount);
-                    });
-                  // Rotasi harian: 3 juara sejati tetap tampil, 5 slot lain
-                  // digilir tiap hari dari kandidat kuat berikutnya (top ~24).
-                  // Nomor #1..#8 tetap monoton (di-sort ulang by soldCount).
-                  final bestSellers = _dailyRotatingPick(
-                    rankedBySold.take(24).toList(),
-                    pinned: 3,
-                    count: 8,
-                  );
+                  // Dulu di sini `products` (48 produk) diurutkan sendiri by
+                  // soldCount lalu 5 dari 8 slot digilir harian. Dua-duanya
+                  // keliru:
+                  //  - `products` diambil tanpa filter, jadi urutan bawaannya
+                  //    Flash Sale dulu lalu createdAt desc — 48 produk TERBARU.
+                  //    Produk terlaris yang lebih tua tak pernah jadi kandidat.
+                  //    Nyatanya juara sesungguhnya (27 terjual) tidak ada di
+                  //    daftar itu, sementara yang tampil #1 hanya 5 terjual.
+                  //  - rotasi harian membuat posisi 4-8 tidak mencerminkan
+                  //    penjualan sama sekali.
+                  // Keputusan pemilik: tampilkan 8 terlaris apa adanya supaya
+                  // jujur. Section otomatis tersembunyi kalau daftarnya kosong.
+                  final bestSellers = homeSnapshotStore.bestSellers;
                   return NataloPawRefreshIndicator(
                     onRefresh: _refreshAll,
                     // pinContent: konten diam total saat pull — tanpa ini bouncing

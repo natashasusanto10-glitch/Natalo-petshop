@@ -43,6 +43,7 @@ Future<void> unmount(WidgetTester tester) async {
 }
 
 void stubOthersEmpty() {
+  homeSnapshotStore.debugBestSellersFetcher = () async => [];
   homeSnapshotStore.debugBrandsFetcher = () async => [];
   homeSnapshotStore.debugCategoriesFetcher = () async => [];
   homeSnapshotStore.debugBannersFetcher = () async => [];
