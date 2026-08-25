@@ -106,15 +106,108 @@ async function postImage(file: File, displayName: string): Promise<string> {
 }
 
 /**
+ * Cek apakah gambar punya piksel transparan.
+ *
+ * Penting untuk PNG: foto produk PNG (mis. 1,7 MB) kalau di-encode ulang
+ * jadi PNG nyaris tidak mengecil karena PNG itu lossless — hasilnya lolos
+ * `blob.size >= file.size` dan file asli yang dikirim. Konversi ke JPEG
+ * memangkasnya ke ratusan KB. Tapi JPEG tidak punya alpha, jadi area
+ * transparan akan jadi hitam — makanya konversi hanya untuk yang opaque.
+ *
+ * Kalau pembacaan piksel gagal, anggap saja transparan (pertahankan PNG) —
+ * lebih baik file besar daripada gambar rusak.
+ */
+function hasTransparency(ctx: CanvasRenderingContext2D, w: number, h: number): boolean {
+  try {
+    const { data } = ctx.getImageData(0, 0, w, h);
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] < 255) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Compress + resize image di client sebelum upload supaya:
+ * - Ukuran file lebih kecil → upload lebih cepat & tidak membebani route
+ * - Dimensi max 1600px (cukup untuk display produk, retina-OK)
+ * - PNG opaque dikonversi ke JPEG (hemat besar); PNG transparan tetap PNG;
+ *   GIF dilewati (preserve animation).
+ *
+ * Return: File baru (compressed) atau original kalau tidak bisa compress.
+ */
+async function compressImage(file: File): Promise<File> {
+  // Skip compression untuk GIF (preserve animation) dan file <300KB
+  // (sudah cukup kecil, compression overhead tidak worth it).
+  if (file.type === "image/gif") return file;
+  if (file.size < 300 * 1024) return file;
+
+  try {
+    const bitmap = await createImageBitmap(file);
+    const ratio = Math.min(
+      MAX_DIMENSION / bitmap.width,
+      MAX_DIMENSION / bitmap.height,
+      1, // jangan upscale
+    );
+    const targetW = Math.round(bitmap.width * ratio);
+    const targetH = Math.round(bitmap.height * ratio);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+    bitmap.close();
+
+    // Hanya pertahankan PNG kalau memang butuh alpha — selain itu ke JPEG.
+    const keepPng = file.type === "image/png" && hasTransparency(ctx, targetW, targetH);
+    const outType = keepPng ? "image/png" : "image/jpeg";
+    const quality = keepPng ? undefined : JPEG_QUALITY;
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, outType, quality);
+    });
+    if (!blob) return file;
+
+    // Hanya pakai compressed kalau memang lebih kecil dari original.
+    if (blob.size >= file.size) return file;
+
+    const newName = keepPng
+      ? file.name
+      : file.name.replace(/\.(png|webp|jpeg)$/i, ".jpg");
+    return new File([blob], newName, { type: outType });
+  } catch {
+    // Compression error (unsupported codec, dst.) → fallback ke original
+    return file;
+  }
+}
+
+/**
  * Upload satu file dengan satu kali percobaan ulang untuk kegagalan
  * sementara. `prepare` (kompresi) hanya dijalankan sekali — percobaan ulang
  * memakai hasil yang sama, tidak kompres dua kali.
+ *
+ * Batas 2 MB dicek SETELAH kompresi, bukan sebelum: foto 4 MB yang menyusut
+ * ke 400 KB seharusnya lolos, bukan ditolak mentah-mentah.
  */
 async function uploadOne(
   file: File,
   prepare?: (f: File) => Promise<File>,
 ): Promise<string> {
   const processed = prepare ? await prepare(file) : file;
+  if (processed.size > MAX_SIZE_MB * 1024 * 1024) {
+    const mb = (processed.size / (1024 * 1024)).toFixed(1);
+    throw new UploadError(
+      `"${file.name}" ${mb} MB — melebihi batas ${MAX_SIZE_MB} MB`,
+      false,
+    );
+  }
   try {
     return await postImage(processed, file.name);
   } catch (e) {
@@ -124,13 +217,33 @@ async function uploadOne(
   }
 }
 
-export async function uploadProductImageFiles(files: File[], remaining: number): Promise<{ uploaded: string[]; failed: string[] }> {
+/**
+ * Upload sekumpulan file foto produk. Dipakai ProductMediaRail (form produk
+ * admin). Sekarang ikut kompresi — sebelumnya jalur ini mengirim file mentah,
+ * jadi 6 PNG @1,7 MB berangkat apa adanya dan rutin gagal sebagian.
+ *
+ * `failed` = nama file yang gagal (dipertahankan untuk pemanggil lama),
+ * `errors` = pesan siap-tampil dengan alasannya.
+ */
+export async function uploadProductImageFiles(files: File[], remaining: number): Promise<{ uploaded: string[]; failed: string[]; errors: string[] }> {
   const incoming = files.slice(0, Math.max(0, remaining));
-  const valid = incoming.filter((file) => file.size <= MAX_SIZE_MB * 1024 * 1024);
-  const results = await runWithConcurrency(valid, UPLOAD_CONCURRENCY, (file) => uploadOne(file));
-  const uploaded: string[] = []; const failed = incoming.filter((file) => !valid.includes(file)).map((file) => file.name);
-  results.forEach((result, index) => result.status === "fulfilled" ? uploaded.push(result.value) : failed.push(valid[index].name));
-  return { uploaded, failed };
+  const results = await runWithConcurrency(incoming, UPLOAD_CONCURRENCY, (file) => uploadOne(file, compressImage));
+  const uploaded: string[] = [];
+  const failed: string[] = [];
+  const errors: string[] = [];
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      uploaded.push(result.value);
+      return;
+    }
+    failed.push(incoming[index].name);
+    errors.push(
+      result.reason instanceof Error
+        ? result.reason.message
+        : `Gagal upload "${incoming[index].name}"`,
+    );
+  });
+  return { uploaded, failed, errors };
 }
 
 /**
@@ -166,72 +279,6 @@ export function MultiImageUpload({
     onChange?.(urls);
   }, [urls, onChange]);
 
-  /**
-   * Compress + resize image di client sebelum upload supaya:
-   * - Ukuran file lebih kecil → upload lebih cepat
-   * - Dimensi max 1600px (cukup untuk display produk, retina-OK)
-   * - Format JPEG (lossy) untuk JPG/non-transparent, PNG preserved
-   *   (transparency), GIF preserved (animation).
-   *
-   * Return: File baru (compressed) atau original kalau tidak bisa
-   * compress (mis. GIF, atau ukuran sudah kecil).
-   */
-  async function compressImage(file: File): Promise<File> {
-    // Skip compression untuk GIF (preserve animation) dan file <300KB
-    // (sudah cukup kecil, compression overhead tidak worth it).
-    if (file.type === "image/gif") return file;
-    if (file.size < 300 * 1024) return file;
-
-    try {
-      const bitmap = await createImageBitmap(file);
-      const ratio = Math.min(
-        MAX_DIMENSION / bitmap.width,
-        MAX_DIMENSION / bitmap.height,
-        1, // jangan upscale
-      );
-      const targetW = Math.round(bitmap.width * ratio);
-      const targetH = Math.round(bitmap.height * ratio);
-
-      const canvas = document.createElement("canvas");
-      canvas.width = targetW;
-      canvas.height = targetH;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        bitmap.close();
-        return file;
-      }
-      ctx.drawImage(bitmap, 0, 0, targetW, targetH);
-      bitmap.close();
-
-      // PNG transparent dipertahankan; JPEG/WebP di-compress ke JPEG.
-      const isPng = file.type === "image/png";
-      const outType = isPng ? "image/png" : "image/jpeg";
-      const quality = isPng ? undefined : JPEG_QUALITY;
-
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob(resolve, outType, quality);
-      });
-      if (!blob) return file;
-
-      // Hanya pakai compressed kalau memang lebih kecil dari original.
-      if (blob.size >= file.size) return file;
-
-      const newName = isPng
-        ? file.name
-        : file.name.replace(/\.(png|webp)$/i, ".jpg");
-      return new File([blob], newName, { type: outType });
-    } catch {
-      // Compression error (unsupported codec, dst.) → fallback ke original
-      return file;
-    }
-  }
-
-  async function uploadSingle(file: File): Promise<string> {
-    // Compress dulu (di-skip kalau file kecil atau GIF), lalu upload dengan
-    // satu kali percobaan ulang kalau server sedang sibuk.
-    return uploadOne(file, compressImage);
-  }
-
   async function handleFiles(files: FileList) {
     setError("");
     if (urls.length >= max) {
@@ -244,40 +291,17 @@ export function MultiImageUpload({
     if (files.length > remaining) {
       setError(`Hanya ${remaining} gambar yg ditambahkan — sisa terlewat (maks ${max}).`);
     }
+    if (incoming.length === 0) return;
 
-    // Pre-validate ukuran sebelum process (skip yang > 2MB).
-    const validFiles: File[] = [];
-    for (const file of incoming) {
-      if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-        setError(`"${file.name}" melebihi ${MAX_SIZE_MB} MB — dilewati.`);
-        continue;
-      }
-      validFiles.push(file);
-    }
-    if (validFiles.length === 0) return;
+    setUploadingCount(incoming.length);
 
-    setUploadingCount(validFiles.length);
+    // Batas 2 MB TIDAK dicek di sini — kompresi dijalankan dulu di uploadOne,
+    // baru ukurannya divalidasi. Foto besar yang menyusut jauh di bawah batas
+    // seharusnya lolos, bukan ditolak sebelum sempat dikompres.
+    const { uploaded, errors } = await uploadProductImageFiles(incoming, remaining);
 
-    // Upload paralel TERBATAS (lihat UPLOAD_CONCURRENCY) — cukup cepat tanpa
-    // membanjiri route upload sampai sebagian foto gagal.
-    const results = await runWithConcurrency(
-      validFiles,
-      UPLOAD_CONCURRENCY,
-      (file) => uploadSingle(file),
-    );
-
-    const uploaded: string[] = [];
-    const failed: string[] = [];
-    results.forEach((r, idx) => {
-      if (r.status === "fulfilled") {
-        uploaded.push(r.value);
-      } else {
-        failed.push(validFiles[idx].name);
-      }
-    });
-
-    if (failed.length > 0) {
-      setError(`${failed.length} foto gagal di-upload: ${failed.join(", ")}`);
+    if (errors.length > 0) {
+      setError(errors.join(" · "));
     }
 
     setUrls((prev) => [...prev, ...uploaded].slice(0, max));

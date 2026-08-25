@@ -35,7 +35,10 @@ export function ProductMediaRail({ images, video, onImagesChange, onVideoIntentC
     const incoming = Array.from(files).slice(0, 9 - images.length);
     const result = await uploadProductImageFiles(incoming, 9 - images.length);
     const urls = result.uploaded;
-    if (result.failed.length) setError("Sebagian foto gagal di-upload.");
+    // Sebutkan file + alasannya. Pesan lama ("Sebagian foto gagal di-upload.")
+    // tidak menyebut apa pun, jadi mustahil dibedakan antara file kebesaran,
+    // format ditolak, atau server sedang sibuk.
+    setError(result.errors.length ? result.errors.join(" · ") : null);
     onImagesChange([...images, ...urls].slice(0, 9));
   }
 
