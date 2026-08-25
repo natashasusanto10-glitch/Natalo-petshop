@@ -218,31 +218,68 @@ async function uploadOne(
 }
 
 /**
+ * Kabar satu file selesai — dipakai UI untuk mengisi slot skeleton satu per satu.
+ * `index` = posisi file pada daftar yang dikirim, BUKAN urutan selesainya.
+ * UI wajib memakai index ini supaya urutan foto (dan cover) tidak teracak saat
+ * file kecil selesai lebih dulu dari file besar.
+ */
+export type UploadSettled = { index: number; name: string; url?: string; error?: string };
+
+/**
  * Upload sekumpulan file foto produk. Dipakai ProductMediaRail (form produk
  * admin). Sekarang ikut kompresi — sebelumnya jalur ini mengirim file mentah,
  * jadi 6 PNG @1,7 MB berangkat apa adanya dan rutin gagal sebagian.
  *
+ * `onSettled` dipanggil begitu SATU file tuntas (berhasil atau gagal), bukan
+ * menunggu seluruh batch. Ini yang membuat foto bisa muncul satu per satu
+ * menggantikan skeleton — kalau menunggu semua, layar diam lama lalu 6 foto
+ * muncul sekaligus.
+ *
  * `failed` = nama file yang gagal (dipertahankan untuk pemanggil lama),
  * `errors` = pesan siap-tampil dengan alasannya.
  */
-export async function uploadProductImageFiles(files: File[], remaining: number): Promise<{ uploaded: string[]; failed: string[]; errors: string[] }> {
+export async function uploadProductImageFiles(
+  files: File[],
+  remaining: number,
+  onSettled?: (settled: UploadSettled) => void,
+): Promise<{ uploaded: string[]; failed: string[]; errors: string[] }> {
   const incoming = files.slice(0, Math.max(0, remaining));
-  const results = await runWithConcurrency(incoming, UPLOAD_CONCURRENCY, (file) => uploadOne(file, compressImage));
+
+  // Hasil disimpan per-index, bukan di-push saat selesai: dengan paralel 2,
+  // file kecil bisa tuntas lebih dulu dari file besar. Kalau di-push apa
+  // adanya, urutan foto (dan foto COVER) ikut teracak.
+  const urlAt = new Array<string | undefined>(incoming.length);
+  const errorAt = new Array<string | undefined>(incoming.length);
+
+  await runWithConcurrency(
+    incoming.map((file, index) => ({ file, index })),
+    UPLOAD_CONCURRENCY,
+    async ({ file, index }) => {
+      try {
+        const url = await uploadOne(file, compressImage);
+        urlAt[index] = url;
+        onSettled?.({ index, name: file.name, url });
+      } catch (e) {
+        const error = e instanceof Error ? e.message : `Gagal upload "${file.name}"`;
+        errorAt[index] = error;
+        onSettled?.({ index, name: file.name, error });
+      }
+    },
+  );
+
   const uploaded: string[] = [];
   const failed: string[] = [];
   const errors: string[] = [];
-  results.forEach((result, index) => {
-    if (result.status === "fulfilled") {
-      uploaded.push(result.value);
+  incoming.forEach((file, index) => {
+    const url = urlAt[index];
+    if (url) {
+      uploaded.push(url);
       return;
     }
-    failed.push(incoming[index].name);
-    errors.push(
-      result.reason instanceof Error
-        ? result.reason.message
-        : `Gagal upload "${incoming[index].name}"`,
-    );
+    failed.push(file.name);
+    errors.push(errorAt[index] ?? `Gagal upload "${file.name}"`);
   });
+
   return { uploaded, failed, errors };
 }
 
