@@ -326,8 +326,15 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
   /// manipulasi urutan `_photoFiles` (foto sudah pre-cropped final JPEG
   /// dari picker, TANPA re-crop). Setelah pindah, coba tetap fokus ke
   /// slide logis yang sama di thumbnail PageView (fallback clamp).
+  ///
+  /// `newIndex` di sini sudah indeks TUJUAN FINAL, bukan titik sisip
+  /// mentah: dipanggil lewat `onReorderItem`, yang sudah menerapkan
+  /// "membuang item di oldIndex memendekkan list" sendiri. JANGAN
+  /// tambahkan lagi `if (newIndex > oldIndex) newIndex -= 1;` di sini —
+  /// koreksinya jadi dobel dan urutan foto meleset satu posisi ke arah
+  /// kanan saja, diam-diam tanpa error. Dijaga test seret KANAN/KIRI di
+  /// feed_new_post_screen_test.dart.
   void _reorderPhoto(int oldIndex, int newIndex) {
-    if (newIndex > oldIndex) newIndex -= 1;
     if (oldIndex == newIndex) return;
     AppHaptics.selection();
     setState(() {
@@ -655,7 +662,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
                       const SizedBox(height: 14),
                       _PhotoReorderStrip(
                         photoFiles: _photoFiles,
-                        onReorder: _reorderPhoto,
+                        onReorderItem: _reorderPhoto,
                         onDelete: _deletePhoto,
                       ),
                     ],
@@ -932,12 +939,14 @@ class _DotIndicator extends StatelessWidget {
 /// tint, bukan warna nge-jreng), tombol × 18px pojok kanan-atas.
 class _PhotoReorderStrip extends StatelessWidget {
   final List<File> photoFiles;
-  final void Function(int oldIndex, int newIndex) onReorder;
+  /// `newIndex` sudah indeks tujuan final — lihat catatan di
+  /// `_reorderPhoto`.
+  final void Function(int oldIndex, int newIndex) onReorderItem;
   final ValueChanged<int> onDelete;
 
   const _PhotoReorderStrip({
     required this.photoFiles,
-    required this.onReorder,
+    required this.onReorderItem,
     required this.onDelete,
   });
 
@@ -949,7 +958,7 @@ class _PhotoReorderStrip extends StatelessWidget {
       child: ReorderableListView(
         scrollDirection: Axis.horizontal,
         buildDefaultDragHandles: false,
-        onReorder: onReorder,
+        onReorderItem: onReorderItem,
         children: [
           for (var i = 0; i < photoFiles.length; i++)
             Padding(
