@@ -24,16 +24,110 @@ const MAX_SIZE_MB = 2;
 const MAX_DIMENSION = 1600;
 /** Quality JPEG compression — 0.85 = sweet spot quality vs size. */
 const JPEG_QUALITY = 0.85;
+/**
+ * Batas upload paralel. Dulu SEMUA file ditembak sekaligus (6 foto = 6
+ * request serentak); tiap request menjalankan getSession() ke Postgres +
+ * panggilan ke UploadThing, jadi batch 6 rutin menguras koneksi DB /
+ * kena throttle dan sebagian foto gagal — padahal ukurannya jauh di bawah
+ * 2 MB. Ukuran file tidak pernah jadi penyebabnya; jumlah request serentak
+ * yang jadi penyebab.
+ */
+const UPLOAD_CONCURRENCY = 2;
+/** Jeda sebelum percobaan ulang untuk kegagalan sementara. */
+const UPLOAD_RETRY_DELAY_MS = 800;
+
+/** Error upload yang tahu apakah percobaan ulang masuk akal. */
+class UploadError extends Error {
+  readonly retriable: boolean;
+  constructor(message: string, retriable: boolean) {
+    super(message);
+    this.name = "UploadError";
+    this.retriable = retriable;
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Worker pool sederhana: jalankan `task` untuk tiap item, maks `limit`
+ * berjalan bersamaan. Hasil sejajar urutan input (index-stable), bentuknya
+ * sama seperti Promise.allSettled supaya pemanggil tidak perlu berubah.
+ */
+async function runWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results = new Array<PromiseSettledResult<R>>(items.length);
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      try {
+        results[index] = { status: "fulfilled", value: await task(items[index]) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
+  );
+  return results;
+}
+
+/** POST satu file ke /api/admin/upload, kembalikan URL hasilnya. */
+async function postImage(file: File, displayName: string): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+
+  let res: Response;
+  try {
+    res = await fetch("/api/admin/upload", { method: "POST", body: fd });
+  } catch {
+    // Jaringan putus/timeout — belum tentu server menolak, layak diulang.
+    throw new UploadError(`Gagal upload "${displayName}" — jaringan bermasalah`, true);
+  }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    // 4xx = permintaan memang ditolak (format salah, > 2 MB, sesi habis) →
+    // mengulang tidak akan menolong. 5xx/429 = server sibuk (koneksi DB
+    // habis, UploadThing throttle) → justru kasus yang layak diulang.
+    const retriable = res.status >= 500 || res.status === 429;
+    throw new UploadError(data?.error || `Gagal upload "${displayName}"`, retriable);
+  }
+
+  return String((await res.json()).url);
+}
+
+/**
+ * Upload satu file dengan satu kali percobaan ulang untuk kegagalan
+ * sementara. `prepare` (kompresi) hanya dijalankan sekali — percobaan ulang
+ * memakai hasil yang sama, tidak kompres dua kali.
+ */
+async function uploadOne(
+  file: File,
+  prepare?: (f: File) => Promise<File>,
+): Promise<string> {
+  const processed = prepare ? await prepare(file) : file;
+  try {
+    return await postImage(processed, file.name);
+  } catch (e) {
+    if (!(e instanceof UploadError) || !e.retriable) throw e;
+    await sleep(UPLOAD_RETRY_DELAY_MS);
+    return postImage(processed, file.name);
+  }
+}
 
 export async function uploadProductImageFiles(files: File[], remaining: number): Promise<{ uploaded: string[]; failed: string[] }> {
   const incoming = files.slice(0, Math.max(0, remaining));
   const valid = incoming.filter((file) => file.size <= MAX_SIZE_MB * 1024 * 1024);
-  const results = await Promise.allSettled(valid.map(async (file) => {
-    const fd = new FormData(); fd.append("file", file);
-    const response = await fetch("/api/admin/upload", { method: "POST", body: fd });
-    if (!response.ok) throw new Error(file.name);
-    return String((await response.json()).url);
-  }));
+  const results = await runWithConcurrency(valid, UPLOAD_CONCURRENCY, (file) => uploadOne(file));
   const uploaded: string[] = []; const failed = incoming.filter((file) => !valid.includes(file)).map((file) => file.name);
   results.forEach((result, index) => result.status === "fulfilled" ? uploaded.push(result.value) : failed.push(valid[index].name));
   return { uploaded, failed };
@@ -44,11 +138,13 @@ export async function uploadProductImageFiles(files: File[], remaining: number):
  * - Gambar pertama jadi thumbnail utama (akan disimpan ke product.imageUrl).
  * - Sisa gambar masuk ke product.gallery (dipakai di carousel detail).
  * - Tiap gambar maks 2 MB.
- * - PARALLEL upload + client-side compression supaya upload cepat.
+ * - Upload paralel TERBATAS ({UPLOAD_CONCURRENCY} sekaligus) + kompresi
+ *   client supaya cepat tanpa membanjiri route upload.
  * - Support drag & drop reorder antar slot (HTML5 native).
  *
  * Performance:
- *  - Sequential 5 foto @ 2s = 10s → parallel @ 2s batch = 2s (5x faster)
+ *  - Sequential 6 foto @ 2s = 12s → 2 paralel = ~6s, dan tidak lagi
+ *    bikin sebagian foto gagal seperti saat 6 request ditembak serentak.
  *  - Compression 2MB JPG (2000x2000) → ~400KB WebP (1600x1600 q=0.85)
  *    = upload bandwidth turun ~80% → total upload 3-5x faster
  */
@@ -131,17 +227,9 @@ export function MultiImageUpload({
   }
 
   async function uploadSingle(file: File): Promise<string> {
-    // Compress sebelum upload (di-skip kalau file kecil atau GIF).
-    const processed = await compressImage(file);
-    const fd = new FormData();
-    fd.append("file", processed);
-    const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      throw new Error(data?.error || `Gagal upload "${file.name}"`);
-    }
-    const data = await res.json();
-    return String(data.url);
+    // Compress dulu (di-skip kalau file kecil atau GIF), lalu upload dengan
+    // satu kali percobaan ulang kalau server sedang sibuk.
+    return uploadOne(file, compressImage);
   }
 
   async function handleFiles(files: FileList) {
@@ -170,10 +258,12 @@ export function MultiImageUpload({
 
     setUploadingCount(validFiles.length);
 
-    // PARALLEL upload — semua file di-upload bersamaan via Promise.allSettled.
-    // Sebelumnya sequential (`for...await`), lambat untuk batch upload.
-    const results = await Promise.allSettled(
-      validFiles.map((file) => uploadSingle(file)),
+    // Upload paralel TERBATAS (lihat UPLOAD_CONCURRENCY) — cukup cepat tanpa
+    // membanjiri route upload sampai sebagian foto gagal.
+    const results = await runWithConcurrency(
+      validFiles,
+      UPLOAD_CONCURRENCY,
+      (file) => uploadSingle(file),
     );
 
     const uploaded: string[] = [];
