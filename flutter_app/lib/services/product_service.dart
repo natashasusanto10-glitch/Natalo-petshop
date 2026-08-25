@@ -197,6 +197,17 @@ class ProductService {
     /// Cursor untuk pagination — lanjut dari offset N (response
     /// `nextCursor`). Null = halaman pertama. Dipakai infinite scroll.
     String? cursor,
+
+    /// Seed pengurut beragam untuk daftar "Semua" tanpa filter.
+    ///
+    /// Backend mengurutkan `ORDER BY md5(id || seed)` — acak tapi
+    /// DETERMINISTIK, jadi pagination tetap konsisten selama seed sama.
+    ///
+    /// Backend MENGABAIKAN seed kalau ada category/brand/search/new/
+    /// popular/inStock/hasPrice/withImage/exclude (lihat guard di
+    /// lib/products.ts). Jadi aman dikirim selalu — tampilan terfilter
+    /// otomatis kembali ke urutan bawaan.
+    String? seed,
   }) async {
     try {
       final keyword = query?.trim() ?? '';
@@ -218,6 +229,7 @@ class ProductService {
           if (discountOnly) 'discountOnly': 'true',
           if (ids != null && ids.isNotEmpty) 'ids': ids.join(','),
           if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+          if (seed != null && seed.isNotEmpty) 'seed': seed,
         },
       );
       final map = _asMap(data);

@@ -125,6 +125,37 @@ class _ProductsScreenState extends State<ProductsScreen> {
   // di 200 produk. Sekarang fetch batch 24 per request, lanjut dari
   // cursor terakhir → no ceiling.
   static const int _pageSize = 24;
+
+  /// Seed pengurut beragam untuk daftar "Semua" (tanpa filter).
+  ///
+  /// MASALAH yang diperbaiki: urutan bawaan backend adalah `createdAt desc`,
+  /// dan produk ditambahkan per batch merek — jadi halaman pertama diborong
+  /// batch terakhir. Diukur di produksi: 16 dari 24 produk halaman 1 hanya
+  /// dari 2 merek, dengan 9 Happy Cat nyaris berurutan. Urutan itu juga tak
+  /// pernah berubah sampai ada produk baru, jadi pelanggan yang kembali
+  /// melihat layar yang sama persis.
+  ///
+  /// Backend mengurut `ORDER BY md5(id || seed)` — acak tapi DETERMINISTIK.
+  /// Diukur dengan seed: 21 merek berbeda per 48 produk (vs 16), tanpa
+  /// penurunan kualitas (nol produk tanpa gambar/harga/stok).
+  ///
+  /// Dihitung SEKALI per sesi layar, BUKAN tiap fetch — kalau seed berubah
+  /// di tengah infinite scroll, halaman berikutnya diurut ulang dan produk
+  /// bisa dobel atau terlewat.
+  ///
+  /// Chip "Produk Baru" tetap melayani yang mencari produk terbaru; backend
+  /// otomatis mengabaikan seed saat ada filter apa pun.
+  late final String _listingSeed = _todayListingSeed();
+
+  /// Tanggal WIB sebagai seed — urutan berganti tiap hari, stabil dalam
+  /// satu hari. Zona toko dipakai supaya pergantian terasa wajar untuk
+  /// pelanggan Indonesia, bukan tengah malam UTC (= 07.00 WIB).
+  static String _todayListingSeed() {
+    final wib = DateTime.now().toUtc().add(const Duration(hours: 7));
+    final bulan = wib.month.toString().padLeft(2, '0');
+    final tanggal = wib.day.toString().padLeft(2, '0');
+    return '${wib.year}-$bulan-$tanggal';
+  }
   String? _nextCursor;
   bool _loadingMore = false;
   bool _hasMore = true;
@@ -421,6 +452,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
       inStock: _filter.inStockOnly,
       withImage: _filter.withImageOnly,
       discountOnly: widget.flashSaleOnly || _filter.discountOnly,
+      // Seed sama dengan halaman pertama — WAJIB, kalau tidak halaman
+      // berikutnya diurut ulang dan produk dobel/terlewat.
+      seed: _listingSeed,
     );
     // Stale guard: filter/query berubah saat fetch in-flight (_loadProducts
     // increment epoch) → JANGAN append hasil lama ke list baru + JANGAN
@@ -470,6 +504,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       inStock: _filter.inStockOnly,
       withImage: _filter.withImageOnly,
       discountOnly: widget.flashSaleOnly || _filter.discountOnly,
+      seed: _listingSeed,
     );
     // Stale guard: kalau filter/query berubah lagi saat fetch in-flight
     // (epoch ber-increment), buang hasil lama — response yang datang
