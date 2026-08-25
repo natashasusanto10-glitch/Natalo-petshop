@@ -23,12 +23,16 @@ workflows:
       # higher minimum deployment target", padahal TIDAK ADA perubahan di
       # repo ini. Aplikasi menargetkan iOS 13.0.
       #
-      # 3.44.7 = versi yang dipakai pengembangan lokal (flutter/version).
-      # Menaikkan versi Flutter harus jadi keputusan sadar (dan butuh
-      # menaikkan IPHONEOS_DEPLOYMENT_TARGET + platform :ios di Podfile,
-      # yang berarti membuang pengguna iOS 13/14) — bukan sesuatu yang
-      # terjadi diam-diam karena CI mengunduh rilis baru.
-      flutter: 3.44.7
+      # Dinaikkan 3.44.7 -> 3.47.1 sebagai KEPUTUSAN SADAR, bukan karena CI
+      # mengunduh rilis baru sendiri. Ikut dinaikkan bersama commit ini:
+      # IPHONEOS_DEPLOYMENT_TARGET (6 konfigurasi Runner.xcodeproj) dan
+      # `platform :ios` di Podfile, keduanya 13.0 -> 15.0, karena pod
+      # Flutter 3.47.1 menuntut iOS 15.0.
+      #
+      # CATATAN: SDK Flutter lokal (flutter/version) mungkin masih 3.44.7.
+      # Kalau lokal dan CI berbeda, hasil `flutter test` di mesin sendiri
+      # TIDAK membuktikan build CI hijau. Samakan sebelum menyimpulkan.
+      flutter: 3.47.1
       # Xcode & CocoaPods DIPATOK ke versi yang BENAR-BENAR menghasilkan
       # build sukses (25 Agustus 2026, rilis 1.0.189 diterima App Store
       # Connect). Angkanya diambil dari log build itu, bukan dari
