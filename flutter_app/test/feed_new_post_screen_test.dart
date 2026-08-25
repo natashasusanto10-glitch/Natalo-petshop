@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show kPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:natalo_petshop_flutter/models/feed_create_post_draft.dart';
@@ -138,6 +139,113 @@ void main() {
     }
 
     expect(find.text('1/2'), findsOneWidget);
+  });
+
+  /// Urutan file yang BENAR-BENAR dirender strip, dibaca dari `FileImage`
+  /// tiap tile. Sengaja TIDAK memakai key `slide-$i`: key itu posisional
+  /// (`slide-0` selalu tile pertama apa pun isinya), jadi ia akan tampak
+  /// benar meskipun urutan foto tertukar — persis bug yang test ini jaga.
+  List<String> stripOrder(WidgetTester tester) {
+    return tester
+        .widgetList<Image>(find.descendant(
+          of: find.byType(ReorderableListView),
+          matching: find.byType(Image),
+        ))
+        .map((w) => (w.image as FileImage).file.uri.pathSegments.last)
+        .toList();
+  }
+
+  /// Tile 56px + jarak 10px = pitch 66.
+  const slidePitch = 66.0;
+
+  /// WAJIB dipanggil sebelum test drag strip. Di viewport test bawaan
+  /// (800×600) bottom bar "Simpan Draft"/"Bagikan" menutupi strip: widget
+  /// tetap ada dan `getRect` tetap mengembalikan posisi layout, tapi
+  /// hit-test di titik itu mendarat di tombol, jadi drag DIAM SAJA tanpa
+  /// error — test lolos/gagal karena alasan yang salah. Pakai ukuran
+  /// ponsel sungguhan supaya strip benar-benar bisa disentuh.
+  void useTallViewport(WidgetTester tester) {
+    tester.view.physicalSize = const Size(1170, 2532); // iPhone 13/14
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+  }
+
+  /// Seret tile `from` sampai titik `target`. Resep mengikuti test milik
+  /// framework sendiri (`material/reorderable_list_test.dart`): jeda
+  /// `kPressTimeout` setelah pointer turun supaya arena gesture memilih
+  /// recognizer, baru `moveTo` absolut.
+  Future<void> dragSlideTo(
+      WidgetTester tester, int from, Offset target) async {
+    final gesture = await tester
+        .startGesture(tester.getCenter(find.byKey(ValueKey('slide-$from'))));
+    await tester.pump(kPressTimeout);
+    await gesture.moveTo(target);
+    await tester.pump();
+    await gesture.up();
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
+  testWidgets('carousel: seret slide ke KANAN memindahkannya tepat ke posisi '
+      'tujuan, bukan meleset satu', (tester) async {
+    useTallViewport(tester);
+    final files = makePhotoFiles(3);
+    await pumpCarouselScreen(tester, files);
+
+    expect(stripOrder(tester),
+        <String>['slide_0.jpg', 'slide_1.jpg', 'slide_2.jpg']);
+
+
+    // Slide 0 diseret melewati ujung kanan. ReorderableListView melaporkan
+    // newIndex MENTAH = 3 (titik sisip sebelum indeks 3), yang harus
+    // dikoreksi jadi 2 karena membuang item di oldIndex memendekkan list.
+    // Kalau koreksi itu terjadi DUA KALI, hasilnya jadi
+    // [slide_1, slide_0, slide_2] — meleset satu, tanpa error apa pun.
+    await dragSlideTo(
+      tester,
+      0,
+      tester.getCenter(find.byKey(const ValueKey('slide-2'))) +
+          const Offset(slidePitch * 2, 0),
+    );
+
+    expect(stripOrder(tester),
+        <String>['slide_1.jpg', 'slide_2.jpg', 'slide_0.jpg']);
+  });
+
+  testWidgets('carousel: slide aktif ikut pindah saat diseret', (tester) async {
+    useTallViewport(tester);
+    final files = makePhotoFiles(3);
+    await pumpCarouselScreen(tester, files);
+
+    // Slide aktif = index 0 ("1/3"). Setelah diseret ke ujung, slide yang
+    // sama harus tetap yang aktif — sekarang di posisi terakhir ("3/3").
+    expect(find.text('1/3'), findsOneWidget);
+
+    await dragSlideTo(
+      tester,
+      0,
+      tester.getCenter(find.byKey(const ValueKey('slide-2'))) +
+          const Offset(slidePitch * 2, 0),
+    );
+
+    expect(find.text('3/3'), findsOneWidget);
+  });
+
+  testWidgets('carousel: seret slide ke KIRI (newIndex < oldIndex, jalur '
+      'tanpa koreksi indeks)', (tester) async {
+    useTallViewport(tester);
+    final files = makePhotoFiles(3);
+    await pumpCarouselScreen(tester, files);
+
+    await dragSlideTo(
+      tester,
+      2,
+      tester.getCenter(find.byKey(const ValueKey('slide-0'))),
+    );
+
+    expect(stripOrder(tester),
+        <String>['slide_2.jpg', 'slide_0.jpg', 'slide_1.jpg']);
   });
 
   testWidgets('section Tag Produk Pernah Dibeli tersembunyi (flag off)',
