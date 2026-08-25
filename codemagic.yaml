@@ -13,7 +13,28 @@ workflows:
     instance_type: mac_mini_m2
 
     environment:
-      flutter: stable
+      # DIPATOK, jangan kembalikan ke `stable`.
+      #
+      # `flutter: stable` membuat CI mengunduh Flutter stable TERBARU tiap
+      # build, bukan versi yang dipakai tim. Pada 19 Agustus 2026 Flutter
+      # 3.47.1 rilis dan menaikkan minimum iOS pod Flutter dari 13.0 ke
+      # 15.0 — build berikutnya langsung gagal di `pod install` dengan
+      # "could not find compatible versions for pod Flutter ... required a
+      # higher minimum deployment target", padahal TIDAK ADA perubahan di
+      # repo ini. Aplikasi menargetkan iOS 13.0.
+      #
+      # 3.44.7 = versi yang dipakai pengembangan lokal (flutter/version).
+      # Menaikkan versi Flutter harus jadi keputusan sadar (dan butuh
+      # menaikkan IPHONEOS_DEPLOYMENT_TARGET + platform :ios di Podfile,
+      # yang berarti membuang pengguna iOS 13/14) — bukan sesuatu yang
+      # terjadi diam-diam karena CI mengunduh rilis baru.
+      flutter: 3.44.7
+      # CATATAN: `xcode: latest` punya penyakit yang SAMA — Xcode baru bisa
+      # mengubah perilaku build tanpa perubahan kode. Sengaja BELUM dipatok
+      # di sini supaya perbaikan ini hanya mengubah satu variabel; kalau
+      # dipatok bersamaan dan build tetap gagal, tak ketahuan mana
+      # penyebabnya. Patok setelah build ini terbukti hijau, dengan versi
+      # Xcode yang benar-benar tersedia di Codemagic.
       xcode: latest
       cocoapods: default
       # Code signing handled explicitly via script step di bawah —
