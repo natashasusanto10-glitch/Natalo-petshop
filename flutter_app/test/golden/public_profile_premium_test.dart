@@ -5,7 +5,7 @@ import 'package:natalo_petshop_flutter/models/feed_post.dart';
 import 'package:natalo_petshop_flutter/models/public_profile.dart';
 import 'package:natalo_petshop_flutter/screens/public_profile_screen.dart';
 import 'package:natalo_petshop_flutter/services/profile_service.dart';
-import 'package:natalo_petshop_flutter/theme/app_theme.dart';
+import 'package:natalo_petshop_flutter/theme/natalo_theme.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_content_tab_bar.dart';
 import 'package:natalo_petshop_flutter/widgets/public_profile_expanded_header.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -112,7 +112,12 @@ Future<void> _pumpScreen(
   await tester.pumpWidget(
     MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
+      // Tema yang BENAR-BENAR dipakai aplikasi (main.dart pakai ini).
+      // Sebelumnya golden ini merender dengan AppTheme.light dari
+      // theme/app_theme.dart — file deprecated yang tidak di-import satu
+      // file pun di lib/, jadi golden-nya memotret tema yang tidak pernah
+      // dilihat pengguna. File itu sudah dihapus.
+      theme: NataloTheme.lightTheme,
       home: MediaQuery(
         data: const MediaQueryData(
           size: _logicalSize,

@@ -70,14 +70,22 @@ void main() {
   });
 
   testWidgets('top bar keeps every existing icon unchanged', (tester) async {
+    final semantics = tester.ensureSemantics();
     await pumpScreen(tester);
 
+    // 'Buat postingan' pakai IconButton(tooltip:) → widget Tooltip nyata.
     expect(find.byTooltip('Buat postingan'), findsOneWidget);
-    expect(find.byTooltip('Postingan tersimpan'), findsOneWidget);
-    expect(find.byTooltip('Pengaturan akun'), findsOneWidget);
+    // Dua ikon kanan pakai AppHeaderIconButton yang sejak 04c50639
+    // ("clean icon interactions") expose label lewat Semantics, BUKAN
+    // Tooltip — jadi assertion-nya harus lewat semantics label. Pakai
+    // byTooltip di sini bikin test merah walau UI-nya benar.
+    expect(find.bySemanticsLabel('Postingan tersimpan'), findsOneWidget);
+    expect(find.bySemanticsLabel('Pengaturan akun'), findsOneWidget);
     expect(find.byIcon(Icons.add_rounded), findsOneWidget);
     expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+
+    semantics.dispose();
   });
 
   testWidgets('username renders centered in the top bar', (tester) async {
