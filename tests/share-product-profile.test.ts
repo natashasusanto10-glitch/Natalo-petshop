@@ -206,3 +206,86 @@ test("share versions change only when public product or profile preview values c
   if (!firstProfile || !nextProfile) return;
   assert.notEqual(firstProfile.shareVersion, nextProfile.shareVersion);
 });
+
+/**
+ * Regresi kontras kartu OG.
+ *
+ * Bug asli: nama produk tidak diberi `color`, jadi mewarisi #10213D dari
+ * elemen induk dan tampil di atas panel #0F2F63 — kontras 1,23:1, tak
+ * terbaca. Satori tidak punya "warna default yang aman", jadi satu-satunya
+ * cara mencegah ini terulang adalah mewajibkan SETIAP simpul berteks punya
+ * warna eksplisit.
+ */
+type OgNode = { props?: { children?: unknown; style?: { color?: string } } };
+
+function textNodesWithoutColor(node: unknown, path = "root"): string[] {
+  if (!node || typeof node !== "object") return [];
+  const el = node as OgNode;
+  const children = el.props?.children;
+  const found: string[] = [];
+
+  const hasOwnText = Array.isArray(children)
+    ? children.some((c) => typeof c === "string" && c.trim() !== "")
+    : typeof children === "string" && children.trim() !== "";
+
+  if (hasOwnText && !el.props?.style?.color) {
+    const sample = Array.isArray(children) ? children.find((c) => typeof c === "string") : children;
+    found.push(`${path}: "${String(sample).slice(0, 40)}"`);
+  }
+
+  const kids = Array.isArray(children) ? children : [children];
+  kids.forEach((child, index) => {
+    found.push(...textNodesWithoutColor(child, `${path}>${index}`));
+  });
+  return found;
+}
+
+test("kartu OG produk: setiap teks punya warna eksplisit (tidak mewarisi)", () => {
+  const product = buildPublicShareProduct({
+    id: "p-og",
+    slug: "produk-nama-sangat-panjang",
+    name: "Catto Plus Jelly Anti Hairball / Hair & Skin / Indoor / Immune Booster / Urinary Adult Pouch Wet Food 1 BOX isi (12pcs x 70gr) - Makanan Basah Saset Kucing Dewasa",
+    price: 140000,
+    discountPrice: 114000,
+    stock: 5,
+    imageUrl: "https://eift0f4dwz.ufs.sh/f/contoh.png",
+  });
+  assert.ok(product);
+  if (!product) return;
+
+  const withDiscount = renderProductShareCard({ ...product, renderedImageUrl: null });
+  assert.deepEqual(textNodesWithoutColor(withDiscount), [], "ada teks tanpa warna eksplisit di kartu produk");
+
+  const noDiscount = buildPublicShareProduct({
+    id: "p-og-2", slug: "tanpa-diskon", name: "Produk tanpa diskon",
+    price: 50000, discountPrice: null, stock: 2, imageUrl: null,
+  });
+  assert.ok(noDiscount);
+  if (!noDiscount) return;
+  assert.deepEqual(
+    textNodesWithoutColor(renderProductShareCard({ ...noDiscount, renderedImageUrl: null })),
+    [],
+    "ada teks tanpa warna eksplisit saat produk tidak diskon",
+  );
+});
+
+test("kartu OG produk: nama & stok tidak lagi digambar (dipakai metadata, bukan gambar)", () => {
+  const product = buildPublicShareProduct({
+    id: "p-og-3",
+    slug: "nama-panjang",
+    name: "Catto Plus Jelly Anti Hairball Urinary Adult Pouch Wet Food",
+    price: 140000, discountPrice: 114000, stock: 5, imageUrl: null,
+  });
+  assert.ok(product);
+  if (!product) return;
+
+  const tree = JSON.stringify(renderProductShareCard({ ...product, renderedImageUrl: null }));
+  assert.doesNotMatch(tree, /Catto Plus Jelly/, "nama produk seharusnya tidak digambar di kartu");
+  assert.doesNotMatch(tree, /Stok tersedia|Stok terbatas/, "label stok seharusnya tidak digambar di kartu");
+  assert.match(tree, /Natalo Petshop/, "chip merek harus ada");
+  assert.match(tree, /HEMAT \d+%/, "badge diskon harus ada saat produk diskon");
+  // Model tetap menyediakan keduanya untuk metadata halaman.
+  const model = buildProductShareCardModel({ ...product, renderedImageUrl: null });
+  assert.match(model.name, /Catto Plus Jelly/);
+  assert.ok(model.stockLabel.length > 0);
+});

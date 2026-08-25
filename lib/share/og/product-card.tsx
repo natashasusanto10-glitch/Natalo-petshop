@@ -32,6 +32,26 @@ export function buildProductShareCardModel(input: ProductShareCardInput): Produc
   };
 }
 
+/**
+ * Kartu pratinjau berbagi produk — foto produk memenuhi kartu.
+ *
+ * Layout lama membelah kartu jadi dua: foto di kiri, panel biru berisi nama +
+ * harga + stok di kanan. Dua masalah:
+ *
+ * 1. BUG KONTRAS. Nama produk tidak diberi warna sendiri, jadi mewarisi
+ *    #10213D dari elemen induk dan tampil di atas panel #0F2F63 — kontrasnya
+ *    1,23:1 (minimum layak baca 3:1), praktis tak terbaca. Diukur langsung
+ *    dari gambar produksi. Karena itu SEMUA teks di sini diberi warna
+ *    eksplisit; jangan pernah mengandalkan warna warisan di kartu OG.
+ *
+ * 2. Separuh kartu terpakai teks yang sebetulnya mubazir: Instagram/WhatsApp
+ *    sudah menampilkan judul dan deskripsi sendiri di bawah kartu. Nama dan
+ *    label stok karena itu dibuang dari gambar (tetap ada di model, dipakai
+ *    metadata halaman), menyisakan foto produk sebagai bintangnya.
+ *
+ * Yang tersisa di atas foto hanya dua penanda kecil: chip merek di kiri-atas
+ * dan harga di kanan-bawah (plus badge diskon kalau ada).
+ */
 export function renderProductShareCard(input: ProductShareCardInput) {
   const card = buildProductShareCardModel(input);
   const imageUrl = input.renderedImageUrl === undefined ? card.imageUrl : input.renderedImageUrl;
@@ -39,68 +59,90 @@ export function renderProductShareCard(input: ProductShareCardInput) {
   return (
     <div
       style={{
-        background: "#F8FAFC",
-        color: "#10213D",
+        background: "#FFFFFF",
         display: "flex",
         fontFamily: "Arial, sans-serif",
         height: "100%",
-        padding: 48,
+        position: "relative",
         width: "100%",
       }}
     >
       <div
         style={{
           alignItems: "center",
-          background: "#FFFFFF",
-          borderRadius: 24,
           display: "flex",
-          flex: 11,
+          height: "100%",
           justifyContent: "center",
-          overflow: "hidden",
-          padding: 36,
+          padding: 40,
+          width: "100%",
         }}
       >
         {imageUrl ? (
+          // contain, bukan cover: foto produk umumnya 1:1 sedangkan kartu
+          // 1200x630 — cover akan memotong atas-bawah produknya.
           <img alt="" height="100%" src={imageUrl} style={{ height: "100%", objectFit: "contain", width: "100%" }} width="100%" />
         ) : (
-          <div style={{ color: "#1E5FBF", display: "flex", fontSize: 140, fontWeight: 900 }}>N</div>
+          <div style={{ color: "#1E5FBF", display: "flex", fontSize: 160, fontWeight: 900 }}>N</div>
         )}
       </div>
+
       <div
         style={{
-          background: "#0F2F63",
-          borderRadius: 24,
+          alignItems: "center",
+          background: "#1E5FBF",
+          borderRadius: 999,
+          color: "#FFFFFF",
           display: "flex",
-          flex: 9,
-          flexDirection: "column",
-          justifyContent: "space-between",
-          marginLeft: 28,
-          padding: 44,
+          fontSize: 26,
+          fontWeight: 800,
+          left: 44,
+          padding: "13px 26px",
+          position: "absolute",
+          top: 40,
         }}
       >
-        <div style={{ color: "#B9D4FF", display: "flex", fontSize: 24, fontWeight: 800 }}>
-          NATALO PETSHOP
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          {card.discountLabel ? (
-            <div style={{ background: "#F0446A", borderRadius: 10, color: "#FFFFFF", display: "flex", fontSize: 21, fontWeight: 800, padding: "9px 13px", width: "fit-content" }}>
-              {card.discountLabel}
-            </div>
-          ) : null}
-          <div style={{ WebkitBoxOrient: "vertical", WebkitLineClamp: 2, display: "-webkit-box", fontSize: 38, fontWeight: 800, lineHeight: 1.2, overflow: "hidden" }}>
-            {card.name}
+        Natalo Petshop
+      </div>
+
+      <div
+        style={{
+          alignItems: "center",
+          bottom: 40,
+          display: "flex",
+          position: "absolute",
+          right: 44,
+        }}
+      >
+        {card.discountLabel ? (
+          <div
+            style={{
+              alignItems: "center",
+              background: "#F0446A",
+              borderRadius: 999,
+              color: "#FFFFFF",
+              display: "flex",
+              fontSize: 24,
+              fontWeight: 800,
+              marginRight: 12,
+              padding: "12px 22px",
+            }}
+          >
+            {card.discountLabel}
           </div>
-          <div style={{ color: "#FFFFFF", display: "flex", fontSize: 44, fontWeight: 900 }}>
-            {card.priceLabel}
-          </div>
-          {card.originalPriceLabel ? (
-            <div style={{ color: "#B9D4FF", display: "flex", fontSize: 24, textDecoration: "line-through" }}>
-              {card.originalPriceLabel}
-            </div>
-          ) : null}
-        </div>
-        <div style={{ color: "#DCEAFF", display: "flex", fontSize: 24, fontWeight: 700 }}>
-          {card.stockLabel}
+        ) : null}
+        <div
+          style={{
+            alignItems: "center",
+            background: "#0A1F40",
+            borderRadius: 999,
+            color: "#FFFFFF",
+            display: "flex",
+            fontSize: 38,
+            fontWeight: 900,
+            padding: "14px 30px",
+          }}
+        >
+          {card.priceLabel}
         </div>
       </div>
     </div>
