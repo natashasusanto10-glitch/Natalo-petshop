@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { uploadAdminImage } from "@/lib/admin-image-upload";
 import { formatRupiah } from "@/lib/format";
 import { variantPersistenceMode, type VariantPersistenceMode } from "@/lib/product/variant-editor";
 export { variantPersistenceMode } from "@/lib/product/variant-editor";
@@ -1158,21 +1159,14 @@ function VariantImageCell({
   const [error, setError] = useState("");
 
   async function handleFile(file: File) {
-    if (file.size > 2 * 1024 * 1024) {
-      setError("Maks 2 MB");
-      return;
-    }
+    // Batas ukuran TIDAK dicek di sini — kompresi jalan dulu di
+    // uploadAdminImage, dan batasnya diperiksa SETELAH kompresi. Dulu
+    // pengecekan mentah di sini menolak PNG 1,7 MB padahal setelah
+    // dikompresi ukurannya tinggal ratusan KB dan sebenarnya muat.
     setError("");
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
-      if (!res.ok) throw new Error("Upload gagal");
-      const data = await res.json();
-      const url = String(data.url ?? "");
-      if (!url) throw new Error("URL kosong dari server");
-      onChange(url);
+      onChange(await uploadAdminImage(file));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload gagal");
     } finally {
