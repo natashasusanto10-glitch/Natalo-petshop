@@ -3,14 +3,14 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { uploadAdminImage } from "@/lib/admin-image-upload";
+
 type BrandLogoUploadButtonProps = {
   brandId: string;
   brandName: string;
   logoUrl: string | null;
   updateLogoAction: (brandId: string, logoUrl: string) => Promise<void>;
 };
-
-const MAX_SIZE = 2 * 1024 * 1024;
 
 function ImageIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (
@@ -44,39 +44,30 @@ export function BrandLogoUploadButton({
 
   async function upload(file: File) {
     setError("");
-    if (file.size > MAX_SIZE) {
-      setError("Maks 2 MB");
-      return;
-    }
-
     setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("kind", "brand-logo");
 
     try {
-      const response = await fetch("/api/admin/upload", {
-        method: "POST",
-        body: formData,
+      // Batas ukuran TIDAK dicek di sini — kompresi jalan dulu, batasnya
+      // diperiksa setelahnya. `preserveFormat` wajib: server menjalankan
+      // sharp().trim() untuk memotong padding logo, dan artefak JPEG di
+      // tepi bikin trim itu meleset.
+      const url = await uploadAdminImage(file, {
+        fields: { kind: "brand-logo" },
+        preserveFormat: true,
       });
-      const data = (await response.json()) as { url?: string; error?: string };
-      if (!response.ok || !data.url) {
-        setError(data.error ?? "Upload gagal");
-        return;
-      }
 
       startTransition(() => {
-        void updateLogoAction(brandId, data.url!)
+        void updateLogoAction(brandId, url)
           .then(() => {
-            setPreviewUrl(data.url!);
+            setPreviewUrl(url);
             router.refresh();
           })
           .catch(() => {
             setError("Gagal menyimpan logo");
           });
       });
-    } catch {
-      setError("Upload gagal");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload gagal");
     } finally {
       setUploading(false);
     }

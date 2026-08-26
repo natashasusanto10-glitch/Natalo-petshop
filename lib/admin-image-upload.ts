@@ -71,9 +71,17 @@ export async function runWithConcurrency<T, R>(
 }
 
 /** POST satu file ke /api/admin/upload, kembalikan URL hasilnya. */
-async function postImage(file: File, displayName: string): Promise<string> {
+async function postImage(
+  file: File,
+  displayName: string,
+  fields?: Record<string, string>,
+): Promise<string> {
   const fd = new FormData();
   fd.append("file", file);
+  // Field tambahan, mis. kind=brand-logo yang memicu normalizeBrandLogo di
+  // server. WAJIB ikut terkirim — tanpa ini logo lolos mentah tanpa
+  // di-trim & dipusatkan, jadi berat visualnya beda sendiri di grid Home.
+  for (const [key, value] of Object.entries(fields ?? {})) fd.append(key, value);
 
   let res: Response;
   try {
@@ -128,9 +136,17 @@ function hasTransparency(ctx: CanvasRenderingContext2D, w: number, h: number): b
  * - PNG opaque dikonversi ke JPEG (hemat besar); PNG transparan tetap PNG;
  *   GIF dilewati (preserve animation).
  *
+ * `preserveFormat` mematikan konversi PNG→JPEG. Dipakai logo brand dan
+ * grafis bergaris tajam: JPEG menambah artefak ringing di tepi, dan server
+ * menjalankan sharp().trim() yang justru mengandalkan tepi bersih untuk
+ * memotong padding. Resize tetap jalan, jadi file besar tetap mengecil.
+ *
  * Return: File baru (compressed) atau original kalau tidak bisa compress.
  */
-export async function compressImage(file: File): Promise<File> {
+export async function compressImage(
+  file: File,
+  preserveFormat = false,
+): Promise<File> {
   // Skip compression untuk GIF (preserve animation) dan file <300KB
   // (sudah cukup kecil, compression overhead tidak worth it).
   if (file.type === "image/gif") return file;
@@ -157,22 +173,35 @@ export async function compressImage(file: File): Promise<File> {
     ctx.drawImage(bitmap, 0, 0, targetW, targetH);
     bitmap.close();
 
-    // Hanya pertahankan PNG kalau memang butuh alpha — selain itu ke JPEG.
-    const keepPng = file.type === "image/png" && hasTransparency(ctx, targetW, targetH);
-    const outType = keepPng ? "image/png" : "image/jpeg";
-    const quality = keepPng ? undefined : JPEG_QUALITY;
+    // preserveFormat = pertahankan tipe ASLI, bukan paksa PNG. Memaksa PNG
+    // untuk sumber JPEG justru MEMBENGKAKKAN ukurannya (foto lossy jadi
+    // lossless) — kebalikan dari tujuan fungsi ini.
+    // Selain itu: PNG dipertahankan hanya kalau memang butuh alpha.
+    const outType = preserveFormat
+      ? file.type
+      : file.type === "image/png" && hasTransparency(ctx, targetW, targetH)
+        ? "image/png"
+        : "image/jpeg";
+    // PNG mengabaikan quality; JPEG & WEBP memakainya.
+    const quality = outType === "image/png" ? undefined : JPEG_QUALITY;
 
     const blob = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob(resolve, outType, quality);
     });
     if (!blob) return file;
 
+    // canvas.toBlob DIAM-DIAM jatuh ke PNG kalau tipe yang diminta tidak
+    // didukung. Kalau itu terjadi untuk sumber non-PNG, hasilnya bisa jauh
+    // lebih besar — pakai file asli saja.
+    if (blob.type !== outType) return file;
+
     // Hanya pakai compressed kalau memang lebih kecil dari original.
     if (blob.size >= file.size) return file;
 
-    const newName = keepPng
-      ? file.name
-      : file.name.replace(/\.(png|webp|jpeg)$/i, ".jpg");
+    const newName =
+      outType === "image/jpeg" && file.type !== "image/jpeg"
+        ? file.name.replace(/\.(png|webp)$/i, ".jpg")
+        : file.name;
     return new File([blob], newName, { type: outType });
   } catch {
     // Compression error (unsupported codec, dst.) → fallback ke original
@@ -191,28 +220,47 @@ export async function compressImage(file: File): Promise<File> {
 export async function uploadOne(
   file: File,
   prepare?: (f: File) => Promise<File>,
+  options: AdminUploadOptions = {},
 ): Promise<string> {
+  const maxBytes = options.maxBytes ?? MAX_SIZE_MB * 1024 * 1024;
   const processed = prepare ? await prepare(file) : file;
-  if (processed.size > MAX_SIZE_MB * 1024 * 1024) {
+  if (processed.size > maxBytes) {
     const mb = (processed.size / (1024 * 1024)).toFixed(1);
+    const limit = (maxBytes / (1024 * 1024)).toFixed(maxBytes % (1024 * 1024) ? 1 : 0);
     throw new UploadError(
-      `"${file.name}" ${mb} MB — melebihi batas ${MAX_SIZE_MB} MB`,
+      `"${file.name}" ${mb} MB — melebihi batas ${limit} MB`,
       false,
     );
   }
   try {
-    return await postImage(processed, file.name);
+    return await postImage(processed, file.name, options.fields);
   } catch (e) {
     if (!(e instanceof UploadError) || !e.retriable) throw e;
     await sleep(UPLOAD_RETRY_DELAY_MS);
-    return postImage(processed, file.name);
+    return postImage(processed, file.name, options.fields);
   }
 }
 
+export type AdminUploadOptions = {
+  /**
+   * Batas ukuran yang diperiksa SETELAH kompresi. Default 2 MB (batas
+   * server). Popup peluncuran memakai 1 MB karena tampil saat app dibuka.
+   */
+  maxBytes?: number;
+  /** Field form tambahan, mis. `{ kind: "brand-logo" }`. */
+  fields?: Record<string, string>;
+  /** Jangan konversi format — lihat catatan di `compressImage`. */
+  preserveFormat?: boolean;
+};
+
 /**
  * Upload SATU gambar admin lengkap dengan kompresi + percobaan ulang.
- * Ini pintu yang dipakai slot upload gambar tunggal (foto varian, dst.).
+ * Ini pintu untuk semua slot upload gambar tunggal: foto varian, logo
+ * brand, banner, dan popup peluncuran.
  */
-export function uploadAdminImage(file: File): Promise<string> {
-  return uploadOne(file, compressImage);
+export function uploadAdminImage(
+  file: File,
+  options: AdminUploadOptions = {},
+): Promise<string> {
+  return uploadOne(file, (f) => compressImage(f, options.preserveFormat), options);
 }

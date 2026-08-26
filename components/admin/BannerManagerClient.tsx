@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { uploadAdminImage } from "@/lib/admin-image-upload";
+
 type Banner = {
   id: string;
   imageUrl: string;
@@ -52,19 +54,14 @@ export function BannerManagerClient({ initialBanners, categories, brands }: Prop
   }
 
   async function uploadImage(file: File): Promise<string | null> {
-    if (file.size > MAX_SIZE) {
-      setError("Ukuran gambar maksimal 2 MB");
+    // Batas dicek SETELAH kompresi (di dalam uploadAdminImage), bukan di
+    // sini — foto 4 MB yang menyusut ke 400 KB seharusnya lolos.
+    try {
+      return await uploadAdminImage(file, { maxBytes: MAX_SIZE });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload gagal");
       return null;
     }
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await fetch("/api/admin/upload", { method: "POST", body: formData });
-    const data = (await res.json()) as { url?: string; error?: string };
-    if (!res.ok || !data.url) {
-      setError(data.error ?? "Upload gagal");
-      return null;
-    }
-    return data.url;
   }
 
   async function handleAddBanner(file: File) {
