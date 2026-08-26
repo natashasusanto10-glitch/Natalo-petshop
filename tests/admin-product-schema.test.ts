@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import { createProductSchema } from "../lib/validators/product-schema";
 
 // Bug device: buat produk baru dengan Brand="Tanpa brand" + SKU Induk kosong
@@ -23,17 +24,17 @@ describe("createProductSchema — null vs undefined utk field opsional", () => {
       brandId: null,
       sku: null,
     });
-    expect(result.success).toBe(true);
+    assert.strictEqual(result.success, true);
   });
 
   it("tetap menerima undefined (payload lama/backward-compat)", () => {
     const result = createProductSchema.safeParse(basePayload);
-    expect(result.success).toBe(true);
+    assert.strictEqual(result.success, true);
   });
 
   it("tetap menerima string kosong untuk sku (kombinasi .or(z.literal('')) tak rusak)", () => {
     const result = createProductSchema.safeParse({ ...basePayload, sku: "" });
-    expect(result.success).toBe(true);
+    assert.strictEqual(result.success, true);
   });
 
   it("tetap menolak categoryId non-string yang bukan null (mis. angka)", () => {
@@ -41,6 +42,6 @@ describe("createProductSchema — null vs undefined utk field opsional", () => {
       ...basePayload,
       categoryId: 123,
     });
-    expect(result.success).toBe(false);
+    assert.strictEqual(result.success, false);
   });
 });
