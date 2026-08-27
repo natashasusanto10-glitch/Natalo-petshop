@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { NextResponse } from "next/server";
 
+import { signBunnyUrl } from "@/lib/feed/bunny";
 import { getPublicShareFeedPost } from "@/lib/share/feed-share-data";
 import { renderFeedShareCard } from "@/lib/share/og/feed-card";
 import {
@@ -39,9 +40,21 @@ export async function GET(
   const responseHeaders = { "Cache-Control": cachePolicy.cacheControl };
 
   try {
-    // Foto author tidak lagi diambil — kartu full-bleed tidak
-    // menggambarnya, jadi fetch-nya cuma menambah latensi render.
-    const renderedMediaUrl = await fetchSafeOgImageData(post.posterUrl);
+    // WAJIB ditandatangani ulang sebelum diambil. Bunny memakai token
+    // authentication: thumbnail tanpa `?token=&expires=` dibalas 403
+    // (diverifikasi langsung ke CDN). `posterUrl` sengaja disimpan tanpa
+    // token supaya shareVersion stabil, jadi tokennya dipasang di sini —
+    // saat render, bukan di payload.
+    //
+    // Aman: URL bertoken TIDAK pernah sampai ke browser. Rute ini
+    // mengambil byte-nya di server lalu menanamkannya ke dalam PNG.
+    //
+    // Tanpa ini kartu share SELALU jatuh ke monogram "N" — bug lama yang
+    // tersamar selama kartu masih kecil di panel biru, dan baru kelihatan
+    // setelah kartu jadi full-bleed.
+    const renderedMediaUrl = await fetchSafeOgImageData(
+      signBunnyUrl(post.posterUrl) ?? post.posterUrl,
+    );
     return new ImageResponse(renderFeedShareCard({
       ...post,
       renderedAuthorImageUrl: null,

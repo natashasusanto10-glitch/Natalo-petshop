@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import OpenInAppButtons from "@/components/OpenInAppButtons";
 import StickyOpenInAppBar from "@/components/StickyOpenInAppBar";
+import { signBunnyUrl } from "@/lib/feed/bunny";
 
 import { getPublicShareFeedPost } from "@/lib/share/feed-share-data";
 import {
@@ -31,6 +32,11 @@ export default async function PublicFeedPostPage({ params }: PageProps) {
   const post = await getPublicShareFeedPost(id);
   if (!post) notFound();
 
+  // Sama seperti rute OG: thumbnail Bunny butuh token, tanpa itu 403 dan
+  // gambar di halaman ini kosong. Token berumur pendek dan halaman ini
+  // force-dynamic, jadi tidak ada URL kedaluwarsa yang ter-cache. Pola
+  // sama dengan yang sudah dipakai /api/feed/posts untuk app.
+  const posterSrc = signBunnyUrl(post.posterUrl) ?? post.posterUrl;
   const headline = post.title.trim() || "Postingan Natalo";
   const caption = (post.description ?? "").replace(/\s+/g, " ").trim();
 
@@ -63,9 +69,9 @@ export default async function PublicFeedPostPage({ params }: PageProps) {
         </header>
 
         <div className="relative mt-5 aspect-[9/16] overflow-hidden rounded-lg bg-slate-100">
-          {post.posterUrl ? (
+          {posterSrc ? (
             <Image
-              src={post.posterUrl}
+              src={posterSrc}
               alt={headline}
               fill
               priority
