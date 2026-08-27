@@ -10,7 +10,12 @@ import {
 
 export const runtime = "nodejs";
 
-const IMAGE_OPTIONS = { height: 630, width: 1200 } as const;
+// PERSEGI, sama dengan kartu produk: iMessage/WhatsApp menentukan TINGGI
+// kartu dari rasio gambar, jadi 1200x630 selalu menghasilkan kartu pendek
+// dengan thumbnail kecil. WAJIB sinkron dengan width/height og:image di
+// lib/share/share-metadata.ts — kalau salah satu diubah sendirian, klien
+// chat menata kartu dengan rasio salah tanpa error apa pun.
+const IMAGE_OPTIONS = { height: 1200, width: 1200 } as const;
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -34,13 +39,12 @@ export async function GET(
   const responseHeaders = { "Cache-Control": cachePolicy.cacheControl };
 
   try {
-    const [renderedMediaUrl, renderedAuthorImageUrl] = await Promise.all([
-      fetchSafeOgImageData(post.posterUrl),
-      fetchSafeOgImageData(post.author.photoUrl),
-    ]);
+    // Foto author tidak lagi diambil — kartu full-bleed tidak
+    // menggambarnya, jadi fetch-nya cuma menambah latensi render.
+    const renderedMediaUrl = await fetchSafeOgImageData(post.posterUrl);
     return new ImageResponse(renderFeedShareCard({
       ...post,
-      renderedAuthorImageUrl,
+      renderedAuthorImageUrl: null,
       renderedMediaUrl,
     }), {
       ...IMAGE_OPTIONS,

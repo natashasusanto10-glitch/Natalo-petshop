@@ -53,6 +53,21 @@ test("falls back safely for missing or unsafe poster and labels a carousel", () 
   assert.equal(card.description, "Lihat postingan terbaru di Natalo.");
 });
 
+test("kartu full-bleed tidak menggambar teks di atas thumbnail", () => {
+  // Caption & nama author kini dibawa metadata halaman (judul link).
+  // Kalau ada yang menggambarnya lagi di kartu, teks yang sama tampil
+  // dua kali berturut-turut di pratinjau chat.
+  const serialized = JSON.stringify(
+    renderFeedShareCard({ ...basePost, renderedMediaUrl: "data:image/png;base64,x" }),
+  );
+  assert.doesNotMatch(serialized, /Foto baru untuk si meong/);
+  assert.doesNotMatch(serialized, /Natalo Petshop/);
+  assert.doesNotMatch(serialized, /AKUN RESMI/);
+  assert.doesNotMatch(serialized, /natalopetshop\.com/);
+  // Badge video tetap ada — penanda "ini video, tap untuk menonton".
+  assert.match(serialized, /▶/);
+});
+
 test("keeps the local fallback when the route reports a failed remote fetch", () => {
   const card = renderFeedShareCard({
     ...basePost,
