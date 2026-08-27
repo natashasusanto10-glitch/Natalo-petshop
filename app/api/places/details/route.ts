@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { mapGoogleAddress } from "@/lib/google-address";
 import { getGoogleMapsServerKey } from "@/lib/google-maps-key";
 import { checkLimit, getClientIp, getMapsLimiter } from "@/lib/rate-limit";
-import { googleStatusLogLine, interpretGoogleStatus } from "@/lib/places/google-status";
+import {
+  DETAILS_FIELD_MASK,
+  adaptPlaceDetails,
+} from "@/lib/places/places-new-adapter";
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request.headers);
@@ -26,31 +29,49 @@ export async function POST(request: NextRequest) {
   const placeId = String(body.placeId ?? body.place_id ?? "").trim();
   if (!placeId) return NextResponse.json({ error: "placeId wajib diisi." }, { status: 400 });
 
-  const params = new URLSearchParams({
-    place_id: placeId,
-    fields: "name,formatted_address,address_component,geometry",
-    language: "id",
-    key: apiKey,
-  });
-
-  const googleResponse = await fetch(
-    `https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`,
-    { cache: "no-store" }
-  );
-  const data = await googleResponse.json();
-
-  // Google membalas HTTP 200 walau menolak — lihat lib/places/google-status.ts.
-  const verdict = interpretGoogleStatus(data?.status);
-  if (!verdict.ok) {
-    console.error(googleStatusLogLine("details", data?.status, data?.error_message));
-    return NextResponse.json({ error: verdict.error }, { status: verdict.httpStatus });
+  // Places API (New): GET /v1/places/{placeId}. placeId di-encode karena
+  // datang dari klien — walau format Google aman, jangan percaya masukan.
+  let googleResponse: Response;
+  try {
+    googleResponse = await fetch(
+      `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=id`,
+      {
+        headers: {
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": DETAILS_FIELD_MASK,
+        },
+        cache: "no-store",
+      },
+    );
+  } catch (e) {
+    console.error("[places/details] gagal menghubungi Google", e);
+    return NextResponse.json(
+      { error: "Layanan pencarian alamat tidak dapat dihubungi." },
+      { status: 502 },
+    );
   }
 
-  const mapped = data?.result ? mapGoogleAddress(data.result) : null;
+  const data = await googleResponse.json().catch(() => null);
+
+  if (!googleResponse.ok) {
+    const detail = (data as { error?: { status?: string; message?: string } } | null)?.error;
+    console.error(
+      `[places/details] Google menolak: HTTP ${googleResponse.status} ${detail?.status ?? ""} — ${String(detail?.message ?? "").slice(0, 200)}`,
+    );
+    return NextResponse.json(
+      { error: "Detail alamat tidak dapat diambil. Coba pilih alamat lain." },
+      { status: googleResponse.status === 404 ? 404 : 503 },
+    );
+  }
+
+  // Terjemahkan ke bentuk lama supaya mapGoogleAddress (dan app versi
+  // lama) tidak perlu berubah sama sekali.
+  const result = adaptPlaceDetails(data);
+  const mapped = result ? mapGoogleAddress(result) : null;
 
   if (mapped?.countryCode && mapped.countryCode !== "ID") {
     return NextResponse.json({ error: "Alamat harus berada di Indonesia." }, { status: 400 });
   }
 
-  return NextResponse.json({ ...data, address: mapped });
+  return NextResponse.json({ result, address: mapped, status: "OK" });
 }
