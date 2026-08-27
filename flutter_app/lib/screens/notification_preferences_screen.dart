@@ -359,6 +359,17 @@ class _PushDiagnosticPanelState extends State<_PushDiagnosticPanel> {
           perm =
               'Ditolak — buka Pengaturan HP → Aplikasi → Natalo → Notifikasi → izinkan';
           break;
+        // Ditambahkan firebase_messaging 16: ditolak DAN OS tidak akan
+        // menampilkan prompt lagi (Android 13+). Bedanya dengan `denied`:
+        // menekan tombol izinkan di app tidak lagi memunculkan dialog, jadi
+        // Pengaturan HP satu-satunya jalan — pesannya dibuat tegas.
+        //
+        // JANGAN ganti case-case ini dengan `default:`. Justru exhaustive
+        // switch inilah yang menangkap nilai enum baru ini saat upgrade.
+        case AuthorizationStatus.deniedPermanently:
+          perm =
+              'Ditolak permanen — hanya bisa diaktifkan lewat Pengaturan HP → Aplikasi → Natalo → Notifikasi';
+          break;
         case AuthorizationStatus.notDetermined:
           perm = 'Belum diminta';
           break;
