@@ -153,13 +153,13 @@ class PlaceDetails {
   }
 }
 
-/// Wrapper untuk Google Places API via Capacitor backend.
-/// Match endpoint PWA:
+/// Wrapper untuk Google Places API via backend.
 /// - POST /api/places/autocomplete
 /// - POST /api/places/details
-/// - POST /api/places/reverse-geocode
 ///
 /// Server-side proxy supaya API key Google tidak exposed di client.
+/// Backend memakai Places API (New); bentuk respons SENGAJA diterjemahkan
+/// kembali ke gaya lama supaya app versi lama tetap jalan.
 class PlacesService {
   /// Autocomplete query → list suggestion. Dipakai di address picker.
   Future<List<PlaceSuggestion>> autocomplete({
@@ -232,23 +232,6 @@ class PlacesService {
     }
   }
 
-  /// Reverse geocode lat/lng → alamat. Dipakai saat user pakai "Lokasi Saya"
-  /// di address picker → auto-fill address dari GPS.
-  Future<PlaceDetails?> reverseGeocode({
-    required double latitude,
-    required double longitude,
-  }) async {
-    try {
-      final data = await apiClient.postJson(
-        '/api/places/reverse-geocode',
-        body: {'lat': latitude, 'lng': longitude},
-      );
-      if (data is! Map) return null;
-      return PlaceDetails.fromJson(Map<String, dynamic>.from(data));
-    } catch (_) {
-      return null;
-    }
-  }
 }
 
 final placesService = PlacesService();
