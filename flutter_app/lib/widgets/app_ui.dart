@@ -63,6 +63,37 @@ class AppHeaderIconButton extends StatelessWidget {
   }
 }
 
+/// Menjamin area sentuh minimal [size] (default 44 — dasar iOS HIG, dan di
+/// atas 48dp-nya Material saat dipakai bersama `kMinInteractiveDimension`)
+/// TANPA mengubah ukuran visual anaknya.
+///
+/// Flutter tidak punya `hitSlop` seperti React Native: satu-satunya cara
+/// memperluas area tekan adalah memperbesar kotak widget-nya sendiri. Karena
+/// itu widget ini WAJIB dipasang sebagai anak dari InkWell/GestureDetector,
+/// bukan pembungkusnya — kalau di luar, kotak yang membesar bukan kotak yang
+/// menerima tap, dan perbaikannya jadi semu.
+///
+/// ```dart
+/// InkWell(onTap: ..., child: AppMinTapTarget(child: Icon(..., size: 18)))
+/// ```
+class AppMinTapTarget extends StatelessWidget {
+  const AppMinTapTarget({super.key, required this.child, this.size = 44});
+
+  final Widget child;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(minWidth: size, minHeight: size),
+      // widthFactor/heightFactor 1 = Center menempel ke ukuran anak; batas
+      // minimum di atas yang kemudian mendorongnya ke [size]. Tanpa faktor
+      // ini Center memuai ke constraint maksimum induk (bisa selebar layar).
+      child: Center(widthFactor: 1, heightFactor: 1, child: child),
+    );
+  }
+}
+
 class AppSearchField extends StatelessWidget {
   final TextEditingController controller;
   final String hintText;

@@ -48,6 +48,7 @@ import '../widgets/flash_sale_countdown.dart';
 import '../widgets/moderation_action_sheet.dart';
 import '../widgets/product_detail_video_slide.dart';
 import '../widgets/product_detail/product_quick_info_row.dart';
+import '../widgets/product_detail/rating_breakdown_bars.dart';
 import '../widgets/product_detail/product_shipping_section.dart';
 import '../widgets/product_detail/shopping_assurance_sheet.dart';
 import 'image_viewer_screen.dart';
@@ -953,7 +954,12 @@ class _ProductHeroState extends State<_ProductHero> {
                                 }
                                 // Slide foto: geser index kalau video di depan.
                                 final imageIndex = index - (_hasVideo ? 1 : 0);
-                                return GestureDetector(
+                                return Semantics(
+                                  button: true,
+                                  label: 'Foto produk ${imageIndex + 1} dari '
+                                      '${images.length}, ketuk untuk '
+                                      'memperbesar',
+                                  excludeSemantics: true,
                                   // Tap image → buka fullscreen pinch-zoom
                                   // gallery viewer dengan native Flutter
                                   // InteractiveViewer (smooth + GPU-accelerated).
@@ -961,14 +967,16 @@ class _ProductHeroState extends State<_ProductHero> {
                                   // termasuk offset video) supaya foto yang
                                   // dibuka SAMA dengan yang di-tap — viewer kini
                                   // berbasis slide (video 0 + foto 1+).
-                                  onTap: () =>
-                                      _openMediaViewer(context, index, images),
-                                  child: AppProductImage(
-                                    imageUrl: images[imageIndex],
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    fit: BoxFit.contain,
-                                    borderRadius: BorderRadius.zero,
+                                  child: GestureDetector(
+                                    onTap: () =>
+                                        _openMediaViewer(context, index, images),
+                                    child: AppProductImage(
+                                      imageUrl: images[imageIndex],
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                      fit: BoxFit.contain,
+                                      borderRadius: BorderRadius.zero,
+                                    ),
                                   ),
                                 );
                               },
@@ -3320,7 +3328,9 @@ class _ProductReviewPreviewSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
                 onTap: onViewAll,
                 child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                  // vertical 12 (bukan 6) supaya tinggi baris tembus 44 —
+                  // teks 14px + ikon 22px sebelumnya cuma menghasilkan ±30.
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -3381,6 +3391,12 @@ class _ProductReviewPreviewSection extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
+          // Sebaran hanya muncul kalau ratingnya sudah cukup banyak — lihat
+          // RatingBreakdownBars.minRatings untuk alasannya.
+          if (RatingBreakdownBars.shouldShow(summary?.ratingBreakdown)) ...[
+            const SizedBox(height: 12),
+            RatingBreakdownBars(breakdown: summary!.ratingBreakdown),
+          ],
           if (mediaItems.isNotEmpty) ...[
             const SizedBox(height: 14),
             SizedBox(
@@ -3432,35 +3448,42 @@ class _ReviewMediaThumb extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: ClipRRect(
+      child: Semantics(
+        button: true,
+        label: media.isVideo
+            ? 'Video dari ulasan pembeli, ketuk untuk memutar'
+            : 'Foto dari ulasan pembeli, ketuk untuk memperbesar',
+        excludeSemantics: true,
+        child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          child: SizedBox(
-            width: size,
-            height: size,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                AppProductImage(
-                  imageUrl: media.previewUrl,
-                  fit: BoxFit.cover,
-                ),
-                if (media.isVideo)
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.18),
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.play_circle_fill_rounded,
-                        color: Colors.white,
-                        size: 32,
+          onTap: onTap,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: size,
+              height: size,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  AppProductImage(
+                    imageUrl: media.previewUrl,
+                    fit: BoxFit.cover,
+                  ),
+                  if (media.isVideo)
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.18),
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.play_circle_fill_rounded,
+                          color: Colors.white,
+                          size: 32,
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -3642,6 +3665,7 @@ class _ProductReviewsScreenState extends State<_ProductReviewsScreen> {
               rating: rating,
               ratingCount: ratingCount,
               reviewCount: reviewCount,
+              breakdown: summary?.ratingBreakdown ?? const {},
             ),
             const SizedBox(height: 16),
             _ReviewFilterBar(
@@ -3689,11 +3713,13 @@ class _ReviewSummaryHeader extends StatelessWidget {
   final double rating;
   final int ratingCount;
   final int reviewCount;
+  final Map<int, int> breakdown;
 
   const _ReviewSummaryHeader({
     required this.rating,
     required this.ratingCount,
     required this.reviewCount,
+    required this.breakdown,
   });
 
   @override
@@ -3707,32 +3733,41 @@ class _ReviewSummaryHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: cs.outlineVariant),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.star_rounded, color: _starAmber, size: 38),
-          const SizedBox(width: 10),
-          Text(
-            rating > 0 ? rating.toStringAsFixed(1) : '-',
-            style: TextStyle(
-              color: cs.onSurface,
-              fontSize: 30,
-              fontWeight: FontWeight.w900,
-              height: 1,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'dari ${_formatCompactCount(ratingCount)} rating • ${_formatCompactCount(reviewCount)} ulasan',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: cs.onSurfaceVariant,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+          Row(
+            children: [
+              const Icon(Icons.star_rounded, color: _starAmber, size: 38),
+              const SizedBox(width: 10),
+              Text(
+                rating > 0 ? rating.toStringAsFixed(1) : '-',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'dari ${_formatCompactCount(ratingCount)} rating • ${_formatCompactCount(reviewCount)} ulasan',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (RatingBreakdownBars.shouldShow(breakdown)) ...[
+            const SizedBox(height: 14),
+            RatingBreakdownBars(breakdown: breakdown),
+          ],
         ],
       ),
     );
@@ -3851,20 +3886,24 @@ class _FullReviewTile extends StatelessWidget {
                       ),
                     ),
                     if (!review.isMine)
-                      InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => showModerationActions(
-                          context,
-                          targetKind: ReportTargetKind.productReview,
-                          targetId: review.id,
-                          authorName: review.userName,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Icon(
-                            Icons.more_vert_rounded,
-                            size: 19,
-                            color: cs.onSurfaceVariant,
+                      Semantics(
+                        button: true,
+                        label: 'Opsi ulasan ${review.userName}',
+                        excludeSemantics: true,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(22),
+                          onTap: () => showModerationActions(
+                            context,
+                            targetKind: ReportTargetKind.productReview,
+                            targetId: review.id,
+                            authorName: review.userName,
+                          ),
+                          child: AppMinTapTarget(
+                            child: Icon(
+                              Icons.more_vert_rounded,
+                              size: 19,
+                              color: cs.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       ),
@@ -4247,12 +4286,19 @@ class _ReviewVideoPlayerState extends State<_ReviewVideoPlayer> {
         ],
       );
     }
-    return GestureDetector(
-      onTap: _togglePlay,
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: controller.value.aspectRatio,
-          child: VideoPlayer(controller),
+    return Semantics(
+      button: true,
+      label: controller.value.isPlaying
+          ? 'Jeda video produk'
+          : 'Putar video produk',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: _togglePlay,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: controller.value.aspectRatio,
+            child: VideoPlayer(controller),
+          ),
         ),
       ),
     );
@@ -4318,20 +4364,24 @@ class _ReviewPreviewTile extends StatelessWidget {
                   // policy syarat). Tombol di-hide untuk review.isMine
                   // karena tidak masuk akal laporkan review sendiri.
                   if (!review.isMine)
-                    InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () => showModerationActions(
-                        context,
-                        targetKind: ReportTargetKind.productReview,
-                        targetId: review.id,
-                        authorName: review.userName,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Icon(
-                          Icons.more_horiz_rounded,
-                          size: 18,
-                          color: cs.onSurfaceVariant,
+                    Semantics(
+                      button: true,
+                      label: 'Opsi ulasan ${review.userName}',
+                      excludeSemantics: true,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(22),
+                        onTap: () => showModerationActions(
+                          context,
+                          targetKind: ReportTargetKind.productReview,
+                          targetId: review.id,
+                          authorName: review.userName,
+                        ),
+                        child: AppMinTapTarget(
+                          child: Icon(
+                            Icons.more_horiz_rounded,
+                            size: 18,
+                            color: cs.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
@@ -5217,23 +5267,38 @@ class _VariantChip extends StatelessWidget {
             : cs.onSurfaceVariant;
     return Material(
       color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: borderColor),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: textColor,
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-              decoration: enabled ? null : TextDecoration.lineThrough,
+      // Status terpilih & habis sebelumnya HANYA disampaikan lewat warna dan
+      // coretan — tak terbaca screen reader. `selected`/`enabled` di sini
+      // yang membuatnya terucap.
+      child: Semantics(
+        button: true,
+        selected: selected,
+        enabled: enabled,
+        label: enabled ? label : '$label, stok habis',
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          // Pil tetap setinggi ±34 secara visual; yang dibesarkan ke 44 hanya
+          // kotak yang menerima tap. Menaikkan padding pil malah mengubah
+          // rancangan varian yang sudah disetujui.
+          child: AppMinTapTarget(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: borderColor),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  decoration: enabled ? null : TextDecoration.lineThrough,
+                ),
+              ),
             ),
           ),
         ),
