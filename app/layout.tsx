@@ -98,11 +98,14 @@ export const metadata: Metadata = {
   //
   // app-argument: URL halaman saat ini dipassing ke app via Universal Links,
   // jadi tap banner buka app langsung di halaman yang sama (deep link).
-  // Browser auto-substitute siteUrl base — untuk per-page argument yang
-  // lebih spesifik, override metadata.other di per-page metadata.
-  other: {
-    "apple-itunes-app": `app-id=6767888044, app-argument=${siteUrl}`,
-  },
+  //
+  // WAJIB lewat field `itunes`, BUKAN `other["apple-itunes-app"]`:
+  // halaman share (/feed/<id>, /u/<username>) mematikan banner ini dengan
+  // `itunes: null` karena sudah punya StickyOpenInAppBar sendiri — dua
+  // ajakan sekaligus di iPhone. `other` per-halaman TIDAK bisa menghapus
+  // kunci warisan root (dibuktikan runtime: `other: {}` di halaman tetap
+  // merender meta-nya); `itunes: null` bisa.
+  itunes: { appId: "6767888044", appArgument: siteUrl },
   verification: googleVerification
     ? {
         google: googleVerification,

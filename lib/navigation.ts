@@ -15,6 +15,13 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/products\/[^/]+$/,
   /^\/search(\/|$)/,
 
+  // Halaman share publik (1 postingan / profil) — pola sama dengan detail
+  // produk: diganti StickyOpenInAppBar. Kalau nav ikut tampil, dua bar
+  // fixed bertumpuk di bawah (nav z-100 menutupi bar, dibuktikan runtime).
+  // HANYA detail: /feed dan /u tanpa segmen tetap ber-nav.
+  /^\/feed\/[^/]+$/,
+  /^\/u\/[^/]+$/,
+
   // Keranjang — task-focused flow menuju checkout, tanpa bottom tab distraction
   /^\/cart$/,
 
