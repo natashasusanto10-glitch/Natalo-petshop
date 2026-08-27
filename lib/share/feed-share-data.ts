@@ -105,9 +105,17 @@ export function buildFeedShareVersion(post: FeedVersionInput) {
 /**
  * Returns only public, preview-safe fields for `/feed/[id]`.
  *
- * This intentionally does not reuse a viewer/admin query and never signs the
- * media URL: a browser poster must be cacheable and cannot expose a private
- * playback URL.
+ * This intentionally does not reuse a viewer/admin query, and never exposes a
+ * private playback URL (videoUrl / HLS playlist).
+ *
+ * `posterUrl` di sini SENGAJA tanpa token Bunny — token punya `expires`, jadi
+ * kalau ikut masuk payload, `shareVersion` berubah tiap request dan `?v=`
+ * kartu OG tidak pernah stabil. Konsekuensinya: pemakainya WAJIB
+ * menandatanganinya sendiri saat render (`signBunnyUrl`), karena Bunny
+ * membalas 403 untuk thumbnail tanpa token. Dua pemakai itu:
+ *   - app/api/share/og/feed/[id]/route.ts  (diambil di server, byte ditanam)
+ *   - app/feed/[id]/page.tsx               (dirender browser, halaman dinamis)
+ * Melewatkannya = kartu share selalu jatuh ke monogram "N".
  */
 export async function getPublicShareFeedPost(
   id: string,

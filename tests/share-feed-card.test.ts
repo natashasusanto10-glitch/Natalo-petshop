@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import { buildFeedShareCardModel, renderFeedShareCard } from "@/lib/share/og/feed-card";
+import { safeOgImageUrl } from "@/lib/share/og-image-security";
 
 const basePost = {
   id: "post-1",
@@ -78,4 +80,40 @@ test("keeps the local fallback when the route reports a failed remote fetch", ()
   const serialized = JSON.stringify(card);
   assert.doesNotMatch(serialized, /vz-natalo\.b-cdn\.net/);
   assert.doesNotMatch(serialized, /www\.natalopetshop\.com\/brand\/logo\.png/);
+});
+
+test("URL thumbnail bertoken Bunny lolos validasi host OG", () => {
+  // Bunny memakai token authentication: thumbnail tanpa ?token=&expires=
+  // dibalas 403 dan kartu jatuh ke monogram "N". Rute OG karena itu
+  // menandatangani ulang sebelum mengambil. Kalau ada yang memperketat
+  // safeOgImageUrl sampai menolak query string, thumbnail mati LAGI tanpa
+  // error apa pun — test ini yang menahannya.
+  const previousBunnyHost = process.env.BUNNY_CDN_HOSTNAME;
+  process.env.BUNNY_CDN_HOSTNAME = "vz-natalo.b-cdn.net";
+  try {
+    const signed =
+      "https://vz-natalo.b-cdn.net/abc/thumbnail.jpg?token=Eq57TGnn&expires=1787869996";
+    assert.equal(safeOgImageUrl(signed), signed);
+  } finally {
+    if (previousBunnyHost === undefined) delete process.env.BUNNY_CDN_HOSTNAME;
+    else process.env.BUNNY_CDN_HOSTNAME = previousBunnyHost;
+  }
+});
+
+test("rute OG dan halaman share menandatangani poster sebelum dipakai", () => {
+  // Penjaga sumber: melewatkan signBunnyUrl tidak menimbulkan error apa
+  // pun — kartu diam-diam kehilangan gambar. Ini bug yang benar-benar
+  // terjadi di produksi (27 Agu 2026).
+  const routeSource = readFileSync(
+    new URL("../app/api/share/og/feed/[id]/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(routeSource, /signBunnyUrl\(post\.posterUrl\)/);
+
+  const pageSource = readFileSync(
+    new URL("../app/feed/[id]/page.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(pageSource, /signBunnyUrl\(post\.posterUrl\)/);
+  assert.doesNotMatch(pageSource, /src=\{post\.posterUrl\}/);
 });
