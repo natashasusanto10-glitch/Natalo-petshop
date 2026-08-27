@@ -63,10 +63,18 @@ export function renderFeedShareCard(input: FeedShareCardInput) {
   const renderedMediaUrl = input.renderedMediaUrl === undefined
     ? card.mediaUrl
     : input.renderedMediaUrl;
-  const renderedAuthorImageUrl = input.renderedAuthorImageUrl === undefined
-    ? card.authorImageUrl
-    : input.renderedAuthorImageUrl;
 
+  // Full-bleed, seperti kartu produk (lihat commit f11770a6): thumbnail
+  // memenuhi seluruh kanvas persegi. Panel biru + nama akun + caption yang
+  // dulu digambar DI DALAM gambar dihapus — thumbnail video 9:16 di kanvas
+  // 1200x630 cuma kebagian ~35% lebar kartu dan tampil kecil di chat.
+  // Caption kini dibawa metadata halaman (judul link, di bawah gambar) —
+  // digambar juga di sini berarti teks yang sama tampil dua kali.
+  //
+  // objectFit COVER, beda dengan kartu produk yang contain: thumbnail feed
+  // adalah frame video 9:16 tanpa teks/badge template di tepinya, jadi
+  // crop atas-bawah aman; contain justru menghadirkan dua bidang kosong
+  // lebar di kiri-kanan — masalah yang mau dihilangkan.
   return (
     <div
       style={{
@@ -75,130 +83,78 @@ export function renderFeedShareCard(input: FeedShareCardInput) {
         display: "flex",
         fontFamily: "Arial, sans-serif",
         height: "100%",
-        padding: 48,
+        position: "relative",
         width: "100%",
       }}
     >
-      <div
-        style={{
-          alignItems: "center",
-          background: "#E9F2FF",
-          borderRadius: 24,
-          display: "flex",
-          flex: 6,
-          justifyContent: "center",
-          overflow: "hidden",
-          position: "relative",
-        }}
-      >
-        {renderedMediaUrl ? (
-          <img
-            alt=""
-            height="100%"
-            src={renderedMediaUrl}
-            style={{ height: "100%", objectFit: "cover", width: "100%" }}
-            width="100%"
-          />
-        ) : (
-          <div style={{ color: "#1E5FBF", display: "flex", fontSize: 124, fontWeight: 800 }}>
-            N
-          </div>
-        )}
-        {card.showPlayBadge ? (
-          <div
-            style={{
-              alignItems: "center",
-              background: "rgba(15, 23, 42, 0.72)",
-              borderRadius: 999,
-              display: "flex",
-              fontSize: 48,
-              height: 112,
-              justifyContent: "center",
-              left: "50%",
-              position: "absolute",
-              top: "50%",
-              transform: "translate(-50%, -50%)",
-              width: 112,
-            }}
-          >
-            ▶
-          </div>
-        ) : null}
-        {card.durationLabel || card.carouselLabel ? (
-          <div
-            style={{
-              background: "rgba(15, 23, 42, 0.78)",
-              borderRadius: 12,
-              bottom: 24,
-              display: "flex",
-              fontSize: 26,
-              fontWeight: 700,
-              padding: "10px 16px",
-              position: "absolute",
-              right: 24,
-            }}
-          >
-            {card.durationLabel ?? card.carouselLabel}
-          </div>
-        ) : null}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          flex: 4,
-          flexDirection: "column",
-          justifyContent: "space-between",
-          padding: "18px 12px 18px 44px",
-        }}
-      >
-        <div style={{ alignItems: "center", display: "flex", gap: 16 }}>
-          {renderedAuthorImageUrl ? (
-            <img
-              alt=""
-              height={64}
-              src={renderedAuthorImageUrl}
-              style={{ borderRadius: 32, height: 64, objectFit: "cover", width: 64 }}
-              width={64}
-            />
-          ) : (
-            <div
-              style={{
-                alignItems: "center",
-                background: "#1E7BFF",
-                borderRadius: 32,
-                display: "flex",
-                fontSize: 30,
-                fontWeight: 800,
-                height: 64,
-                justifyContent: "center",
-                width: 64,
-              }}
-            >
-              N
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 28, fontWeight: 700 }}>{card.authorLabel}</div>
-            {card.isOfficial ? <div style={{ color: "#F6C650", fontSize: 20 }}>AKUN RESMI</div> : null}
-          </div>
-        </div>
+      {renderedMediaUrl ? (
+        <img
+          alt=""
+          height="100%"
+          src={renderedMediaUrl}
+          style={{ height: "100%", objectFit: "cover", width: "100%" }}
+          width="100%"
+        />
+      ) : (
+        // Fallback tanpa media: monogram di bidang biru penuh — kartu
+        // tidak boleh kosong saat poster gagal diambil.
         <div
           style={{
-            display: "-webkit-box",
-            fontSize: 38,
-            fontWeight: 700,
-            lineHeight: 1.22,
-            overflow: "hidden",
-            WebkitBoxOrient: "vertical",
-            WebkitLineClamp: 3,
+            alignItems: "center",
+            background: "#E9F2FF",
+            color: "#1E5FBF",
+            display: "flex",
+            fontSize: 280,
+            fontWeight: 800,
+            height: "100%",
+            justifyContent: "center",
+            width: "100%",
           }}
         >
-          {card.description}
+          N
         </div>
-        <div style={{ color: "#B9D4FF", display: "flex", fontSize: 22, fontWeight: 700 }}>
-          natalopetshop.com
+      )}
+      {/* Badge hanya kalau ada thumbnail. Di layout full-bleed, fallback
+          monogram memakai seluruh kanvas — badge ▶ akan mendarat tepat di
+          atas huruf "N" dan terlihat seperti kartu rusak (terbukti saat
+          render lokal). Tanpa media, tidak ada apa pun untuk "diputar". */}
+      {card.showPlayBadge && renderedMediaUrl ? (
+        <div
+          style={{
+            alignItems: "center",
+            background: "rgba(15, 23, 42, 0.72)",
+            borderRadius: 999,
+            display: "flex",
+            fontSize: 64,
+            height: 160,
+            justifyContent: "center",
+            left: "50%",
+            position: "absolute",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 160,
+          }}
+        >
+          ▶
         </div>
-      </div>
+      ) : null}
+      {(card.durationLabel || card.carouselLabel) && renderedMediaUrl ? (
+        <div
+          style={{
+            background: "rgba(15, 23, 42, 0.78)",
+            borderRadius: 16,
+            bottom: 40,
+            display: "flex",
+            fontSize: 36,
+            fontWeight: 700,
+            padding: "12px 22px",
+            position: "absolute",
+            right: 40,
+          }}
+        >
+          {card.durationLabel ?? card.carouselLabel}
+        </div>
+      ) : null}
     </div>
   );
 }

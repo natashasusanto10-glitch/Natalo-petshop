@@ -46,8 +46,40 @@ test("Feed metadata uses canonical without v and versioned OG image", () => {
   );
   assert.ok(metadata.twitter && "card" in metadata.twitter);
   assert.equal(metadata.twitter.card, "summary_large_image");
-  assert.equal(metadata.title, "Natalo Petshop di Natalo");
-  assert.equal(metadata.openGraph?.title, "Natalo Petshop di Natalo");
+  // Judul link = caption postingan: kartu OG full-bleed tidak menggambar
+  // teks di atas thumbnail, jadi baris judul satu-satunya tempat caption.
+  assert.equal(metadata.title, "Diskon untuk makanan kucing pilihan.");
+  assert.equal(metadata.openGraph?.title, "Diskon untuk makanan kucing pilihan.");
+  assert.equal(metadata.description, "Postingan Natalo Petshop di Natalo Petshop.");
+  const firstOgImage = images[0];
+  if (typeof firstOgImage === "object" && !(firstOgImage instanceof URL)) {
+    // WAJIB persegi + sinkron dengan IMAGE_OPTIONS di route OG feed.
+    assert.equal(firstOgImage.width, 1200);
+    assert.equal(firstOgImage.height, 1200);
+  } else {
+    assert.fail("og:image feed harus objek dengan width/height eksplisit");
+  }
+});
+
+test("Feed metadata tanpa caption memakai judul postingan, lalu fallback author", () => {
+  const base = {
+    id: "post-2",
+    shareVersion: "v1",
+    author: {
+      displayName: "Natalo Petshop",
+      photoUrl: null,
+      username: "natalopetshop",
+      isOfficial: true,
+    },
+    posterUrl: null,
+  };
+
+  // description kosong -> pakai title (judul postingan).
+  const withTitle = buildFeedShareMetadata(
+    { ...base, title: "Makanan kucing premium", description: "" },
+    siteUrl,
+  );
+  assert.equal(withTitle.title, "Makanan kucing premium");
 });
 
 test("Feed metadata has stable safe fallback copy and public robots", () => {
@@ -68,7 +100,8 @@ test("Feed metadata has stable safe fallback copy and public robots", () => {
     siteUrl,
   );
 
-  assert.equal(metadata.title, "Natalo Petshop di Natalo");
+  // Tanpa caption DAN tanpa judul: kartu tetap tidak boleh tanpa teks.
+  assert.equal(metadata.title, "Postingan Natalo Petshop di Natalo");
   assert.match(String(metadata.description), /Lihat postingan terbaru dari Natalo Petshop di Natalo/);
   assert.deepEqual(metadata.robots, { index: true, follow: true });
 });

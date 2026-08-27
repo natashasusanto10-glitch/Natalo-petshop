@@ -86,6 +86,11 @@ export function buildFeedShareVersion(post: FeedVersionInput) {
   const authorDisplayName = brandDisplayName(post.author.role, post.author.name);
   const authorPhoto = brandPhotoUrl(post.author.role, post.author.profilePhotoUrl);
   return buildShareVersion([
+    // Token tata letak: dinaikkan tiap layout kartu OG berubah, supaya
+    // `?v=` ikut berubah dan cache CDN/chat mengambil gambar baru —
+    // tanpa ini, layout full-bleed baru tidak pernah tampil untuk
+    // postingan lama yang datanya tidak berubah.
+    "og-fullbleed-v2",
     post.id,
     post.title,
     post.description,
