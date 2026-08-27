@@ -235,7 +235,8 @@ class PushNotificationService {
       const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
       const iosInit = DarwinInitializationSettings();
       await _localNotifications.initialize(
-        const InitializationSettings(android: androidInit, iOS: iosInit),
+        // flutter_local_notifications 22: argumen posisional -> bernama.
+        settings: const InitializationSettings(android: androidInit, iOS: iosInit),
         onDidReceiveNotificationResponse: (response) {
           final payload = response.payload;
           if (payload != null && payload.isNotEmpty) {
@@ -704,10 +705,11 @@ class PushNotificationService {
         : null;
 
     await _localNotifications.show(
-      message.hashCode,
-      notif.title ?? 'Natalo Petshop',
-      notif.body ?? '',
-      NotificationDetails(
+      // flutter_local_notifications 22: argumen posisional -> bernama.
+      id: message.hashCode,
+      title: notif.title ?? 'Natalo Petshop',
+      body: notif.body ?? '',
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
@@ -813,10 +815,11 @@ class PushNotificationService {
     }
 
     await _localNotifications.show(
-      notificationIdFromTag(tag, message.hashCode),
-      title,
-      body,
-      NotificationDetails(
+      // flutter_local_notifications 22: argumen posisional -> bernama.
+      id: notificationIdFromTag(tag, message.hashCode),
+      title: title,
+      body: body,
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
@@ -848,7 +851,8 @@ class PushNotificationService {
       const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
       const iosInit = DarwinInitializationSettings();
       await localNotifications.initialize(
-        const InitializationSettings(android: androidInit, iOS: iosInit),
+        // flutter_local_notifications 22: argumen posisional -> bernama.
+        settings: const InitializationSettings(android: androidInit, iOS: iosInit),
       );
       await localNotifications
           .resolvePlatformSpecificImplementation<
@@ -885,10 +889,11 @@ class PushNotificationService {
       }
 
       await localNotifications.show(
-        notificationIdFromTag(tag, message.hashCode),
-        title,
-        body,
-        NotificationDetails(
+        // flutter_local_notifications 22: argumen posisional -> bernama.
+        id: notificationIdFromTag(tag, message.hashCode),
+        title: title,
+        body: body,
+        notificationDetails: NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,
             _channelName,
