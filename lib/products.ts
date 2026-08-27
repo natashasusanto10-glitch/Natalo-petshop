@@ -8,7 +8,8 @@ import { productVideoPayload } from "@/lib/product/product-video-serialize";
 import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
 import { productSearchWhere } from "@/lib/search";
 import { sampleProducts } from "@/lib/sample-data";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { canUseSeededListing } from "@/lib/product/seeded-listing";
 import {
   VALID_SALES_ORDER_STATUSES,
   TRENDING_WINDOW_DAYS,
@@ -628,24 +629,48 @@ export async function getProducts(opts?: {
       );
     }
 
+    // Gate dipisah ke lib/product/seeded-listing.ts (pure, diuji unit).
+    // `inStockOnly` sengaja TIDAK menggagalkan jalur ini — filternya
+    // diterapkan langsung di SQL lewat `stockClause`. Dulu ia ikut di
+    // gate, dan karena app selalu mengirim inStock=true, seed TIDAK
+    // PERNAH aktif: urutan katalog beku createdAt desc tiap hari.
     if (
-      randomSeed &&
-      !category &&
-      !brand &&
-      !brands?.length &&
-      !search &&
-      !newFilter &&
-      !popularFilter &&
-      !excludeIds?.length &&
-      !hasPriceOnly &&
-      !inStockOnly &&
-      !withImageOnly
+      canUseSeededListing({
+        randomSeed,
+        category,
+        brand,
+        brands,
+        search,
+        newFilter,
+        popularFilter,
+        excludeIds,
+        hasPriceOnly,
+        withImageOnly,
+        discountOnly,
+      })
     ) {
+      // Syarat stok yang sama dengan buildProductWhere: stok varian
+      // tinggal di ProductVariant.stock (base = 0 untuk produk
+      // bervarian), jadi cek base saja akan salah meng-exclude semua
+      // produk bervarian.
+      const stockClause = inStockOnly
+        ? Prisma.sql`AND (
+            ("hasVariants" = false AND "stock" > 0)
+            OR ("hasVariants" = true AND EXISTS (
+              SELECT 1 FROM "ProductVariant" v
+              WHERE v."productId" = "Product"."id"
+                AND v."deletedAt" IS NULL
+                AND v."isActive" = true
+                AND v."stock" > 0
+            ))
+          )`
+        : Prisma.empty;
       const idRows = await prisma.$queryRaw<{ id: string }[]>`
         SELECT "id"
         FROM "Product"
         WHERE "isActive" = true
           AND "creationState" = 'ready'
+          ${stockClause}
         ORDER BY md5("id" || ${randomSeed}) ASC
         LIMIT ${take ?? 24}
         OFFSET ${skip ?? 0}
