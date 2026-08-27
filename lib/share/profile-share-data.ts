@@ -187,5 +187,9 @@ export function buildProfileShareMetadata(profile: PublicShareProfile, siteUrl: 
       description,
       images: [image],
     },
+    // Matikan Smart App Banner iOS — StickyOpenInAppBar sudah jadi
+    // ajakannya di halaman ini (lihat catatan gotcha di share-metadata.ts:
+    // root WAJIB pakai field `itunes` supaya null ini bisa menghapusnya).
+    itunes: null,
   };
 }

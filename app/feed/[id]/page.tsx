@@ -3,6 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 
 import OpenInAppButtons from "@/components/OpenInAppButtons";
+import StickyOpenInAppBar from "@/components/StickyOpenInAppBar";
 
 import { getPublicShareFeedPost } from "@/lib/share/feed-share-data";
 import {
@@ -34,7 +35,9 @@ export default async function PublicFeedPostPage({ params }: PageProps) {
   const caption = (post.description ?? "").replace(/\s+/g, " ").trim();
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-xl bg-white px-4 py-8 sm:px-6">
+    // pb-24 di layar kecil: ruang untuk StickyOpenInAppBar supaya blok
+    // tombol di akhir halaman tidak tertutup bar saat digulir mentok.
+    <main className="mx-auto min-h-screen w-full max-w-xl bg-white px-4 pt-8 pb-24 sm:px-6 md:pb-8">
       <article>
         <header className="flex items-center gap-3">
           <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-blue-100">
@@ -85,6 +88,7 @@ export default async function PublicFeedPostPage({ params }: PageProps) {
           <OpenInAppButtons path={`/feed/${encodeURIComponent(post.id)}`} />
         </section>
       </article>
+      <StickyOpenInAppBar path={`/feed/${encodeURIComponent(post.id)}`} />
     </main>
   );
 }

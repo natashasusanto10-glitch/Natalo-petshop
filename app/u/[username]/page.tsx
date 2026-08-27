@@ -16,6 +16,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 
 import OpenInAppButtons from "@/components/OpenInAppButtons";
+import StickyOpenInAppBar from "@/components/StickyOpenInAppBar";
 import { prisma } from "@/lib/prisma";
 import {
   buildPublicProfilePageViewModel,
@@ -81,7 +82,9 @@ export default async function PublicProfilePage({ params }: PageProps) {
   const initial = view.displayName.trim().charAt(0).toUpperCase() || "N";
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-3xl px-4 pb-16 pt-6 sm:px-6">
+    // pb-24 di layar kecil: ruang untuk StickyOpenInAppBar supaya baris
+    // terakhir grid postingan tidak tertutup bar saat digulir mentok.
+    <div className="mx-auto min-h-screen w-full max-w-3xl px-4 pb-24 pt-6 sm:px-6 md:pb-16">
       {/* Header */}
       <header className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
         <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-blue-100 to-blue-200 ring-4 ring-white shadow-md sm:h-28 sm:w-28">
@@ -191,6 +194,7 @@ export default async function PublicProfilePage({ params }: PageProps) {
           </div>
         )}
       </section>
+      <StickyOpenInAppBar path={`/u/${encodeURIComponent(view.username)}`} />
     </div>
   );
 }

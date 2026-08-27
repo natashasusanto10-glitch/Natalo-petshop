@@ -68,5 +68,13 @@ export function buildFeedShareMetadata(
       description,
       images: [ogImage],
     },
+    // Matikan Smart App Banner iOS di halaman ini: StickyOpenInAppBar
+    // sudah jadi ajakannya — tanpa ini iPhone dapat DUA ajakan sekaligus,
+    // banner Safari di atas + bar melekat di bawah. GOTCHA: root layout
+    // WAJIB mendeklarasikannya lewat field `itunes` (bukan
+    // `other["apple-itunes-app"]`) supaya null di sini bisa menghapusnya;
+    // `other` per-halaman tidak bisa mencabut kunci warisan root
+    // (dibuktikan runtime).
+    itunes: null,
   };
 }
