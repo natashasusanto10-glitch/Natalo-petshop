@@ -16,11 +16,12 @@ class _NativePlatformShareGateway implements PlatformShareGateway {
 
   @override
   Future<ShareResultStatus> share(SharePayload payload, {Rect? origin}) async {
-    final result = await Share.share(
-      payload.text,
+    // share_plus 13: Share.share deprecated -> SharePlus.instance.share.
+    final result = await SharePlus.instance.share(ShareParams(
+      text: payload.text,
       subject: payload.subject,
       sharePositionOrigin: origin,
-    );
+    ));
     return result.status;
   }
 }

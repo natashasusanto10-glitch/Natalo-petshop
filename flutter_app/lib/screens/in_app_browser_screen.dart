@@ -62,12 +62,13 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
     final url = _currentUrl ?? widget.url;
     final box = context.findRenderObject() as RenderBox?;
     try {
-      await Share.share(
-        url,
+      // share_plus 13: Share.share deprecated -> SharePlus.instance.share.
+      await SharePlus.instance.share(ShareParams(
+        text: url,
         subject: _currentTitle,
         sharePositionOrigin:
             box != null ? box.localToGlobal(Offset.zero) & box.size : null,
-      );
+      ));
     } catch (_) {}
   }
 
