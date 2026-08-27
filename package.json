@@ -116,5 +116,10 @@
     "tsx": "~4.21.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.59.3"
+  },
+  "overrides": {
+    "@effect/platform": {
+      "effect": "3.17.7"
+    }
   }
 }

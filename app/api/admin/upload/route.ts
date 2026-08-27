@@ -23,7 +23,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const formData = await request.formData();
+  // WAJIB di dalam try. Parsing multipart bisa melempar (body terpotong,
+  // boundary rusak, request dibatalkan) — sebelumnya baris ini telanjang,
+  // jadi kegagalannya jatuh ke error 500 platform yang badannya BUKAN
+  // JSON. Klien lalu menampilkan fallback "Gagal upload <nama>" tanpa
+  // alasan, dan tidak ada jejak apa pun di log fungsi.
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch (e) {
+    console.error("[admin/upload] gagal parse form data", e);
+    return NextResponse.json(
+      { error: "Form upload tidak terbaca — coba ulangi" },
+      { status: 400 }
+    );
+  }
   const file = formData.get("file") as File | null;
   const kind = resolveUploadKind(formData.get("kind"));
 
@@ -69,6 +83,10 @@ export async function POST(request: NextRequest) {
     const { url } = await uploadToUT(uploadFile, kind === "brand-logo" ? "brand-logo" : "product");
     return NextResponse.json({ url });
   } catch (e) {
+    // JANGAN telan bisu — tanpa log ini, kegagalan upload di produksi
+    // tidak meninggalkan jejak apa pun di log fungsi Vercel dan hanya
+    // terlihat sebagai "Gagal upload" polos di klien.
+    console.error("[admin/upload] upload gagal", { kind, error: e });
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Upload gagal" },
       { status: 500 }
