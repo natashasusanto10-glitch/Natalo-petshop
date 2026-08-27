@@ -59,19 +59,24 @@ end
 target 'NotificationService' do
   use_frameworks!
   # VERSI WAJIB DIPATOK, dan wajib SAMA dengan yang dipakai plugin Flutter.
-  # Sumber kebenaran: firebase_core/ios/firebase_sdk_version.rb di pub cache
-  # (firebase_core 3.15.2 -> 11.15.0). Plugin firebase_messaging memakai
-  # angka yang sama lewat berkas itu.
+  # Sumber kebenaran: firebase_core/ios/firebase_sdk_version.rb di pub cache.
+  # firebase_core 4.14.0 -> 12.18.0 (sebelumnya 3.15.2 -> 11.15.0). Plugin
+  # firebase_messaging memakai angka yang sama lewat berkas itu.
   #
-  # Tanpa patokan, CocoaPods menarik FirebaseMessaging TERBARU yang
-  # mensyaratkan iOS 15+, sementara app menargetkan iOS 13 — `pod install`
-  # gagal dengan pesan menyesatkan "could not find compatible versions for
-  # pod Flutter", seolah Flutter yang bermasalah. Selain itu ekstensi dan
-  # Runner bisa menarik dua versi Firebase berbeda dalam satu app.
+  # Tanpa patokan, CocoaPods menarik FirebaseMessaging TERBARU yang bisa
+  # menuntut iOS lebih tinggi dari target app — `pod install` gagal dengan
+  # pesan menyesatkan "could not find compatible versions for pod Flutter",
+  # seolah Flutter yang bermasalah. Selain itu ekstensi dan Runner bisa
+  # menarik dua versi Firebase berbeda dalam satu app.
+  #
+  # 12.18.0 mensyaratkan iOS 15.0. Itu SEBABNYA upgrade ini dulu terhalang:
+  # app menargetkan iOS 13, dan mencoba menaikkannya justru yang mematahkan
+  # build Agustus lalu. Sejak minimum dinaikkan ke iOS 15 (lihat
+  # `platform :ios, '15.0'` di atas), penghalang itu hilang.
   #
   # SAAT UPGRADE firebase_core/firebase_messaging: baca ulang
   # firebase_sdk_version.rb dan samakan angka di bawah ini.
-  pod 'FirebaseMessaging', '11.15.0'
+  pod 'FirebaseMessaging', '12.18.0'
 end
 
 post_install do |installer|

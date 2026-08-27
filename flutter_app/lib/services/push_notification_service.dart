@@ -214,9 +214,18 @@ class PushNotificationService {
         badge: true,
         sound: true,
       );
-      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      // `deniedPermanently` WAJIB ikut diperiksa. firebase_messaging 16
+      // menambah nilai enum itu untuk kasus "ditolak dan OS tidak akan
+      // bertanya lagi" (Android 13+). Ini perbandingan `==`, BUKAN switch,
+      // jadi analyzer TIDAK menangkapnya — sebelum diperbaiki, pengguna
+      // yang menolak permanen lolos dari gerbang ini dan app mendaftarkan
+      // token yang tak akan pernah bisa mengantar notifikasi.
+      final denied = settings.authorizationStatus == AuthorizationStatus.denied ||
+          settings.authorizationStatus == AuthorizationStatus.deniedPermanently;
+      if (denied) {
         if (kDebugMode) {
-          debugPrint('[push] Notification permission denied.');
+          debugPrint(
+              '[push] Notification permission denied (${settings.authorizationStatus.name}).');
         }
         _initState = PushInitState.permissionDenied;
         return;
