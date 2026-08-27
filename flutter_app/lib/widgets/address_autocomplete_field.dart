@@ -54,6 +54,8 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
 
   List<PlaceSuggestion> _suggestions = const [];
   bool _searching = false;
+  /// Pesan saat layanan pencarian alamat mati (bukan sekadar nihil hasil).
+  String? _serviceError;
   bool _fetchingDetails = false;
   String _lastQuery = '';
 
@@ -120,6 +122,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
       if (!mounted) return;
       setState(() {
         _suggestions = results;
+        _serviceError = null;
         _searching = false;
       });
       if (results.isNotEmpty) {
@@ -127,9 +130,23 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
       } else {
         _removeOverlay();
       }
+    } on PlacesUnavailableException catch (e) {
+      // Layanan MATI — beda dari "tidak ada hasil". Sebelumnya keduanya
+      // sama-sama tampil sebagai kotak kosong, jadi pengguna mengira
+      // alamatnya yang tidak terdaftar dan menyerah.
+      if (!mounted) return;
+      setState(() {
+        _suggestions = const [];
+        _serviceError = e.message;
+        _searching = false;
+      });
+      _removeOverlay();
     } catch (_) {
       if (!mounted) return;
-      setState(() => _searching = false);
+      setState(() {
+        _serviceError = null;
+        _searching = false;
+      });
     }
   }
 
@@ -281,7 +298,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
     final cs = Theme.of(context).colorScheme;
     final hasText = widget.controller.text.isNotEmpty;
     final showLoadingSuffix = _searching || _fetchingDetails;
-    return CompositedTransformTarget(
+    final field = CompositedTransformTarget(
       link: _link,
       child: TextFormField(
         controller: widget.controller,
@@ -350,6 +367,37 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
           ),
         ),
       ),
+    );
+
+    final message = _serviceError;
+    if (message == null) return field;
+
+    // Pesan layanan-mati ditempel di BAWAH field, bukan lewat toast:
+    // toast hilang sendiri dan pengguna yang sedang mengetik alamat
+    // kemungkinan besar melewatkannya. Ini harus bertahan sampai
+    // pencarian berikutnya berhasil.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        field,
+        Padding(
+          padding: const EdgeInsets.only(top: 6, left: 4, right: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline, size: 14, color: cs.error),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(fontSize: 12, color: cs.error, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

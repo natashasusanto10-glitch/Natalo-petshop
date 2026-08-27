@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mapGoogleAddress } from "@/lib/google-address";
 import { getGoogleMapsServerKey } from "@/lib/google-maps-key";
 import { checkLimit, getClientIp, getMapsLimiter } from "@/lib/rate-limit";
+import { googleStatusLogLine, interpretGoogleStatus } from "@/lib/places/google-status";
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request.headers);
@@ -37,11 +38,19 @@ export async function POST(request: NextRequest) {
     { cache: "no-store" }
   );
   const data = await googleResponse.json();
+
+  // Google membalas HTTP 200 walau menolak — lihat lib/places/google-status.ts.
+  const verdict = interpretGoogleStatus(data?.status);
+  if (!verdict.ok) {
+    console.error(googleStatusLogLine("details", data?.status, data?.error_message));
+    return NextResponse.json({ error: verdict.error }, { status: verdict.httpStatus });
+  }
+
   const mapped = data?.result ? mapGoogleAddress(data.result) : null;
 
   if (mapped?.countryCode && mapped.countryCode !== "ID") {
     return NextResponse.json({ error: "Alamat harus berada di Indonesia." }, { status: 400 });
   }
 
-  return NextResponse.json({ ...data, address: mapped }, { status: googleResponse.ok ? 200 : 502 });
+  return NextResponse.json({ ...data, address: mapped });
 }
