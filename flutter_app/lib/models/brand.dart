@@ -48,6 +48,21 @@ class PetBrand {
   }
 }
 
+/// Salinan `brands` urut A-Z, tanpa mengubah daftar aslinya.
+///
+/// Dipakai daftar brand yang DIPINDAI MATA untuk mencari satu nama —
+/// mis. Filter di halaman Produk (65 brand). Jangan dipakai untuk
+/// carousel "Brand Favorit" di Beranda: di sana brand tampil sebagai
+/// logo dan urutannya kurasi (`Brand.position` di server), disengaja.
+///
+/// GOTCHA: `compareTo` pada String membandingkan kode unit, jadi SEMUA
+/// huruf besar mendahului huruf kecil — "CIAO / INABA" akan menyembul
+/// di atas "Angels Pet". Karena itu dibandingkan dalam huruf kecil.
+List<PetBrand> sortBrandsByName(List<PetBrand> brands) {
+  return List<PetBrand>.from(brands)
+    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+}
+
 String _absoluteUrl(String url) {
   if (url.isEmpty || url.startsWith('http')) return url;
   final base = Uri.parse(ApiConfig.baseUrl);

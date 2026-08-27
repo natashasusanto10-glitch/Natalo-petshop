@@ -3602,9 +3602,29 @@ class _FilterSheetState extends State<_FilterSheet> {
   late bool _discountOnly;
   late bool _brandListExpanded;
 
+  /// Daftar brand urut A-Z untuk ditampilkan di sheet ini.
+  ///
+  /// KENAPA DIURUT ULANG DI SINI, BUKAN DI `/api/brands`: rute itu
+  /// mengurutkan `position asc` — urutan kurasi yang dipakai carousel
+  /// "Brand Favorit" di Beranda, tempat brand ditampilkan sebagai LOGO
+  /// dan urutannya memang disengaja (yang mau dipromosikan di depan).
+  /// Rute yang sama dipakai tiga tempat, jadi mengubah urutannya di
+  /// server akan mengacak kurasi Beranda.
+  ///
+  /// Di sini konteksnya beda: ini daftar teks berisi puluhan brand yang
+  /// dipindai mata untuk mencari satu nama. Untuk itu hanya A-Z yang
+  /// bisa ditebak — urutan kurasi membuat pengguna harus membaca
+  /// seluruh daftar.
+  ///
+  /// Dihitung sekali di initState: dipakai tiap build (termasuk saat
+  /// menggeser slider harga), dan daftarnya tidak berubah selama sheet
+  /// terbuka.
+  late List<PetBrand> _sortedBrands;
+
   @override
   void initState() {
     super.initState();
+    _sortedBrands = sortBrandsByName(widget.allBrands);
     _priceRange = RangeValues(
       widget.currentFilter.minPrice ?? 0,
       widget.currentFilter.maxPrice ?? widget.priceMaxBound,
@@ -3657,9 +3677,9 @@ class _FilterSheetState extends State<_FilterSheet> {
   @override
   Widget build(BuildContext context) {
     final visibleBrands = _brandListExpanded
-        ? widget.allBrands
-        : widget.allBrands.take(8).toList();
-    final hasMoreBrands = widget.allBrands.length > 8;
+        ? _sortedBrands
+        : _sortedBrands.take(8).toList();
+    final hasMoreBrands = _sortedBrands.length > 8;
     final previewCount = widget.previewCountForFilter(_candidateFilter);
     final cs = Theme.of(context).colorScheme;
 
