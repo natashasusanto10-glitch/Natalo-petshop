@@ -73,6 +73,10 @@
     {
       "path": "/api/cron/product-creating-cleanup",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/flash-sale-expiry-cleanup",
+      "schedule": "15 * * * *"
     }
   ]
 }
