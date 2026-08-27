@@ -1,5 +1,15 @@
 import 'api_client.dart';
 
+/// Layanan pencarian alamat sedang tidak bisa dipakai (billing Google
+/// mati, kuota habis, API ditolak). SENGAJA dibedakan dari "tidak ada
+/// hasil" — lihat catatan di [PlacesService.autocomplete].
+class PlacesUnavailableException implements Exception {
+  final String message;
+  const PlacesUnavailableException(this.message);
+  @override
+  String toString() => message;
+}
+
 /// Place autocomplete suggestion (mis. "Jl. MT. Haryono No. 103, Medan").
 class PlaceSuggestion {
   final String placeId;
@@ -183,8 +193,21 @@ class PlacesService {
           .map((item) =>
               PlaceSuggestion.fromJson(Map<String, dynamic>.from(item)))
           .toList();
-    } catch (_) {
-      return const [];
+    } on ApiException catch (e) {
+      // JANGAN kembalikan daftar kosong di sini. Dulu `catch (_) => []`
+      // membuat layanan MATI tampil identik dengan "alamat tidak
+      // ditemukan" — terbukti di produksi 2026-08-27: billing Google
+      // nonaktif, pencarian alamat mati total, pengguna hanya melihat
+      // kotak kosong dan mengira alamatnya yang tidak terdaftar.
+      //
+      // Backend kini mengirim 503/502 dengan pesan siap-tampil
+      // (lib/places/google-status.ts); dilempar supaya widget bisa
+      // membedakan gagal dari nihil.
+      throw PlacesUnavailableException(
+        e.message.isNotEmpty
+            ? e.message
+            : 'Pencarian alamat sedang bermasalah. Isi alamat secara manual.',
+      );
     }
   }
 

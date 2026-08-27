@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGoogleMapsServerKey } from "@/lib/google-maps-key";
 import { checkLimit, getClientIp, getMapsLimiter } from "@/lib/rate-limit";
+import { googleStatusLogLine, interpretGoogleStatus } from "@/lib/places/google-status";
 
 export async function POST(request: NextRequest) {
   // Tanpa rate limit endpoint ini = direct passthrough billing ke Google
@@ -49,5 +50,13 @@ export async function POST(request: NextRequest) {
   );
   const data = await googleResponse.json();
 
-  return NextResponse.json(data, { status: googleResponse.ok ? 200 : 502 });
+  // Google membalas HTTP 200 walau menolak — cek field `status`, jangan
+  // percaya googleResponse.ok. Lihat lib/places/google-status.ts.
+  const verdict = interpretGoogleStatus(data?.status);
+  if (!verdict.ok) {
+    console.error(googleStatusLogLine("autocomplete", data?.status, data?.error_message));
+    return NextResponse.json({ error: verdict.error, predictions: [] }, { status: verdict.httpStatus });
+  }
+
+  return NextResponse.json(data);
 }
