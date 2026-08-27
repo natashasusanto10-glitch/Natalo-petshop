@@ -44,11 +44,12 @@ class ProfileQrScreen extends StatelessWidget {
       // sharePositionOrigin WAJIB untuk iOS (popover anchor) — tanpa ini
       // share gagal/senyap di iOS.
       final box = context.findRenderObject() as RenderBox?;
-      await Share.share(
-        'Lihat profil $_handleLabel di Natalo\n$_profileUrl',
+      // share_plus 13: Share.share deprecated -> SharePlus.instance.share.
+      await SharePlus.instance.share(ShareParams(
+        text: 'Lihat profil $_handleLabel di Natalo\n$_profileUrl',
         sharePositionOrigin:
             box != null ? box.localToGlobal(Offset.zero) & box.size : null,
-      );
+      ));
     } catch (_) {
       // Cancel / platform tak support — silent.
     }
