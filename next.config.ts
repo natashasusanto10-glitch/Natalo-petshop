@@ -17,10 +17,17 @@ const nextConfig: NextConfig = {
 
   // Bundle optimization
   experimental: {
-    // View Transitions API — enable browser-level cross-fade between
-    // route navigations. Works di Chrome 126+ (Capacitor WebView modern OK).
-    // Browser yang belum support fallback ke instant nav, no regression.
-    viewTransition: true,
+    // `viewTransition: true` DIBUANG di Next 16.3 — flag experimental-nya
+    // dihapus dari tipe config (ada di 16.2.12 config-shared.d.ts:699,
+    // hilang di 16.3.3), sehingga membiarkannya membuat `next build`
+    // gagal type-check:
+    //   error TS2353: 'viewTransition' does not exist in type
+    //   'ExperimentalConfig'
+    //
+    // FITURNYA TIDAK HILANG, hanya flag-nya yang naik status dari
+    // experimental — runtime 16.3.3 masih memuat viewTransitionClass /
+    // viewTransitionName. Jadi ini pembuangan flag usang, bukan
+    // pematian fitur.
     // Optimize CSS chunks — extract critical CSS, defer rest
     optimizePackageImports: [
       "lucide-react",
