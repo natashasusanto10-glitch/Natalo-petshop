@@ -27,6 +27,17 @@ export default [
       "scripts/**",
       "prisma/**",
       "public/**",
+      // SDK Flutter TERPASANG DI DALAM folder proyek (lihat FLUTTER_ROOT di
+      // flutter_app/ios/Flutter/Generated.xcconfig). Tanpa baris ini eslint
+      // memindai seluruh SDK — termasuk bundle DevTools Dart — dan
+      // melaporkan 11 error palsu ("Definition for rule
+      // 'import/no-unused-modules' was not found") dari kode yang bukan
+      // milik kita. Berkas .js kena walau blok `files` di bawah hanya
+      // menyebut ts/tsx/mjs, karena ESLint 9 memeriksa .js secara bawaan.
+      "flutter/**",
+      // App Flutter isinya Dart (nol berkas js/ts terlacak). Di-ignore
+      // supaya artefak build web-nya tidak ikut terpindai.
+      "flutter_app/**",
     ],
   },
   {
