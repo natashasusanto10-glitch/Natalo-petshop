@@ -133,7 +133,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
         title: const Text(
           'Batalkan pesanan?',
           textAlign: TextAlign.center,
-          style: TextStyle(fontWeight: FontWeight.w900),
+          style: TextStyle(fontWeight: NataloWeight.strong),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -144,7 +144,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface,
                 fontSize: NataloTextSize.body,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.body,
                 height: 1.5,
               ),
             ),
@@ -156,7 +156,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: NataloTextSize.caption,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 height: 1.5,
               ),
             ),
@@ -272,7 +272,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
         title: const Text(
           'Sudah terima pesanan?',
           textAlign: TextAlign.center,
-          style: TextStyle(fontWeight: FontWeight.w900),
+          style: TextStyle(fontWeight: NataloWeight.strong),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -285,7 +285,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface,
                 fontSize: NataloTextSize.body,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.body,
                 height: 1.5,
               ),
             ),
@@ -297,7 +297,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: NataloTextSize.caption,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 height: 1.5,
               ),
             ),
@@ -929,8 +929,8 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
                   title,
                   style: TextStyle(
                     color: accent,
-                    fontWeight: FontWeight.w900,
-                    fontSize: mono ? 17 : 14.5,
+                    fontWeight: NataloWeight.strong,
+                    fontSize: mono ? NataloTextSize.subtitle : NataloTextSize.bodyLg,
                     fontFeatures:
                         mono ? const [FontFeature.tabularFigures()] : null,
                     letterSpacing: mono ? 0.5 : 0,
@@ -941,7 +941,7 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
                   subtitle,
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: NataloWeight.body,
                     fontSize: NataloTextSize.caption,
                     height: 1.3,
                   ),
@@ -974,7 +974,7 @@ class _BankBadge extends StatelessWidget {
         name,
         style: const TextStyle(
           color: accent,
-          fontWeight: FontWeight.w900,
+          fontWeight: NataloWeight.strong,
           fontSize: NataloTextSize.body,
           letterSpacing: 0.5,
         ),
@@ -1027,7 +1027,7 @@ class _BcaTransferSteps extends StatelessWidget {
                 'Cara bayar via BCA mobile',
                 style: TextStyle(
                   color: cs.onSurface,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                   fontSize: NataloTextSize.body,
                 ),
               ),
@@ -1051,7 +1051,7 @@ class _BcaTransferSteps extends StatelessWidget {
                     '${i + 1}',
                     style: const TextStyle(
                       color: _brandBlue,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: NataloWeight.strong,
                       fontSize: NataloTextSize.caption,
                     ),
                   ),
@@ -1065,7 +1065,7 @@ class _BcaTransferSteps extends StatelessWidget {
                       style: TextStyle(
                         color: cs.onSurface,
                         fontSize: NataloTextSize.caption,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: NataloWeight.body,
                         height: 1.35,
                       ),
                     ),
@@ -1171,7 +1171,7 @@ class _ProofThumbnail extends StatelessWidget {
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: NataloTextSize.micro,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                   ],
@@ -1324,7 +1324,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                       style: TextStyle(
                         color: cs.onSurface,
                         fontSize: NataloTextSize.subtitle,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                     Text(
@@ -1332,7 +1332,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
                         fontSize: NataloTextSize.caption,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: NataloWeight.body,
                       ),
                     ),
                   ],
@@ -1469,7 +1469,7 @@ class _PickupInfoCard extends StatelessWidget {
                   style: TextStyle(
                     color: cs.onSurface,
                     fontSize: NataloTextSize.title,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ),
@@ -1487,7 +1487,7 @@ class _PickupInfoCard extends StatelessWidget {
                   style: TextStyle(
                     color: NataloColors.successDark,
                     fontSize: NataloTextSize.caption,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ),
@@ -1499,7 +1499,7 @@ class _PickupInfoCard extends StatelessWidget {
             style: TextStyle(
               color: NataloColors.primaryDark,
               fontSize: NataloTextSize.bodyLg,
-              fontWeight: FontWeight.w800,
+              fontWeight: NataloWeight.strong,
             ),
           ),
           const SizedBox(height: 20),
@@ -1573,7 +1573,7 @@ class _PickupGoogleMapsButton extends StatelessWidget {
         ),
         textStyle: const TextStyle(
           fontSize: NataloTextSize.subtitle,
-          fontWeight: FontWeight.w800,
+          fontWeight: NataloWeight.strong,
         ),
       ),
     );
@@ -1624,7 +1624,7 @@ class _ReadyPickupNoticeCard extends StatelessWidget {
                   style: TextStyle(
                     color: cs.onSurface,
                     fontSize: NataloTextSize.bodyLg,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -1633,7 +1633,7 @@ class _ReadyPickupNoticeCard extends StatelessWidget {
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     fontSize: NataloTextSize.caption,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: NataloWeight.body,
                   ),
                 ),
               ],
@@ -1727,7 +1727,7 @@ class _PickupCodeBox extends StatelessWidget {
                   style: TextStyle(
                     color: NataloColors.successDark,
                     fontSize: NataloTextSize.body,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ],
@@ -1738,8 +1738,12 @@ class _PickupCodeBox extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: NataloColors.successDark,
-                fontSize: hasCode ? 28 : 15,
-                fontWeight: FontWeight.w900,
+                // Dulu 28 — tidak ada di skala. Dipilih headline (24), BUKAN
+                // display (32): display disediakan untuk layar sukses penuh,
+                // sedangkan ini kartu di tengah halaman. letterSpacing 3 yang
+                // menjaga kodenya tetap menonjol, bukan ukurannya.
+                fontSize: hasCode ? NataloTextSize.headline : NataloTextSize.bodyLg,
+                fontWeight: NataloWeight.strong,
                 letterSpacing: hasCode ? 3 : 0,
                 height: 1.15,
               ),
@@ -1754,7 +1758,7 @@ class _PickupCodeBox extends StatelessWidget {
                 color: NataloColors.successDark,
                 fontSize: NataloTextSize.caption,
                 height: 1.4,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
               ),
             ),
             if (badge != null) ...[
@@ -1778,7 +1782,7 @@ class _PickupCodeBox extends StatelessWidget {
                       style: TextStyle(
                         color: badge.fg,
                         fontSize: NataloTextSize.caption,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                   ],
@@ -1846,7 +1850,7 @@ class _DeliveryAddressCard extends StatelessWidget {
             style: TextStyle(
               color: cs.onSurface,
               fontSize: NataloTextSize.title,
-              fontWeight: FontWeight.w800,
+              fontWeight: NataloWeight.strong,
             ),
           ),
           const SizedBox(height: 20),
@@ -1917,7 +1921,7 @@ class _InfoIconRow extends StatelessWidget {
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
                   fontSize: NataloTextSize.body,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
               const SizedBox(height: 4),
@@ -1927,7 +1931,7 @@ class _InfoIconRow extends StatelessWidget {
                   color: Theme.of(context).colorScheme.onSurface,
                   fontSize: NataloTextSize.bodyLg,
                   height: 1.45,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: NataloWeight.body,
                 ),
               ),
             ],
@@ -1965,7 +1969,7 @@ class _SectionTitle extends StatelessWidget {
                 style: TextStyle(
                   color: cs.onSurface,
                   fontSize: NataloTextSize.subtitle,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
               Text(
@@ -1973,7 +1977,7 @@ class _SectionTitle extends StatelessWidget {
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: NataloTextSize.caption,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: NataloWeight.body,
                 ),
               ),
             ],
@@ -2031,7 +2035,7 @@ class _CopyRow extends StatelessWidget {
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     fontSize: NataloTextSize.caption,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -2039,8 +2043,8 @@ class _CopyRow extends StatelessWidget {
                   value,
                   style: TextStyle(
                     color: strong ? _brandBlue : cs.onSurface,
-                    fontSize: strong ? 20 : 16,
-                    fontWeight: FontWeight.w900,
+                    fontSize: strong ? NataloTextSize.title : NataloTextSize.subtitle,
+                    fontWeight: NataloWeight.strong,
                     fontFamily: monospace ? 'monospace' : null,
                   ),
                 ),
@@ -2051,7 +2055,7 @@ class _CopyRow extends StatelessWidget {
                     style: TextStyle(
                       color: cs.onSurfaceVariant,
                       fontSize: NataloTextSize.caption,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: NataloWeight.body,
                     ),
                   ),
                 ],
@@ -2148,7 +2152,7 @@ class _OrderHeader extends StatelessWidget {
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: NataloTextSize.title,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                         const SizedBox(height: 3),
@@ -2168,7 +2172,7 @@ class _OrderHeader extends StatelessWidget {
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.78),
                             fontSize: NataloTextSize.caption,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                       ],
@@ -2187,7 +2191,7 @@ class _OrderHeader extends StatelessWidget {
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.68),
                   fontSize: NataloTextSize.caption,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
               const SizedBox(height: 4),
@@ -2201,7 +2205,7 @@ class _OrderHeader extends StatelessWidget {
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: NataloTextSize.title,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                   ),
@@ -2292,7 +2296,7 @@ class _HeaderMetric extends StatelessWidget {
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.66),
             fontSize: NataloTextSize.micro,
-            fontWeight: FontWeight.w800,
+            fontWeight: NataloWeight.strong,
           ),
         ),
         const SizedBox(height: 4),
@@ -2304,7 +2308,7 @@ class _HeaderMetric extends StatelessWidget {
           style: const TextStyle(
             color: Colors.white,
             fontSize: NataloTextSize.body,
-            fontWeight: FontWeight.w900,
+            fontWeight: NataloWeight.strong,
           ),
         ),
       ],
@@ -2358,7 +2362,7 @@ class _OrderItemsCard extends StatelessWidget {
                       style: TextStyle(
                         color: cs.onSurface,
                         fontSize: NataloTextSize.subtitle,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -2367,7 +2371,7 @@ class _OrderItemsCard extends StatelessWidget {
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
                         fontSize: NataloTextSize.caption,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: NataloWeight.body,
                       ),
                     ),
                   ],
@@ -2396,7 +2400,7 @@ class _OrderItemsCard extends StatelessWidget {
                 'Item pesanan belum tersedia di response API.',
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: NataloWeight.body,
                 ),
               ),
             )
@@ -2534,7 +2538,7 @@ class _OrderProductTileState extends State<_OrderProductTile> {
                           style: TextStyle(
                             color: cs.onSurface,
                             fontSize: NataloTextSize.body,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                         const SizedBox(height: 5),
@@ -2564,7 +2568,7 @@ class _OrderProductTileState extends State<_OrderProductTile> {
                                 style: TextStyle(
                                   color: cs.onSurfaceVariant,
                                   fontSize: NataloTextSize.caption,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: NataloWeight.strong,
                                 ),
                               ),
                             ),
@@ -2572,7 +2576,7 @@ class _OrderProductTileState extends State<_OrderProductTile> {
                               formatRupiah(subtotal),
                               style: const TextStyle(
                                 color: _brandBlue,
-                                fontWeight: FontWeight.w900,
+                                fontWeight: NataloWeight.strong,
                               ),
                             ),
                           ],
@@ -2689,7 +2693,7 @@ class _MiniChip extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: NataloTextSize.caption,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
               ),
             ),
           ),
@@ -2837,7 +2841,7 @@ class _SummaryLine extends StatelessWidget {
               label,
               style: TextStyle(
                 color: strong ? cs.onSurface : cs.onSurfaceVariant,
-                fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
+                fontWeight: strong ? NataloWeight.strong : NataloWeight.body,
               ),
             ),
           ),
@@ -2845,8 +2849,8 @@ class _SummaryLine extends StatelessWidget {
             value,
             style: TextStyle(
               color: valueColor ?? (strong ? _brandBlue : cs.onSurface),
-              fontWeight: FontWeight.w900,
-              fontSize: strong ? 18 : 14,
+              fontWeight: NataloWeight.strong,
+              fontSize: strong ? NataloTextSize.title : NataloTextSize.bodyLg,
             ),
           ),
         ],
@@ -2884,7 +2888,7 @@ class _OngkirLine extends StatelessWidget {
               'Ongkir',
               style: TextStyle(
                 color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.body,
               ),
             ),
           ),
@@ -2893,7 +2897,7 @@ class _OngkirLine extends StatelessWidget {
               formatRupiah(shippingCost),
               style: TextStyle(
                 color: cs.onSurface,
-                fontWeight: FontWeight.w900,
+                fontWeight: NataloWeight.strong,
                 fontSize: NataloTextSize.bodyLg,
               ),
             )
@@ -2902,7 +2906,7 @@ class _OngkirLine extends StatelessWidget {
               formatRupiah(originalShipping),
               style: TextStyle(
                 color: cs.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 fontSize: NataloTextSize.body,
                 decoration: TextDecoration.lineThrough,
               ),
@@ -2912,7 +2916,7 @@ class _OngkirLine extends StatelessWidget {
               isFree ? 'GRATIS' : formatRupiah(shippingCost),
               style: TextStyle(
                 color: isFree ? NataloColors.successDark : cs.onSurface,
-                fontWeight: FontWeight.w900,
+                fontWeight: NataloWeight.strong,
                 fontSize: NataloTextSize.bodyLg,
               ),
             ),
@@ -2959,7 +2963,7 @@ class _VoucherUsageList extends StatelessWidget {
                 style: TextStyle(
                   color: NataloColors.infoDark,
                   fontSize: NataloTextSize.caption,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                   letterSpacing: 0.3,
                 ),
               ),
@@ -2976,7 +2980,7 @@ class _VoucherUsageList extends StatelessWidget {
                     style: TextStyle(
                       color: NataloColors.successDark,
                       fontSize: NataloTextSize.caption,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                   Expanded(
@@ -2988,7 +2992,7 @@ class _VoucherUsageList extends StatelessWidget {
                             style: const TextStyle(
                               color: NataloColors.infoDark,
                               fontSize: NataloTextSize.caption,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: NataloWeight.body,
                             ),
                           ),
                           TextSpan(
@@ -2996,7 +3000,7 @@ class _VoucherUsageList extends StatelessWidget {
                             style: const TextStyle(
                               color: NataloColors.textPrimary,
                               fontSize: NataloTextSize.caption,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: NataloWeight.strong,
                               fontFamily: 'monospace',
                             ),
                           ),
@@ -3009,7 +3013,7 @@ class _VoucherUsageList extends StatelessWidget {
                     style: const TextStyle(
                       color: NataloColors.dangerDark,
                       fontSize: NataloTextSize.caption,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ],
@@ -3258,7 +3262,7 @@ class _CancelOrderCard extends StatelessWidget {
                   style: TextStyle(
                     color: cs.onSurface,
                     fontSize: NataloTextSize.bodyLg,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -3267,7 +3271,7 @@ class _CancelOrderCard extends StatelessWidget {
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     fontSize: NataloTextSize.caption,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: NataloWeight.body,
                   ),
                 ),
               ],
@@ -3287,7 +3291,7 @@ class _CancelOrderCard extends StatelessWidget {
                 ),
                 textStyle: const TextStyle(
                   fontSize: NataloTextSize.body,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
               child: loading
@@ -3395,7 +3399,7 @@ class _ShippingInfoCard extends StatelessWidget {
                       style: TextStyle(
                         color: cs.onSurface,
                         fontSize: NataloTextSize.bodyLg,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                     Text(
@@ -3405,7 +3409,7 @@ class _ShippingInfoCard extends StatelessWidget {
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
                         fontSize: NataloTextSize.caption,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: NataloWeight.body,
                       ),
                     ),
                   ],
@@ -3435,7 +3439,7 @@ class _ShippingInfoCard extends StatelessWidget {
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
                         fontSize: NataloTextSize.caption,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: NataloWeight.body,
                       ),
                     ),
                   ),
@@ -3444,7 +3448,7 @@ class _ShippingInfoCard extends StatelessWidget {
                     style: TextStyle(
                       color: cs.onSurface,
                       fontSize: NataloTextSize.body,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: NataloWeight.strong,
                       fontFamily: 'monospace',
                     ),
                   ),
@@ -3457,7 +3461,7 @@ class _ShippingInfoCard extends StatelessWidget {
               style: TextStyle(
                 color: cs.onSurfaceVariant,
                 fontSize: NataloTextSize.caption,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.body,
               ),
             ),
             const SizedBox(height: 6),
@@ -3480,7 +3484,7 @@ class _ShippingInfoCard extends StatelessWidget {
                 style: TextStyle(
                   color: cs.onSurface,
                   fontSize: NataloTextSize.caption,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: NataloWeight.body,
                   height: 1.5,
                   fontFamily: 'monospace',
                 ),
@@ -3572,7 +3576,7 @@ class _ConfirmDeliveredCard extends StatelessWidget {
                       style: TextStyle(
                         color: NataloColors.successDark,
                         fontSize: NataloTextSize.bodyLg,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                     SizedBox(height: 2),
@@ -3581,7 +3585,7 @@ class _ConfirmDeliveredCard extends StatelessWidget {
                       style: TextStyle(
                         color: NataloColors.successDark,
                         fontSize: NataloTextSize.caption,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: NataloWeight.body,
                       ),
                     ),
                   ],
@@ -3600,7 +3604,7 @@ class _ConfirmDeliveredCard extends StatelessWidget {
                     ),
                     textStyle: const TextStyle(
                       fontSize: NataloTextSize.body,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                   child: loading
@@ -3636,7 +3640,7 @@ class _ConfirmDeliveredCard extends StatelessWidget {
                     style: const TextStyle(
                       color: NataloColors.successDark,
                       fontSize: NataloTextSize.caption,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: NataloWeight.body,
                     ),
                   ),
                 ),
@@ -3717,7 +3721,7 @@ class _CancellationPendingBanner extends StatelessWidget {
                   style: TextStyle(
                     color: NataloColors.warningDark,
                     fontSize: NataloTextSize.bodyLg,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -3727,7 +3731,7 @@ class _CancellationPendingBanner extends StatelessWidget {
                   style: TextStyle(
                     color: NataloColors.warningDark,
                     fontSize: NataloTextSize.caption,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: NataloWeight.body,
                     height: 1.45,
                   ),
                 ),
@@ -3747,7 +3751,7 @@ class _CancellationPendingBanner extends StatelessWidget {
                       style: const TextStyle(
                         color: NataloColors.warningDark,
                         fontSize: NataloTextSize.caption,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: NataloWeight.body,
                         height: 1.4,
                       ),
                     ),
@@ -3760,7 +3764,7 @@ class _CancellationPendingBanner extends StatelessWidget {
                     style: const TextStyle(
                       color: NataloColors.warningDark,
                       fontSize: NataloTextSize.micro,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: NataloWeight.body,
                     ),
                   ),
                 ],
@@ -3843,7 +3847,7 @@ class _CancellationRejectedBanner extends StatelessWidget {
                   style: TextStyle(
                     color: NataloColors.dangerDark,
                     fontSize: NataloTextSize.bodyLg,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
                 if (rejectReason != null && rejectReason!.isNotEmpty) ...[
@@ -3862,7 +3866,7 @@ class _CancellationRejectedBanner extends StatelessWidget {
                       style: const TextStyle(
                         color: NataloColors.dangerDark,
                         fontSize: NataloTextSize.caption,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: NataloWeight.body,
                         height: 1.45,
                       ),
                     ),
@@ -3875,7 +3879,7 @@ class _CancellationRejectedBanner extends StatelessWidget {
                     style: const TextStyle(
                       color: NataloColors.dangerDark,
                       fontSize: NataloTextSize.caption,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: NataloWeight.body,
                       height: 1.4,
                     ),
                   ),
@@ -3887,7 +3891,7 @@ class _CancellationRejectedBanner extends StatelessWidget {
                     style: const TextStyle(
                       color: NataloColors.dangerDark,
                       fontSize: NataloTextSize.micro,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: NataloWeight.body,
                     ),
                   ),
                 ],
