@@ -24,7 +24,7 @@ dependencies:
   # Native polish — match fitur Capacitor APK (haptics, share sheet, in-app review).
   share_plus: ^10.1.4
   qr_flutter: ^4.1.0
-  haptic_feedback: ^0.5.1+1
+  haptic_feedback: ^0.6.5
   in_app_review: ^2.0.10
   # Deep link handler — terima link share (mis. wa.me share product) dari
   # native intent → buka langsung ke screen yg sesuai.
@@ -68,7 +68,7 @@ dependencies:
   firebase_analytics: ^12.5.0
   # Local notification untuk display foreground push (saat app terbuka).
   # FCM Android tidak auto-show notif kalau app foreground.
-  flutter_local_notifications: ^18.0.1
+  flutter_local_notifications: ^22.3.0
   # Voice search — speech-to-text native (Android SpeechRecognizer + iOS
   # SFSpeechRecognizer). User tap mic di search bar → bicara → transcript
   # otomatis isi field + trigger search. Capacitor WebView pakai
@@ -96,7 +96,7 @@ dependencies:
   # launcher tanpa buka app. Pakai SharedPreferences (native) untuk
   # bridge data Flutter ↔ AppWidgetProvider. PWA Capacitor literally
   # cannot — WebView tidak punya akses ke widget host.
-  home_widget: ^0.7.0
+  home_widget: ^0.9.3
   video_thumbnail: ^0.5.6
   path_provider: ^2.1.5
   tus_client_dart: ^2.5.0
