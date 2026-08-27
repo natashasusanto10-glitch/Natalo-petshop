@@ -6,6 +6,7 @@ import { deleteProductVideo } from "@/lib/product/product-video";
 import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
 import { productSearchWhere } from "@/lib/search";
 import { formatRupiah } from "@/lib/format";
+import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { InlineEditCell } from "@/components/admin/InlineEditCell";
 import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
@@ -80,6 +81,12 @@ export default async function AdminProductsPage({
   const baseWhere = { ...searchWhere, ...categoryWhere, ...brandWhere, ...productIsVisibleWhere() };
   const where = { ...stockWhere, ...baseWhere };
 
+  // Satu titik waktu untuk seluruh render: dipakai filter promo di query
+  // DAN resolveActiveDiscount saat render. Kalau keduanya memanggil
+  // `new Date()` sendiri-sendiri, promo yang berakhir persis di antara
+  // keduanya bisa lolos filter tapi ditolak saat render (atau sebaliknya).
+  const now = new Date();
+
   // ── Fetch counts + produk ────────────────────────────────────
   const [totalAll, totalReady, totalOut, totalArchived, filtered, products] = await Promise.all([
     prisma.product.count({ where: baseWhere }),
@@ -95,7 +102,22 @@ export default async function AdminProductsPage({
         { lastEditedAt: { sort: "desc", nulls: "last" } },
         { createdAt: "desc" },
       ],
-      include: { category: true, brand: true },
+      include: {
+        category: true,
+        brand: true,
+        // Promo Toko yang sedang berjalan. WAJIB ikut: badge "Diskon" di
+        // bawah memakai resolveActiveDiscount — aturan yang SAMA dengan
+        // yang dilihat pelanggan — dan Flash Sale bukan satu-satunya
+        // sumber diskon. Tanpa ini, produk yang sedang promo toko akan
+        // tampil polos di admin padahal pelanggan melihat harga coret.
+        discountItems: {
+          where: {
+            isItemActive: true,
+            discount: { isActive: true, startsAt: { lte: now }, endsAt: { gt: now } },
+          },
+          select: { variantId: true, discountedPrice: true, discount: { select: { endsAt: true } } },
+        },
+      },
       skip: (currentPage - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
@@ -386,9 +408,20 @@ export default async function AdminProductsPage({
           />
         ) : (
           products.map((product) => {
-            const hasDiscount =
-              product.discountPrice !== null && product.discountPrice < product.price;
-            const displayPrice = hasDiscount ? product.discountPrice! : product.price;
+            // Aturan yang SAMA dengan yang dilihat pelanggan. Dulu di sini
+            // cuma `discountPrice !== null && discountPrice < price` —
+            // tanpa cek tanggal sama sekali, jadi Flash Sale yang sudah
+            // lewat berbulan-bulan tetap tampil "Diskon" di admin padahal
+            // pelanggan melihat harga normal. Kalau ada beda antara apa
+            // yang dilihat admin dan pelanggan, yang salah admin-nya.
+            const activeDiscount = resolveActiveDiscount(
+              product.price,
+              { discountPrice: product.discountPrice, endsAt: product.flashSaleEndsAt },
+              product.discountItems
+                .filter((it) => it.variantId === null)
+                .map((it) => ({ discountedPrice: it.discountedPrice, endsAt: it.discount.endsAt })),
+              now,
+            );
             const isOut = product.stock === 0;
             const isArchived = !product.isActive && product.stock > 0;
             const isRecentlyEdited =
@@ -580,9 +613,10 @@ export default async function AdminProductsPage({
                     <div>
                       <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Harga</p>
                       <div className="mt-1">{priceCell}</div>
-                      {hasDiscount && !product.hasVariants && (
+                      {activeDiscount && !product.hasVariants && (
                         <p className="mt-1 px-2 text-[11px] text-natalo-700">
-                          Diskon: {formatRupiah(product.discountPrice!)}
+                          {activeDiscount.source === "FLASH_SALE" ? "Flash Sale" : "Promo Toko"}:{" "}
+                          {formatRupiah(activeDiscount.effectivePrice)}
                         </p>
                       )}
                     </div>
@@ -644,9 +678,10 @@ export default async function AdminProductsPage({
 
                   <div className="pt-1">
                     {priceCell}
-                    {hasDiscount && !product.hasVariants && (
+                    {activeDiscount && !product.hasVariants && (
                       <p className="mt-1 px-2 text-xs text-natalo-700">
-                        Diskon: {formatRupiah(product.discountPrice!)}
+                        {activeDiscount.source === "FLASH_SALE" ? "Flash Sale" : "Promo Toko"}:{" "}
+                        {formatRupiah(activeDiscount.effectivePrice)}
                       </p>
                     )}
                   </div>
