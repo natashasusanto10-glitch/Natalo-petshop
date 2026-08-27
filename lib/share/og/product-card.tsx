@@ -33,24 +33,39 @@ export function buildProductShareCardModel(input: ProductShareCardInput): Produc
 }
 
 /**
- * Kartu pratinjau berbagi produk — foto produk memenuhi kartu.
+ * Kartu pratinjau berbagi produk — foto produk FULL-BLEED di kanvas persegi.
  *
- * Layout lama membelah kartu jadi dua: foto di kiri, panel biru berisi nama +
- * harga + stok di kanan. Dua masalah:
+ * Sejarah tiga tahap, supaya tidak ada yang mengulang langkah mundur:
  *
- * 1. BUG KONTRAS. Nama produk tidak diberi warna sendiri, jadi mewarisi
- *    #10213D dari elemen induk dan tampil di atas panel #0F2F63 — kontrasnya
- *    1,23:1 (minimum layak baca 3:1), praktis tak terbaca. Diukur langsung
- *    dari gambar produksi. Karena itu SEMUA teks di sini diberi warna
- *    eksplisit; jangan pernah mengandalkan warna warisan di kartu OG.
+ * 1. Layout paling awal membelah kartu: foto di kiri, panel biru berisi nama
+ *    + harga + stok di kanan. BUG KONTRAS: nama produk tidak diberi warna
+ *    sendiri, jadi mewarisi #10213D dan tampil di atas panel #0F2F63 —
+ *    kontras 1,23:1 (minimum layak baca 3:1), praktis tak terbaca. Diukur
+ *    dari gambar produksi. Karena itu SEMUA teks di berkas ini WAJIB punya
+ *    warna eksplisit; jangan pernah mengandalkan warna warisan di kartu OG.
  *
- * 2. Separuh kartu terpakai teks yang sebetulnya mubazir: Instagram/WhatsApp
- *    sudah menampilkan judul dan deskripsi sendiri di bawah kartu. Nama dan
- *    label stok karena itu dibuang dari gambar (tetap ada di model, dipakai
- *    metadata halaman), menyisakan foto produk sebagai bintangnya.
+ * 2. Lalu foto dibuat memenuhi kartu 1200x630, menyisakan chip merek di
+ *    kiri-atas dan chip harga di kanan-bawah. Masih kalah jelas dari Shopee:
+ *    kanvas landscape membuat iMessage/WhatsApp menggambar kartu PENDEK, dan
+ *    foto produk 1:1 menyusut ke ~550px diapit dua bidang putih lebar.
  *
- * Yang tersisa di atas foto hanya dua penanda kecil: chip merek di kiri-atas
- * dan harga di kanan-bawah (plus badge diskon kalau ada).
+ * 3. Sekarang: kanvas PERSEGI 1200x1200, padding nol, tanpa chip apa pun.
+ *
+ * Kenapa chip dibuang — dibuktikan lewat render mockup, bukan dugaan:
+ * - Chip merek MUBAZIR. Foto template katalog ini sudah memuat pita
+ *   "Natalo Petshop & Aquarium · OFFICIAL STORE" yang jauh lebih bagus;
+ *   chip justru menimpanya.
+ * - Chip harga SELALU menabrak isi foto. Template memakai keempat sudut
+ *   untuk badge (varian, Grain Free, No Pork, "1/6") — tidak ada sudut
+ *   aman. Harga tetap terbaca: klien chat menampilkannya di teks di bawah
+ *   kartu, dari `description` metadata halaman.
+ *
+ * `buildProductShareCardModel` SENGAJA dipertahankan lengkap (nama, harga,
+ * diskon, stok) walau gambar tidak memakainya — model itu dipakai metadata
+ * halaman dan diuji terpisah.
+ *
+ * TETAP objectFit contain, JANGAN cover: foto non-1:1 akan terpotong tepat
+ * di pita atas dan banner bawah template toko.
  */
 export function renderProductShareCard(input: ProductShareCardInput) {
   const card = buildProductShareCardModel(input);
@@ -73,77 +88,16 @@ export function renderProductShareCard(input: ProductShareCardInput) {
           display: "flex",
           height: "100%",
           justifyContent: "center",
-          padding: 40,
           width: "100%",
         }}
       >
         {imageUrl ? (
-          // contain, bukan cover: foto produk umumnya 1:1 sedangkan kartu
-          // 1200x630 — cover akan memotong atas-bawah produknya.
           <img alt="" height="100%" src={imageUrl} style={{ height: "100%", objectFit: "contain", width: "100%" }} width="100%" />
         ) : (
-          <div style={{ color: "#1E5FBF", display: "flex", fontSize: 160, fontWeight: 900 }}>N</div>
+          // Fallback saat foto gagal diambil — huruf N besar di kanvas
+          // persegi, warna eksplisit (lihat catatan bug kontras di atas).
+          <div style={{ color: "#1E5FBF", display: "flex", fontSize: 300, fontWeight: 900 }}>N</div>
         )}
-      </div>
-
-      <div
-        style={{
-          alignItems: "center",
-          background: "#1E5FBF",
-          borderRadius: 999,
-          color: "#FFFFFF",
-          display: "flex",
-          fontSize: 26,
-          fontWeight: 800,
-          left: 44,
-          padding: "13px 26px",
-          position: "absolute",
-          top: 40,
-        }}
-      >
-        Natalo Petshop
-      </div>
-
-      <div
-        style={{
-          alignItems: "center",
-          bottom: 40,
-          display: "flex",
-          position: "absolute",
-          right: 44,
-        }}
-      >
-        {card.discountLabel ? (
-          <div
-            style={{
-              alignItems: "center",
-              background: "#F0446A",
-              borderRadius: 999,
-              color: "#FFFFFF",
-              display: "flex",
-              fontSize: 24,
-              fontWeight: 800,
-              marginRight: 12,
-              padding: "12px 22px",
-            }}
-          >
-            {card.discountLabel}
-          </div>
-        ) : null}
-        <div
-          style={{
-            alignItems: "center",
-            background: "#0A1F40",
-            borderRadius: 999,
-            color: "#FFFFFF",
-            display: "flex",
-            fontSize: 38,
-            fontWeight: 900,
-            padding: "14px 30px",
-          }}
-        >
-          {card.priceLabel}
-        </div>
       </div>
     </div>
   );

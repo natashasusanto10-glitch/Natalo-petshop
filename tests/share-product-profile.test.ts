@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import {
   buildProductShareMetadata,
@@ -269,7 +270,7 @@ test("kartu OG produk: setiap teks punya warna eksplisit (tidak mewarisi)", () =
   );
 });
 
-test("kartu OG produk: nama & stok tidak lagi digambar (dipakai metadata, bukan gambar)", () => {
+test("kartu OG produk: full-bleed tanpa hamparan apa pun (foto tak boleh tertutup)", () => {
   const product = buildPublicShareProduct({
     id: "p-og-3",
     slug: "nama-panjang",
@@ -280,12 +281,48 @@ test("kartu OG produk: nama & stok tidak lagi digambar (dipakai metadata, bukan 
   if (!product) return;
 
   const tree = JSON.stringify(renderProductShareCard({ ...product, renderedImageUrl: null }));
-  assert.doesNotMatch(tree, /Catto Plus Jelly/, "nama produk seharusnya tidak digambar di kartu");
-  assert.doesNotMatch(tree, /Stok tersedia|Stok terbatas/, "label stok seharusnya tidak digambar di kartu");
-  assert.match(tree, /Natalo Petshop/, "chip merek harus ada");
-  assert.match(tree, /HEMAT \d+%/, "badge diskon harus ada saat produk diskon");
-  // Model tetap menyediakan keduanya untuk metadata halaman.
+  // Semua teks ini muncul lagi di gambar = ada elemen yang menutupi foto.
+  // Foto template katalog memakai KEEMPAT sudut untuk badge (varian,
+  // Grain Free, No Pork, "1/6"), jadi tidak ada sudut aman — dibuktikan
+  // lewat render mockup, bukan dugaan.
+  assert.doesNotMatch(tree, /Catto Plus Jelly/, "nama produk tidak digambar");
+  assert.doesNotMatch(tree, /Stok tersedia|Stok terbatas/, "label stok tidak digambar");
+  assert.doesNotMatch(tree, /Natalo Petshop/, "chip merek dibuang — pita foto template sudah memuatnya");
+  assert.doesNotMatch(tree, /HEMAT \d+%/, "badge diskon dibuang — menabrak badge bawaan foto");
+  assert.doesNotMatch(tree, /Rp/, "chip harga dibuang — harga tampil di teks bawah kartu");
+  // Padding WAJIB nol: tepi putih membuat foto mengecil, kebalikan tujuan.
+  assert.doesNotMatch(tree, /"padding"/, "kartu harus full-bleed, tanpa padding");
+
+  // Model tetap lengkap — dipakai metadata halaman, bukan gambar.
   const model = buildProductShareCardModel({ ...product, renderedImageUrl: null });
   assert.match(model.name, /Catto Plus Jelly/);
   assert.ok(model.stockLabel.length > 0);
+  assert.match(model.priceLabel, /Rp/);
+  assert.match(String(model.discountLabel), /HEMAT \d+%/);
+});
+
+test("kartu OG produk: ukuran render & og:image metadata WAJIB sinkron", () => {
+  // Klien chat menata kartu memakai width/height yang DIDEKLARASIKAN di
+  // metadata. Kalau gambar dirender persegi tapi metadata masih bilang
+  // 1200x630, kartunya ditata dengan rasio salah — dan tidak ada error
+  // apa pun yang muncul. Dua angka di dua berkas berbeda, mudah lupa.
+  const routeSrc = readFileSync(
+    new URL("../app/api/share/og/product/[slug]/route.ts", import.meta.url),
+    "utf8",
+  );
+  const metaSrc = readFileSync(
+    new URL("../lib/share/product-share-data.ts", import.meta.url),
+    "utf8",
+  );
+
+  const route = routeSrc.match(/IMAGE_OPTIONS = \{ height: (\d+), width: (\d+) \}/);
+  assert.ok(route, "IMAGE_OPTIONS tidak ditemukan di rute OG produk");
+  const meta = metaSrc.match(/images: \[\{ url: image, width: (\d+), height: (\d+)/);
+  assert.ok(meta, "og:image metadata produk tidak ditemukan");
+
+  const [routeH, routeW] = [Number(route[1]), Number(route[2])];
+  const [metaW, metaH] = [Number(meta[1]), Number(meta[2])];
+  assert.equal(routeW, metaW, "lebar rute vs metadata berbeda");
+  assert.equal(routeH, metaH, "tinggi rute vs metadata berbeda");
+  assert.equal(routeW, routeH, "kartu produk harus PERSEGI — lihat catatan di route.ts");
 });

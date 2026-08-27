@@ -143,7 +143,10 @@ export function buildProductShareMetadata(product: PublicShareProduct, siteUrl: 
       description,
       url: canonical,
       siteName: BRAND_NAME,
-      images: [{ url: image, width: 1200, height: 630, alt: product.name }],
+      // WAJIB sinkron dengan IMAGE_OPTIONS di
+      // app/api/share/og/product/[slug]/route.ts — kartu produk sengaja
+      // PERSEGI supaya foto tampil besar di iMessage/WhatsApp.
+      images: [{ url: image, width: 1200, height: 1200, alt: product.name }],
     },
     twitter: {
       card: "summary_large_image",

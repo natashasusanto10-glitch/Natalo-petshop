@@ -8,7 +8,19 @@ import { fetchSafeOgImageData, resolveOgImageCachePolicy } from "@/lib/share/og-
 export const runtime = "nodejs";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.natalopetshop.com";
-const IMAGE_OPTIONS = { height: 630, width: 1200 } as const;
+/**
+ * PERSEGI, bukan 1200x630 seperti kartu feed/profil.
+ *
+ * iMessage/WhatsApp menentukan TINGGI kartu pratinjau dari rasio gambar.
+ * Kanvas landscape selalu menghasilkan kartu pendek — foto produk 1:1
+ * (katalog ini: 1254x1254) menyusut ke ~550px tinggi dan diapit dua bidang
+ * putih lebar, persis keluhan "gambar produk kurang jelas & kecil".
+ *
+ * WAJIB sinkron dengan width/height di og:image metadata
+ * (lib/share/product-share-data.ts) — kalau beda, klien chat menata kartu
+ * pakai rasio yang salah.
+ */
+const IMAGE_OPTIONS = { height: 1200, width: 1200 } as const;
 
 function publicImageUrl(value: string | null) {
   if (!value) return null;
