@@ -50,13 +50,16 @@ class BiometricService {
     String reason = 'Verifikasi untuk login ke Natalo Petshop',
   }) async {
     try {
+      // local_auth 3: wrapper AuthenticationOptions dibuang, opsi jadi
+      // parameter bernama langsung (per CHANGELOG resmi):
+      // - stickyAuth      -> persistAcrossBackgrounding
+      // - useErrorDialogs -> DIHAPUS tanpa pengganti; kegagalan non-user
+      //   kini melempar LocalAuthException — sudah tertangkap catch di
+      //   bawah yang mengembalikan false.
       return await _auth.authenticate(
         localizedReason: reason,
-        options: const AuthenticationOptions(
-          biometricOnly: false, // izinkan PIN/pattern fallback
-          stickyAuth: true,
-          useErrorDialogs: true,
-        ),
+        biometricOnly: false, // izinkan PIN/pattern fallback
+        persistAcrossBackgrounding: true,
       );
     } catch (e) {
       if (kDebugMode) debugPrint('[biometric] auth failed: $e');

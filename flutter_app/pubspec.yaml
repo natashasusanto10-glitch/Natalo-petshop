@@ -83,7 +83,7 @@ dependencies:
   # sidik jari" → next login cukup tap & touch sensor. PWA WebView TIDAK
   # bisa akses biometric hardware sama sekali (Web Authentication API
   # patchy & butuh server challenge).
-  local_auth: ^2.3.0
+  local_auth: ^3.0.2
   # Connectivity status — detect kapan device offline / network type.
   # Tampilkan offline banner kalau koneksi hilang, hide otomatis saat
   # reconnect. PWA pakai navigator.onLine yang patchy di WebView Android.
