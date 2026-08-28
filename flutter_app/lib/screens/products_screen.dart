@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 
 // sample_products dihapus dari import — products screen sekarang pure
 // API-driven dari Capacitor backend. Loading state pakai skeleton grid,
@@ -1362,8 +1363,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
                               'Sudah sampai akhir katalog',
                               style: TextStyle(
                                 color: cs.onSurfaceVariant,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                                fontSize: NataloTextSize.caption,
+                                fontWeight: NataloWeight.body,
                               ),
                             ),
                           ),
@@ -1500,8 +1501,8 @@ class _CatalogHeader extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: NataloTextSize.headline,
+                                  fontWeight: NataloWeight.strong,
                                   height: 1.2,
                                 ),
                               ),
@@ -1709,8 +1710,11 @@ class _DockIconButton extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white,
+                        // SENGAJA literal (bukan lupa token): angka dalam
+                        // lingkaran badge berukuran TETAP — micro (11) akan
+                        // meluber dari wadahnya.
                         fontSize: 9.5,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: NataloWeight.strong,
                         height: 1,
                       ),
                     ),
@@ -1751,8 +1755,8 @@ class _ProductCountAndSortRow extends StatelessWidget {
               TextSpan(
                 // Di atas hero biru: teks terang, angka putih tebal.
                 style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
+                  fontSize: NataloTextSize.bodyLg,
+                  fontWeight: NataloWeight.onMedia,
                   color: NataloColors.onHeroBright,
                 ),
                 children: [
@@ -1761,7 +1765,7 @@ class _ProductCountAndSortRow extends StatelessWidget {
                     text: '$visibleCount',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                   if (totalCount > visibleCount) ...[
@@ -1770,7 +1774,7 @@ class _ProductCountAndSortRow extends StatelessWidget {
                       text: '$totalCount',
                       style: const TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                   ],
@@ -1848,8 +1852,8 @@ class _HeaderActionPill extends StatelessWidget {
               Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
+                  fontSize: NataloTextSize.bodyLg,
+                  fontWeight: NataloWeight.strong,
                   color: Colors.white,
                 ),
               ),
@@ -1885,8 +1889,10 @@ class _HeaderActionPill extends StatelessWidget {
               badge! > 9 ? '9+' : '$badge',
               style: const TextStyle(
                 color: Colors.white,
+                // SENGAJA literal — badge lingkaran tetap, sama seperti
+                // badge 9.5 di _DockIconButton.
                 fontSize: 10,
-                fontWeight: FontWeight.w900,
+                fontWeight: NataloWeight.strong,
                 height: 1,
               ),
             ),
@@ -1945,8 +1951,8 @@ class _EmptyProductsState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: cs.onSurface,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
+                fontSize: NataloTextSize.title,
+                fontWeight: NataloWeight.strong,
               ),
             ),
             const SizedBox(height: 8),
@@ -1955,7 +1961,7 @@ class _EmptyProductsState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: cs.onSurfaceVariant,
-                fontSize: 14,
+                fontSize: NataloTextSize.bodyLg,
                 height: 1.4,
               ),
             ),
@@ -1974,7 +1980,7 @@ class _EmptyProductsState extends StatelessWidget {
               ),
               child: const Text(
                 'Reset Filter',
-                style: TextStyle(fontWeight: FontWeight.w900),
+                style: TextStyle(fontWeight: NataloWeight.strong),
               ),
             ),
             if (recentProducts.isNotEmpty) ...[
@@ -1985,8 +1991,8 @@ class _EmptyProductsState extends StatelessWidget {
                   'Terakhir kamu lihat',
                   style: TextStyle(
                     color: cs.onSurface,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
+                    fontSize: NataloTextSize.bodyLg,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ),
@@ -2058,8 +2064,8 @@ class _RecentlyViewedMiniCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: cs.onSurface,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+                fontSize: NataloTextSize.micro,
+                fontWeight: NataloWeight.strong,
                 height: 1.25,
               ),
             ),
@@ -2070,8 +2076,8 @@ class _RecentlyViewedMiniCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: NataloColors.primary,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
+                fontSize: NataloTextSize.caption,
+                fontWeight: NataloWeight.strong,
               ),
             ),
           ],
@@ -2129,9 +2135,10 @@ extension _ProductFilterModeMeta on _ProductFilterMode {
             'NEW',
             style: TextStyle(
               color: Colors.white,
+              // SENGAJA literal — badge lingkaran tetap.
               fontSize: 8.5,
               height: 1,
-              fontWeight: FontWeight.w900,
+              fontWeight: NataloWeight.strong,
               letterSpacing: 0.1,
             ),
           ),
@@ -2366,8 +2373,8 @@ class ProductFilterChip extends StatelessWidget {
                       color: selected
                           ? NataloColors.heroMid
                           : NataloColors.onHeroBright,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                      fontSize: NataloTextSize.bodyLg,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ),
@@ -2486,9 +2493,9 @@ class _ProductsPageProductCard extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: NataloTextSize.body,
                             height: 1.25,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: NataloWeight.strong,
                             color: cs.onSurface,
                           ),
                         ),
@@ -2575,8 +2582,8 @@ class _ProductPriceRow extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w900,
+          fontSize: NataloTextSize.subtitle,
+          fontWeight: NataloWeight.strong,
           color: cs.onSurface,
           height: 1.1,
         ),
@@ -2593,8 +2600,8 @@ class _ProductPriceRow extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
+            fontSize: NataloTextSize.body,
+            fontWeight: NataloWeight.body,
             color: cs.onSurfaceVariant,
             height: 1.05,
             decoration: TextDecoration.lineThrough,
@@ -2607,8 +2614,8 @@ class _ProductPriceRow extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w900,
+            fontSize: NataloTextSize.subtitle,
+            fontWeight: NataloWeight.strong,
             color: Color(0xFFE11D48),
             height: 1.05,
           ),
@@ -2698,8 +2705,8 @@ class _ProductPromoBadge extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+                fontSize: NataloTextSize.micro,
+                fontWeight: NataloWeight.strong,
                 color: color,
                 height: 1,
               ),
@@ -2737,8 +2744,8 @@ class _ProductRatingSoldRow extends StatelessWidget {
             Text(
               product.rating.toStringAsFixed(1),
               style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
+                fontSize: NataloTextSize.micro,
+                fontWeight: NataloWeight.body,
                 color: cs.onSurfaceVariant,
                 height: 1,
               ),
@@ -2749,7 +2756,7 @@ class _ProductRatingSoldRow extends StatelessWidget {
             Text(
               '•',
               style: TextStyle(
-                fontSize: 11,
+                fontSize: NataloTextSize.micro,
                 color: cs.onSurfaceVariant,
                 height: 1,
               ),
@@ -2763,8 +2770,8 @@ class _ProductRatingSoldRow extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
+                  fontSize: NataloTextSize.micro,
+                  fontWeight: NataloWeight.body,
                   color: cs.onSurfaceVariant,
                   height: 1,
                 ),
@@ -2860,8 +2867,8 @@ class _ProductDiscountBadge extends StatelessWidget {
         '-$value%',
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
+          fontSize: NataloTextSize.caption,
+          fontWeight: NataloWeight.strong,
           height: 1,
         ),
       ),
@@ -2896,8 +2903,8 @@ class _ProductVideoBadge extends StatelessWidget {
               _formatVideoDuration(durationSec!),
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontSize: NataloTextSize.micro,
+                fontWeight: NataloWeight.strong,
               ),
             ),
           ],
@@ -3377,8 +3384,8 @@ class _CategoryBottomSheet extends StatelessWidget {
                   'Pilih Kategori',
                   style: TextStyle(
                     color: cs.onSurface,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
+                    fontSize: NataloTextSize.title,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ),
@@ -3457,8 +3464,11 @@ class _CategoryBottomSheetItem extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                    fontSize: NataloTextSize.bodyLg,
+                    // Terpilih vs tidak. Peta buta meratakan keduanya jadi strong dan
+                    // penanda pilihan hilang — jebakan #1 migrasi token.
+                    fontWeight:
+                        isSelected ? NataloWeight.strong : NataloWeight.body,
                     color: isSelected ? const Color(0xFF0D6FE8) : cs.onSurface,
                   ),
                 ),
@@ -3521,8 +3531,8 @@ class _SortBottomSheet extends StatelessWidget {
             Text(
               'Urutkan berdasarkan',
               style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
+                fontSize: NataloTextSize.subtitle,
+                fontWeight: NataloWeight.strong,
                 color: cs.onSurface,
               ),
             ),
@@ -3533,10 +3543,11 @@ class _SortBottomSheet extends StatelessWidget {
                 title: Text(
                   option.$2,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: NataloTextSize.bodyLg,
+                    // Sama seperti sheet kategori: terpilih strong, sisanya body.
                     fontWeight: option.$1 == currentSort
-                        ? FontWeight.w700
-                        : FontWeight.w600,
+                        ? NataloWeight.strong
+                        : NataloWeight.body,
                     color: option.$1 == currentSort
                         ? const Color(0xFF2568C7)
                         : cs.onSurface,
@@ -3709,8 +3720,8 @@ class _FilterSheetState extends State<_FilterSheet> {
                         'Filter',
                         style: TextStyle(
                           color: cs.onSurface,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
+                          fontSize: NataloTextSize.title,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                     ),
@@ -3720,7 +3731,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                         'Reset',
                         style: TextStyle(
                           color: Color(0xFFEF4444),
-                          fontWeight: FontWeight.w800,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                     ),
@@ -3741,16 +3752,16 @@ class _FilterSheetState extends State<_FilterSheet> {
                           _formatPriceShort(_priceRange.start),
                           style: const TextStyle(
                             color: Color(0xFF2568C7),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
+                            fontSize: NataloTextSize.bodyLg,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                         Text(
                           _formatPriceShort(_priceRange.end),
                           style: const TextStyle(
                             color: Color(0xFF2568C7),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
+                            fontSize: NataloTextSize.bodyLg,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                       ],
@@ -3777,8 +3788,8 @@ class _FilterSheetState extends State<_FilterSheet> {
                             '${_selectedBrands.length}/${widget.allBrands.length}',
                             style: TextStyle(
                               color: cs.onSurfaceVariant,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
+                              fontSize: NataloTextSize.caption,
+                              fontWeight: NataloWeight.body,
                             ),
                           ),
                       ],
@@ -3791,8 +3802,8 @@ class _FilterSheetState extends State<_FilterSheet> {
                           'Belum ada brand di katalog.',
                           style: TextStyle(
                             color: cs.onSurfaceVariant,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                            fontSize: NataloTextSize.body,
+                            fontWeight: NataloWeight.body,
                           ),
                         ),
                       )
@@ -3821,7 +3832,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                           'Lihat semua ${widget.allBrands.length} brand →',
                           style: const TextStyle(
                             color: Color(0xFF2568C7),
-                            fontWeight: FontWeight.w800,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                       ),
@@ -3856,8 +3867,8 @@ class _FilterSheetState extends State<_FilterSheet> {
                               '$rating ke atas',
                               style: TextStyle(
                                 color: cs.onSurfaceVariant,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
+                                fontSize: NataloTextSize.bodyLg,
+                                fontWeight: NataloWeight.strong,
                               ),
                             ),
                           ],
@@ -3911,8 +3922,8 @@ class _FilterSheetState extends State<_FilterSheet> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                         textStyle: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
+                          fontSize: NataloTextSize.bodyLg,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                       child: Text(
@@ -3944,8 +3955,8 @@ class _FilterSectionTitle extends StatelessWidget {
       label,
       style: TextStyle(
         color: cs.onSurface,
-        fontSize: 12,
-        fontWeight: FontWeight.w900,
+        fontSize: NataloTextSize.caption,
+        fontWeight: NataloWeight.strong,
         letterSpacing: 0.4,
       ),
     );
@@ -3986,8 +3997,8 @@ class _FilterCheckRow extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: cs.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontSize: NataloTextSize.bodyLg,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
             ),
@@ -4074,8 +4085,8 @@ class _FilterToggleRow extends StatelessWidget {
               label,
               style: TextStyle(
                 color: cs.onSurface,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+                fontSize: NataloTextSize.bodyLg,
+                fontWeight: NataloWeight.strong,
               ),
             ),
           ),
@@ -4194,8 +4205,8 @@ class _ActiveFiltersBar extends StatelessWidget {
               child: const Text(
                 'Hapus',
                 style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
+                  fontSize: NataloTextSize.body,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
             ),
@@ -4228,8 +4239,8 @@ class _ActiveFilterChip extends StatelessWidget {
             label,
             style: const TextStyle(
               color: Color(0xFF2568C7),
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
+              fontSize: NataloTextSize.caption,
+              fontWeight: NataloWeight.strong,
             ),
           ),
           InkWell(
