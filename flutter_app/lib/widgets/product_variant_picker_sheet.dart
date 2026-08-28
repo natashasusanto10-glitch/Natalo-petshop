@@ -79,6 +79,10 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
   String? _error;
   final Map<String, String> _selectedOptions = {};
 
+  /// Dihitung SEKALI saat produk selesai dimuat. Kalau dipanggil di build,
+  /// pemindaian O(opsi × varian) ini terulang tiap kali user menyentuh chip.
+  Map<String, String> _thumbnails = const {};
+
   @override
   void initState() {
     super.initState();
@@ -118,6 +122,7 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
       }
       setState(() {
         _fullProduct = result;
+        _thumbnails = variantOptionThumbnails(result);
         _loading = false;
       });
     } catch (_) {
@@ -151,6 +156,12 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
     otherSelected.remove(attrId);
     for (final variant in product.variants) {
       if (!variant.isActive) continue;
+      // Stok habis = tidak bisa dipilih, mengikuti Detail Produk
+      // (_VariantStockStatus.out saat `variant.stock <= 0`). Tanpa ini
+      // varian sold-out tampil sebagai chip normal, bisa dipilih, dan
+      // masuk keranjang tanpa peringatan — cart_store TIDAK menahannya
+      // karena stok 0 di sana berarti "tidak diketahui", bukan "habis".
+      if (variant.stock <= 0) continue;
       if (!variant.optionIds.contains(optionId)) continue;
       final matchesOthers = otherSelected.entries
           .every((entry) => variant.optionIds.contains(entry.value));
@@ -196,29 +207,35 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
           productMediaViewer: true,
           product: product,
           selectedVariant: variant,
+          // Belum ada varian terpilih → CTA viewer berbunyi "Pilih Varian"
+          // dan hanya menutup viewer (sheet ada tepat di belakangnya, siap
+          // dipilih). Tanpa ini tombolnya berbunyi "+ Keranjang" tapi diam
+          // saja karena _confirm butuh varian.
+          needsVariantSelection: variant == null,
           videoUrl: hasVideo ? product.videoUrl : null,
           videoThumbnailUrl: hasVideo ? product.videoThumbnailUrl : null,
           videoDurationSec: hasVideo ? product.videoDurationSec : null,
           posterImageUrl: product.imageUrl,
           // Tombol "+ Keranjang" di mini bar viewer menjalankan konfirmasi
           // sheet ini, supaya menekan di lapisan mana pun hasilnya sama dan
-          // dua-duanya tertutup sekaligus.
-          onAddToCart: (_, __) => _confirm(popViewerFirst: true),
+          // dua-duanya tertutup sekaligus (viewer menutup dirinya sendiri).
+          onAddToCart: (_, __) => _confirm(),
         ),
       ),
     );
   }
 
-  void _confirm({bool popViewerFirst = false}) {
+  void _confirm() {
     final variant = _matchedVariant;
     final product = _fullProduct;
     if (variant == null || product == null) return;
     AppHaptics.tap();
-    final navigator = Navigator.of(context);
-    // Viewer berdiri DI ATAS sheet, jadi ia harus ditutup lebih dulu —
-    // tanpa ini pop pertama cuma menutup viewer dan sheet tertinggal.
-    if (popViewerFirst) navigator.pop();
-    navigator.pop(
+    // SATU pop saja, juga saat dipanggil dari mini bar viewer:
+    // ImageViewerScreen._handleCta sudah mem-pop dirinya SENDIRI sebelum
+    // memanggil onAddToCart. Pop kedua di sini akan menutup sheet TANPA
+    // hasil lalu menendang layar induk (Keranjang) dari stack.
+    Navigator.pop(
+      context,
       ProductVariantPickResult(product: product, variant: variant),
     );
   }
@@ -281,7 +298,13 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
                       width: double.infinity,
                       height: 52,
                       child: ElevatedButton(
-                        onPressed: variant != null ? _confirm : null,
+                        // Gate stok juga di sini: preselectedVariant (alur
+                        // ganti varian dari keranjang) bisa menunjuk varian
+                        // yang stoknya sudah habis, dan itu melewati
+                        // _isOptionAvailable karena opsinya sudah terpilih.
+                        onPressed: variant != null && variant.stock > 0
+                            ? _confirm
+                            : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: widget.confirmColor,
                           foregroundColor: Colors.white,
@@ -336,14 +359,18 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
     }
     final product = _fullProduct!;
     // Kosong untuk produk 2+ atribut — chip jatuh kembali ke teks polos.
-    final thumbnails = variantOptionThumbnails(product);
+    final thumbnails = _thumbnails;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       children: [
         _VariantSummary(
           product: product,
           variant: _matchedVariant,
-          onZoom: () => _openMediaViewer(product),
+          // Null saat produk tak punya foto sama sekali → tombol perbesar
+          // disembunyikan, bukan tampil lalu diam saat ditekan.
+          onZoom: productCarouselImages(product).isEmpty
+              ? null
+              : () => _openMediaViewer(product),
         ),
         const SizedBox(height: 22),
         for (final attr in product.variantAttrs) ...[
@@ -451,53 +478,57 @@ class _VariantOptionChip extends StatelessWidget {
         child: InkWell(
           onTap: available ? onTap : null,
           borderRadius: borderRadius,
-          child: AppMinTapTarget(
-            child: Container(
-              // Padding kiri mengecil saat ada thumbnail supaya foto
-              // menempel rapi ke tepi pil, bukan mengambang.
-              padding: EdgeInsets.fromLTRB(thumb.isEmpty ? 14 : 6, 6, 14, 6),
-              decoration: BoxDecoration(
-                borderRadius: borderRadius,
-                border: Border.all(
-                  color: selected ? _brandBlue : cs.outlineVariant,
-                  width: selected ? 1.4 : 1,
-                ),
+          // Ambang 44 dipasang di Container BER-BORDER ini, BUKAN lewat
+          // AppMinTapTarget pembungkus: kalau tingginya dipaksa dari luar,
+          // Material (yang memegang warna isi) memuai ke 44 sementara pil
+          // ber-border tetap 33 — menyisakan pita warna 5,5px di atas dan
+          // bawah border pada chip terpilih. Diukur: 44,0 vs 33,0.
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            alignment: Alignment.center,
+            // Padding kiri mengecil saat ada thumbnail supaya foto
+            // menempel rapi ke tepi pil, bukan mengambang.
+            padding: EdgeInsets.fromLTRB(thumb.isEmpty ? 14 : 6, 6, 14, 6),
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              border: Border.all(
+                color: selected ? _brandBlue : cs.outlineVariant,
+                width: selected ? 1.4 : 1,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (thumb.isNotEmpty) ...[
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
-                        shape: BoxShape.circle,
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: AppProductImage(
-                        imageUrl: thumb,
-                        fit: BoxFit.cover,
-                      ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (thumb.isNotEmpty) ...[
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF1F5F9),
+                      shape: BoxShape.circle,
                     ),
-                    const SizedBox(width: 10),
-                  ],
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: selected
-                          ? _brandBlue
-                          : available
-                              ? cs.onSurfaceVariant
-                              : cs.onSurfaceVariant.withValues(alpha: 0.45),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      decoration:
-                          available ? null : TextDecoration.lineThrough,
+                    clipBehavior: Clip.antiAlias,
+                    child: AppProductImage(
+                      imageUrl: thumb,
+                      fit: BoxFit.cover,
                     ),
                   ),
+                  const SizedBox(width: 10),
                 ],
-              ),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: selected
+                        ? _brandBlue
+                        : available
+                            ? cs.onSurfaceVariant
+                            : cs.onSurfaceVariant.withValues(alpha: 0.45),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    decoration: available ? null : TextDecoration.lineThrough,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -509,7 +540,7 @@ class _VariantOptionChip extends StatelessWidget {
 class _VariantSummary extends StatelessWidget {
   final Product product;
   final ProductVariant? variant;
-  final VoidCallback onZoom;
+  final VoidCallback? onZoom;
 
   const _VariantSummary({
     required this.product,
@@ -559,7 +590,7 @@ class _VariantSummary extends StatelessWidget {
               // Badge tetap 28px supaya tidak menutupi foto, tapi area
               // tap-nya 44 dan sengaja meluber keluar pojok (Stack
               // clipBehavior none) agar tetap nyaman disentuh.
-              Positioned(
+              if (onZoom != null) Positioned(
                 right: -8,
                 bottom: -8,
                 child: Semantics(

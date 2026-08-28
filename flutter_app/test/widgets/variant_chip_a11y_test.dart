@@ -13,6 +13,7 @@ Product _singleAttrProduct() {
       VariantOption(id: 'o-tuna', value: 'Real Tuna'),
       VariantOption(id: 'o-salmon', value: 'Real Salmon'),
       VariantOption(id: 'o-sarden', value: 'Sarden'),
+      VariantOption(id: 'o-lele', value: 'Lele'),
     ],
   );
   return Product(
@@ -52,6 +53,14 @@ Product _singleAttrProduct() {
         imageUrl: 'sarden.jpg',
         optionIds: ['o-sarden'],
         isActive: false,
+      ),
+      // Aktif TAPI stok habis — jalur berbeda dari isActive:false.
+      ProductVariant(
+        id: 'v-lele',
+        price: 55000,
+        stock: 0,
+        imageUrl: 'lele.jpg',
+        optionIds: ['o-lele'],
       ),
     ],
   );
@@ -149,5 +158,44 @@ void main() {
       tester.getSemantics(find.byIcon(Icons.open_in_full_rounded)).label,
       'Perbesar foto produk',
     );
+  });
+
+  testWidgets('varian AKTIF tapi stok 0 tidak bisa dipilih', (tester) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _openSheet(tester, _singleAttrProduct());
+
+    // Regresi: gate lama cuma cek isActive, jadi varian sold-out tampil
+    // sebagai chip normal, bisa dipilih, dan lolos ke keranjang —
+    // cart_store tidak menahannya karena stok 0 di sana berarti
+    // "tidak diketahui", bukan "habis".
+    final node = tester.getSemantics(find.text('Lele'));
+    expect(node.label, 'Lele, stok habis');
+    expect(node.hasFlag(SemanticsFlag.isEnabled), isFalse);
+  });
+
+  testWidgets('chip tanpa thumbnail: isi & border setinggi sama (tanpa halo)',
+      (tester) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _openSheet(tester, _singleAttrProduct());
+
+    // Regresi: ambang 44 dulu dipasang lewat AppMinTapTarget pembungkus,
+    // jadi Material (pemegang warna isi) memuai ke 44 sementara pil
+    // ber-border tetap 33 → pita warna 5,5px di atas & bawah border.
+    final ink = find.ancestor(
+      of: find.text('Real Tuna'),
+      matching: find.byType(InkWell),
+    );
+    final borderBox = find
+        .ancestor(of: find.text('Real Tuna'), matching: find.byType(Container))
+        .first;
+    expect(tester.getSize(ink).height, tester.getSize(borderBox).height);
   });
 }
