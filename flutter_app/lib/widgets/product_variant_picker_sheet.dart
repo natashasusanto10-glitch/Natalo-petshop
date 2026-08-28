@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../models/product.dart';
+import '../screens/image_viewer_screen.dart';
 import '../services/product_service.dart';
 import '../state/cart_store.dart';
 import '../theme/natalo_colors.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
+import '../utils/product_media.dart';
 import 'app_product_image.dart';
+import 'app_ui.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
 const _discountRed = Color(0xFFE53958);
@@ -163,13 +166,59 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
     });
   }
 
-  void _confirm() {
+  /// Buka viewer media produk yang SUDAH ada (dipakai juga oleh Detail
+  /// Produk), bukan viewer khusus varian. Untungnya foto tiap varian sudah
+  /// ikut masuk galeri lewat [productCarouselImages], jadi user bisa geser
+  /// dari foto rasa ke foto kemasan dan video dalam satu tempat.
+  ///
+  /// Foto varian yang sedang terpilih dipakai sebagai slide awal; kalau
+  /// belum ada varian terpilih (atau fotonya tidak ada di galeri), jatuh ke
+  /// slide pertama.
+  void _openMediaViewer(Product product) {
+    AppHaptics.tap();
+    final images = productCarouselImages(product);
+    if (images.isEmpty) return;
+    final variant = _matchedVariant;
+    final focusUrl = variant?.imageUrl?.trim().isNotEmpty == true
+        ? variant!.imageUrl!
+        : product.imageUrl;
+    final hasVideo = product.hasVideo;
+    final slide = productMediaSlideIndex(
+      images: images,
+      imageUrl: focusUrl,
+      hasVideo: hasVideo,
+    );
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ImageViewerScreen(
+          images: images,
+          initialIndex: slide < 0 ? (hasVideo ? 1 : 0) : slide,
+          productMediaViewer: true,
+          product: product,
+          selectedVariant: variant,
+          videoUrl: hasVideo ? product.videoUrl : null,
+          videoThumbnailUrl: hasVideo ? product.videoThumbnailUrl : null,
+          videoDurationSec: hasVideo ? product.videoDurationSec : null,
+          posterImageUrl: product.imageUrl,
+          // Tombol "+ Keranjang" di mini bar viewer menjalankan konfirmasi
+          // sheet ini, supaya menekan di lapisan mana pun hasilnya sama dan
+          // dua-duanya tertutup sekaligus.
+          onAddToCart: (_, __) => _confirm(popViewerFirst: true),
+        ),
+      ),
+    );
+  }
+
+  void _confirm({bool popViewerFirst = false}) {
     final variant = _matchedVariant;
     final product = _fullProduct;
     if (variant == null || product == null) return;
     AppHaptics.tap();
-    Navigator.pop(
-      context,
+    final navigator = Navigator.of(context);
+    // Viewer berdiri DI ATAS sheet, jadi ia harus ditutup lebih dulu —
+    // tanpa ini pop pertama cuma menutup viewer dan sheet tertinggal.
+    if (popViewerFirst) navigator.pop();
+    navigator.pop(
       ProductVariantPickResult(product: product, variant: variant),
     );
   }
@@ -286,10 +335,16 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
       );
     }
     final product = _fullProduct!;
+    // Kosong untuk produk 2+ atribut — chip jatuh kembali ke teks polos.
+    final thumbnails = variantOptionThumbnails(product);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       children: [
-        _VariantSummary(product: product, variant: _matchedVariant),
+        _VariantSummary(
+          product: product,
+          variant: _matchedVariant,
+          onZoom: () => _openMediaViewer(product),
+        ),
         const SizedBox(height: 22),
         for (final attr in product.variantAttrs) ...[
           Text(
@@ -307,34 +362,12 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
             children: attr.options.map((opt) {
               final selected = _selectedOptions[attr.id] == opt.id;
               final available = _isOptionAvailable(attr.id, opt.id);
-              return GestureDetector(
-                onTap: available ? () => _onSelect(attr.id, opt.id) : null,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? _brandBlue.withValues(alpha: 0.10)
-                        : available
-                            ? cs.surface
-                            : cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(99),
-                    border: Border.all(
-                      color: selected ? _brandBlue : cs.outlineVariant,
-                      width: selected ? 1.4 : 1,
-                    ),
-                  ),
-                  child: Text(
-                    opt.value,
-                    style: TextStyle(
-                      color: selected ? _brandBlue : cs.onSurfaceVariant,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
+              return _VariantOptionChip(
+                label: opt.value,
+                thumbnailUrl: thumbnails[opt.id],
+                selected: selected,
+                available: available,
+                onTap: () => _onSelect(attr.id, opt.id),
               );
             }).toList(),
           ),
@@ -345,11 +378,144 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
   }
 }
 
+class _ZoomBadge extends StatelessWidget {
+  const _ZoomBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A).withValues(alpha: 0.66),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: const Icon(
+        Icons.open_in_full_rounded,
+        size: 15,
+        color: Colors.white,
+      ),
+    );
+  }
+}
+
+/// Chip satu opsi varian.
+///
+/// Tinggi minimum 44 (AppMinTapTarget) + ripple InkWell — sebelumnya chip
+/// ini cuma GestureDetector setinggi ~34px tanpa umpan balik tekan sama
+/// sekali, yang membuat sheet terasa mati saat disentuh.
+///
+/// GOTCHA: AppMinTapTarget WAJIB jadi ANAK InkWell, bukan pembungkusnya.
+/// Flutter tidak punya hitSlop — kalau urutannya dibalik, area tap tidak
+/// ikut membesar dan ripple-nya muncul di kotak yang salah.
+class _VariantOptionChip extends StatelessWidget {
+  final String label;
+  final String? thumbnailUrl;
+  final bool selected;
+  final bool available;
+  final VoidCallback onTap;
+
+  const _VariantOptionChip({
+    required this.label,
+    required this.thumbnailUrl,
+    required this.selected,
+    required this.available,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final thumb = thumbnailUrl?.trim() ?? '';
+    final borderRadius = BorderRadius.circular(99);
+    return Semantics(
+      button: true,
+      selected: selected,
+      enabled: available,
+      label: available ? label : '$label, stok habis',
+      // Tanpa ini Text di dalam ikut menyumbang node sendiri, sehingga
+      // pembaca layar menyebut nama varian DUA KALI
+      // ("Sarden, stok habis" lalu "Sarden").
+      excludeSemantics: true,
+      // ...tapi excludeSemantics juga ikut membuang aksi tap milik InkWell,
+      // yang bikin chip tak bisa diaktifkan lewat pembaca layar. Jadi aksinya
+      // dipasang ulang di sini.
+      onTap: available ? onTap : null,
+      child: Material(
+        color: selected
+            ? _brandBlue.withValues(alpha: 0.10)
+            : available
+                ? cs.surface
+                : cs.surfaceContainerHighest,
+        borderRadius: borderRadius,
+        child: InkWell(
+          onTap: available ? onTap : null,
+          borderRadius: borderRadius,
+          child: AppMinTapTarget(
+            child: Container(
+              // Padding kiri mengecil saat ada thumbnail supaya foto
+              // menempel rapi ke tepi pil, bukan mengambang.
+              padding: EdgeInsets.fromLTRB(thumb.isEmpty ? 14 : 6, 6, 14, 6),
+              decoration: BoxDecoration(
+                borderRadius: borderRadius,
+                border: Border.all(
+                  color: selected ? _brandBlue : cs.outlineVariant,
+                  width: selected ? 1.4 : 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (thumb.isNotEmpty) ...[
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        shape: BoxShape.circle,
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: AppProductImage(
+                        imageUrl: thumb,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: selected
+                          ? _brandBlue
+                          : available
+                              ? cs.onSurfaceVariant
+                              : cs.onSurfaceVariant.withValues(alpha: 0.45),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      decoration:
+                          available ? null : TextDecoration.lineThrough,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _VariantSummary extends StatelessWidget {
   final Product product;
   final ProductVariant? variant;
+  final VoidCallback onZoom;
 
-  const _VariantSummary({required this.product, required this.variant});
+  const _VariantSummary({
+    required this.product,
+    required this.variant,
+    required this.onZoom,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -374,15 +540,53 @@ class _VariantSummary extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
+        SizedBox(
           width: 92,
           height: 92,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(10),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 92,
+                height: 92,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: AppProductImage(imageUrl: imageUrl, fit: BoxFit.cover),
+              ),
+              // Badge tetap 28px supaya tidak menutupi foto, tapi area
+              // tap-nya 44 dan sengaja meluber keluar pojok (Stack
+              // clipBehavior none) agar tetap nyaman disentuh.
+              Positioned(
+                right: -8,
+                bottom: -8,
+                child: Semantics(
+                  button: true,
+                  label: 'Perbesar foto produk',
+                  // container+exclude+onTap: tanpa `container: true`, Semantics
+                  // hanya menempel ke node induk sehingga labelnya melebur
+                  // dengan harga ("Perbesar foto produk, Rp55.000, Pilih
+                  // varian") dan tombolnya tak bisa difokus sendiri.
+                  container: true,
+                  excludeSemantics: true,
+                  onTap: onZoom,
+                  child: Material(
+                    color: Colors.transparent,
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: onZoom,
+                      child: const AppMinTapTarget(
+                        child: _ZoomBadge(),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          clipBehavior: Clip.antiAlias,
-          child: AppProductImage(imageUrl: imageUrl, fit: BoxFit.cover),
         ),
         const SizedBox(width: 14),
         Expanded(
