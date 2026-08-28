@@ -3004,31 +3004,59 @@ class _CartRecommendationsSection extends StatelessWidget {
           arguments: product,
         );
       },
-      onAddToCart: () {
-        if (product.hasVariants) {
-          AppHaptics.tap();
-          Navigator.pushNamed(
-            context,
-            '/product-detail',
-            arguments: product,
-          );
-          AppToast.show(
-            context,
-            'Pilih varian produk dulu.',
-            kind: ToastKind.info,
-          );
-          return;
-        }
-        AppHaptics.success();
-        cartStore.addProduct(product);
-        AppToast.showCartAdded(
-          context,
-          '${product.title} masuk keranjang',
-          imageUrl: product.imageUrl,
-        );
-      },
+      onAddToCart: () => addRecommendedProductToCart(context, product),
     );
   }
+}
+
+/// Tambah produk rekomendasi ke keranjang tanpa meninggalkan halaman ini.
+///
+/// Produk bervarian DULU melempar user ke Detail Produk plus toast "Pilih
+/// varian produk dulu" — user kehilangan posisi scroll keranjang hanya untuk
+/// memilih rasa. Sekarang sheet varian muncul di tempat, mengikuti pola
+/// Tokopedia (dan pemakaian yang sama sudah ada di sheet Links feed).
+/// [actionLabel]/[onAction] dipakai oleh rekomendasi di keranjang KOSONG,
+/// yang menawarkan "Lihat Keranjang" karena isinya baru saja terisi.
+Future<void> addRecommendedProductToCart(
+  BuildContext context,
+  Product product, {
+  String actionLabel = 'Lihat',
+  VoidCallback? onAction,
+}) async {
+  if (product.hasVariants) {
+    AppHaptics.tap();
+    final picked = await ProductVariantPickerSheet.show(
+      context,
+      productSlug: product.slug,
+      confirmLabel: 'Tambah ke Keranjang',
+      confirmColor: NataloColors.nataloBlue,
+    );
+    if (picked == null) return;
+    if (!context.mounted) return;
+    AppHaptics.success();
+    await cartStore.addProduct(picked.product, variant: picked.variant);
+    if (!context.mounted) return;
+    AppToast.showCartAdded(
+      context,
+      '${picked.product.title} masuk keranjang',
+      actionLabel: actionLabel,
+      onTap: onAction,
+      imageUrl: picked.variant.imageUrl?.trim().isNotEmpty == true
+          ? picked.variant.imageUrl!
+          : picked.product.imageUrl,
+    );
+    return;
+  }
+  AppHaptics.success();
+  await cartStore.addProduct(product);
+  if (!context.mounted) return;
+  AppToast.showCartAdded(
+    context,
+    '${product.title} masuk keranjang',
+    actionLabel: actionLabel,
+    onTap: onAction,
+    imageUrl: product.imageUrl,
+  );
 }
 
 /// Sticky checkout summary — solid surface, animated rupiah ticker.
@@ -3195,30 +3223,12 @@ class _EmptyCartState extends StatelessWidget {
                 arguments: product,
               );
             },
-            onAddToCart: (product) {
-              if (product.hasVariants) {
-                AppHaptics.tap();
-                Navigator.pushNamed(
-                  context,
-                  '/product-detail',
-                  arguments: product,
-                );
-                AppToast.show(
-                  context,
-                  'Pilih varian produk dulu.',
-                  kind: ToastKind.info,
-                );
-                return;
-              }
-              cartStore.addProduct(product);
-              AppToast.showCartAdded(
-                context,
-                '${product.title} masuk keranjang',
-                actionLabel: 'Lihat Keranjang',
-                onTap: () => Navigator.pushNamed(context, '/cart'),
-                imageUrl: product.imageUrl,
-              );
-            },
+            onAddToCart: (product) => addRecommendedProductToCart(
+              context,
+              product,
+              actionLabel: 'Lihat Keranjang',
+              onAction: () => Navigator.pushNamed(context, '/cart'),
+            ),
           ),
         ],
         if (bossProducts.isNotEmpty) ...[
@@ -3235,30 +3245,12 @@ class _EmptyCartState extends StatelessWidget {
                 arguments: product,
               );
             },
-            onAddToCart: (product) {
-              if (product.hasVariants) {
-                AppHaptics.tap();
-                Navigator.pushNamed(
-                  context,
-                  '/product-detail',
-                  arguments: product,
-                );
-                AppToast.show(
-                  context,
-                  'Pilih varian produk dulu.',
-                  kind: ToastKind.info,
-                );
-                return;
-              }
-              cartStore.addProduct(product);
-              AppToast.showCartAdded(
-                context,
-                '${product.title} masuk keranjang',
-                actionLabel: 'Lihat Keranjang',
-                onTap: () => Navigator.pushNamed(context, '/cart'),
-                imageUrl: product.imageUrl,
-              );
-            },
+            onAddToCart: (product) => addRecommendedProductToCart(
+              context,
+              product,
+              actionLabel: 'Lihat Keranjang',
+              onAction: () => Navigator.pushNamed(context, '/cart'),
+            ),
           ),
         ] else if (loadingBossProducts || loadingMoreBossProducts) ...[
           const SizedBox(height: 28),
