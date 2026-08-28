@@ -882,7 +882,16 @@ class _ProductCard extends StatelessWidget {
           return;
         }
         final added = await cartStore.addProduct(product);
-        if (!context.mounted || !added) return;
+        if (!context.mounted) return;
+        // Guard `!added` ini dulu kode mati (addProduct selalu true);
+        // sekarang false = qty ke-clamp ke stok. Jangan diam — jelaskan.
+        if (!added) {
+          _showProductSnack(
+            context,
+            'Stok cuma ${product.stock} — semua sudah ada di keranjang.',
+          );
+          return;
+        }
         _showProductSnack(context, '${product.title} masuk keranjang.');
       },
     );

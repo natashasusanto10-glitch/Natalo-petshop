@@ -3033,29 +3033,65 @@ Future<void> addRecommendedProductToCart(
     );
     if (picked == null) return;
     if (!context.mounted) return;
-    AppHaptics.success();
-    await cartStore.addProduct(picked.product, variant: picked.variant);
+    final added =
+        await cartStore.addProduct(picked.product, variant: picked.variant);
     if (!context.mounted) return;
-    AppToast.showCartAdded(
+    _toastCartAddResult(
       context,
-      '${picked.product.title} masuk keranjang',
+      added: added,
+      title: picked.product.title,
+      stock: picked.variant.stock,
       actionLabel: actionLabel,
-      onTap: onAction,
+      onAction: onAction,
       imageUrl: picked.variant.imageUrl?.trim().isNotEmpty == true
           ? picked.variant.imageUrl!
           : picked.product.imageUrl,
     );
     return;
   }
-  AppHaptics.success();
-  await cartStore.addProduct(product);
+  final added = await cartStore.addProduct(product);
   if (!context.mounted) return;
+  _toastCartAddResult(
+    context,
+    added: added,
+    title: product.title,
+    stock: product.stock,
+    actionLabel: actionLabel,
+    onAction: onAction,
+    imageUrl: product.imageUrl,
+  );
+}
+
+/// Toast hasil add yang JUJUR. `addProduct` return false saat qty ke-clamp
+/// ke stok — kasus paling sering: keranjang sudah memegang seluruh stok,
+/// jadi TIDAK ADA yang masuk. Dulu jalur ini tetap berbunyi "masuk
+/// keranjang" sementara angka keranjang diam; wording mengikuti pola
+/// product_detail_screen ("Stok cuma N — semua sudah ada di keranjang").
+void _toastCartAddResult(
+  BuildContext context, {
+  required bool added,
+  required String title,
+  required int stock,
+  required String actionLabel,
+  required VoidCallback? onAction,
+  required String imageUrl,
+}) {
+  if (!added) {
+    AppHaptics.tap();
+    AppToast.show(
+      context,
+      'Stok cuma $stock — semua sudah ada di keranjang.',
+      kind: ToastKind.info,
+    );
+    return;
+  }
+  AppHaptics.success();
   AppToast.showCartAdded(
     context,
-    '${product.title} masuk keranjang',
+    '$title masuk keranjang',
     actionLabel: actionLabel,
     onTap: onAction,
-    imageUrl: product.imageUrl,
+    imageUrl: imageUrl,
   );
 }
 

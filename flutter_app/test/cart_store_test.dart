@@ -174,4 +174,54 @@ void main() {
     expect(store.quantityFor('A'), 5); // bukan 8
     expect(store.mergedThisSession, true);
   });
+
+  group('addProduct return = "berhasil ditambah penuh"', () {
+    // Regresi: addProduct dulu SELALU return true (flag clamped dari
+    // addItem dibuang), jadi guard `if (!added) return;` di
+    // order_success_screen adalah kode mati dan keranjang penuh tetap
+    // memunculkan toast "masuk keranjang" padahal tidak ada yang masuk.
+    test('normal: return true dan qty bertambah', () async {
+      final store = CartStore.forTest(
+        service: _FakeCartService(), isLoggedIn: () => false);
+      addTearDown(store.dispose);
+
+      final added = await store.addProduct(_product('A', stock: 5));
+      expect(added, true);
+      expect(store.quantityFor('A'), 1);
+    });
+
+    test('keranjang sudah di batas stok: return false, qty tidak berubah',
+        () async {
+      final store = CartStore.forTest(
+        service: _FakeCartService(), isLoggedIn: () => false);
+      addTearDown(store.dispose);
+
+      await store.addProduct(_product('A', stock: 2), quantity: 2);
+      final added = await store.addProduct(_product('A', stock: 2));
+      expect(added, false, reason: 'tidak ada yang masuk — jangan bilang sukses');
+      expect(store.quantityFor('A'), 2);
+    });
+
+    test('sebagian masuk (minta 3, slot sisa 1): return false, qty ke cap',
+        () async {
+      final store = CartStore.forTest(
+        service: _FakeCartService(), isLoggedIn: () => false);
+      addTearDown(store.dispose);
+
+      await store.addProduct(_product('A', stock: 3), quantity: 2);
+      final added = await store.addProduct(_product('A', stock: 3), quantity: 3);
+      expect(added, false, reason: 'permintaan TIDAK terpenuhi penuh');
+      expect(store.quantityFor('A'), 3);
+    });
+
+    test('stok 0 = tidak diketahui: tidak di-clamp, return true', () async {
+      final store = CartStore.forTest(
+        service: _FakeCartService(), isLoggedIn: () => false);
+      addTearDown(store.dispose);
+
+      final added = await store.addProduct(_product('A', stock: 0));
+      expect(added, true, reason: 'server /api/cart/validate yang jadi backstop');
+      expect(store.quantityFor('A'), 1);
+    });
+  });
 }
