@@ -5,6 +5,7 @@ import '../state/member_store.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import 'app_product_image.dart';
@@ -175,8 +176,8 @@ class ProductCard extends StatelessWidget {
                             'Member',
                             style: TextStyle(
                               color: NataloColors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
+                              fontSize: NataloTextSize.micro,
+                              fontWeight: NataloWeight.strong,
                               height: 1,
                             ),
                           ),
@@ -224,8 +225,8 @@ class ProductCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: cs.onSurface,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                    fontSize: NataloTextSize.caption,
+                    fontWeight: NataloWeight.strong,
                     height: 1.3,
                   ),
                 ),
@@ -237,8 +238,8 @@ class ProductCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: NataloColors.nataloBlue,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
+                  fontSize: NataloTextSize.bodyLg,
+                  fontWeight: NataloWeight.strong,
                   height: 1.05,
                 ),
               ),
@@ -368,8 +369,8 @@ class _ProductPromoBadge extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: foregroundColor,
-                fontSize: 10.8,
-                fontWeight: FontWeight.w900,
+                fontSize: NataloTextSize.micro,
+                fontWeight: NataloWeight.strong,
                 height: 1.05,
               ),
             ),
@@ -481,8 +482,8 @@ Future<void> _showVoucherPreviewSheet(
                           voucherTitle,
                           style: TextStyle(
                             color: cs.onSurface,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
+                            fontSize: NataloTextSize.title,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                         const SizedBox(height: AppSpacing.xs),
@@ -492,8 +493,8 @@ Future<void> _showVoucherPreviewSheet(
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: cs.onSurfaceVariant,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
+                            fontSize: NataloTextSize.body,
+                            fontWeight: NataloWeight.strong,
                             height: 1.25,
                           ),
                         ),
@@ -520,8 +521,8 @@ Future<void> _showVoucherPreviewSheet(
                       voucher.badgeLabel,
                       style: TextStyle(
                         color: accentColor,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
+                        fontSize: NataloTextSize.subtitle,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                     const SizedBox(height: AppSpacing.xs),
@@ -529,8 +530,8 @@ Future<void> _showVoucherPreviewSheet(
                       voucher.sheetSubtitle,
                       style: const TextStyle(
                         color: NataloColors.grey500,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                        fontSize: NataloTextSize.body,
+                        fontWeight: NataloWeight.body,
                       ),
                     ),
                     if (isNewMemberVoucher) ...[
@@ -551,8 +552,8 @@ Future<void> _showVoucherPreviewSheet(
                           'Khusus member baru',
                           style: TextStyle(
                             color: NataloColors.danger,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w900,
+                            fontSize: NataloTextSize.micro,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                       ),
@@ -563,8 +564,8 @@ Future<void> _showVoucherPreviewSheet(
                         voucher.description!,
                         style: const TextStyle(
                           color: NataloColors.grey600,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
+                          fontSize: NataloTextSize.body,
+                          fontWeight: NataloWeight.body,
                           height: 1.35,
                         ),
                       ),
@@ -577,8 +578,8 @@ Future<void> _showVoucherPreviewSheet(
                 voucherNote,
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
+                  fontSize: NataloTextSize.body,
+                  fontWeight: NataloWeight.body,
                   height: 1.35,
                 ),
               ),
@@ -609,8 +610,8 @@ Future<void> _showVoucherPreviewSheet(
                             ? 'Daftar/Login untuk pakai'
                             : 'Login untuk pakai',
                     style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
+                      fontSize: NataloTextSize.bodyLg,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ),
@@ -658,8 +659,8 @@ class ProductRatingSoldMeta extends StatelessWidget {
                 text: TextSpan(
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
-                    fontSize: 11.2,
-                    fontWeight: FontWeight.w800,
+                    fontSize: NataloTextSize.micro,
+                    fontWeight: NataloWeight.body,
                     height: 1,
                   ),
                   children: [
@@ -672,7 +673,7 @@ class ProductRatingSoldMeta extends StatelessWidget {
                             ? '(${formatSoldCount(product.reviewCount)})'
                             : '${formatSoldCount(product.reviewCount)} ulasan',
                         style: const TextStyle(
-                          fontWeight: FontWeight.w700,
+                          fontWeight: NataloWeight.body,
                         ),
                       ),
                   ],
@@ -686,8 +687,8 @@ class ProductRatingSoldMeta extends StatelessWidget {
               '•',
               style: TextStyle(
                 color: cs.onSurfaceVariant,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontSize: NataloTextSize.micro,
+                fontWeight: NataloWeight.body,
                 height: 1,
               ),
             ),
@@ -701,8 +702,8 @@ class ProductRatingSoldMeta extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
-                  fontSize: 11.2,
-                  fontWeight: FontWeight.w700,
+                  fontSize: NataloTextSize.micro,
+                  fontWeight: NataloWeight.body,
                   height: 1,
                 ),
               ),
@@ -752,8 +753,8 @@ class _ImageDiscountBadge extends StatelessWidget {
         '-$percent%',
         style: const TextStyle(
           color: NataloColors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
+          fontSize: NataloTextSize.caption,
+          fontWeight: NataloWeight.strong,
           height: 1,
         ),
       ),
@@ -886,8 +887,8 @@ class _AddToCartPill extends StatelessWidget {
                       color: outOfStock
                           ? NataloColors.grey400
                           : NataloColors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
+                      fontSize: NataloTextSize.body,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ],
