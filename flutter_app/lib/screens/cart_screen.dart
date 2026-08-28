@@ -14,6 +14,7 @@ import '../state/cart_store.dart';
 import '../state/member_store.dart';
 import '../state/recently_viewed_store.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../utils/chrome_autohide.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
@@ -1169,8 +1170,8 @@ class _CartSelectedRow extends StatelessWidget {
             child: Text(
               _selectedText(selectedCount),
               style: TextStyle(
-                fontSize: 14.5,
-                fontWeight: FontWeight.w700,
+                fontSize: NataloTextSize.bodyLg,
+                fontWeight: NataloWeight.body,
                 color: hasSelection ? cs.onSurface : cs.onSurfaceVariant,
               ),
             ),
@@ -1252,8 +1253,8 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: cs.onSurface,
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
+                fontSize: NataloTextSize.subtitle,
+                fontWeight: NataloWeight.strong,
                 height: 1.25,
               ),
             ),
@@ -1263,8 +1264,8 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: cs.onSurfaceVariant,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+                fontSize: NataloTextSize.body,
+                fontWeight: NataloWeight.body,
                 height: 1.45,
               ),
             ),
@@ -1283,8 +1284,8 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         textStyle: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
+                          fontSize: NataloTextSize.bodyLg,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                       child: const Text('Batal'),
@@ -1305,8 +1306,8 @@ class _CartDeleteConfirmDialog extends StatelessWidget {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         textStyle: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
+                          fontSize: NataloTextSize.bodyLg,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                       child: const Text('Hapus'),
@@ -1353,8 +1354,8 @@ class _CartStockBanner extends StatelessWidget {
               '$count produk stok habis dan tidak ikut checkout. Hapus atau ganti varian.',
               style: const TextStyle(
                 color: accent,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontSize: NataloTextSize.caption,
+                fontWeight: NataloWeight.body,
                 height: 1.3,
               ),
             ),
@@ -1399,8 +1400,8 @@ class _StockBadge extends StatelessWidget {
             label,
             style: TextStyle(
               color: accent,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontSize: NataloTextSize.micro,
+              fontWeight: NataloWeight.strong,
             ),
           ),
         ],
@@ -1609,9 +1610,9 @@ class _CartItemCard extends StatelessWidget {
                         style: TextStyle(
                           color:
                               outOfStock ? cs.onSurfaceVariant : cs.onSurface,
-                          fontSize: 14,
+                          fontSize: NataloTextSize.bodyLg,
                           height: 1.3,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                     ),
@@ -1659,8 +1660,8 @@ class _CartItemCard extends StatelessWidget {
                                       color: hasDiscount
                                           ? const Color(0xFFEF4444)
                                           : cs.onSurface,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w900,
+                                      fontSize: NataloTextSize.subtitle,
+                                      fontWeight: NataloWeight.strong,
                                     ),
                                   ),
                                 ),
@@ -1676,8 +1677,8 @@ class _CartItemCard extends StatelessWidget {
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           color: cs.onSurfaceVariant,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w500,
+                                          fontSize: NataloTextSize.caption,
+                                          fontWeight: NataloWeight.body,
                                           decoration:
                                               TextDecoration.lineThrough,
                                         ),
@@ -1688,8 +1689,8 @@ class _CartItemCard extends StatelessWidget {
                                       '$discountPercent%',
                                       style: const TextStyle(
                                         color: Color(0xFFEF4444),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w900,
+                                        fontSize: NataloTextSize.caption,
+                                        fontWeight: NataloWeight.strong,
                                       ),
                                     ),
                                   ],
@@ -1787,8 +1788,8 @@ class _VariantChipDropdown extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
+                  fontSize: NataloTextSize.body,
+                  fontWeight: NataloWeight.body,
                 ),
               ),
             ),
@@ -1930,8 +1931,8 @@ class _QtyStepperState extends State<_QtyStepper> {
                     '−',
                     style: TextStyle(
                       color: cs.onSurfaceVariant,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
+                      fontSize: NataloTextSize.title,
+                      fontWeight: NataloWeight.strong,
                       height: 1,
                     ),
                   ),
@@ -1966,8 +1967,8 @@ class _QtyStepperState extends State<_QtyStepper> {
               },
               style: TextStyle(
                 color: cs.onSurface,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
+                fontSize: NataloTextSize.bodyLg,
+                fontWeight: NataloWeight.strong,
                 height: 1,
               ),
               decoration: const InputDecoration(
@@ -1984,8 +1985,8 @@ class _QtyStepperState extends State<_QtyStepper> {
               '+',
               style: TextStyle(
                 color: canIncrement ? cs.onSurfaceVariant : cs.outlineVariant,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
+                fontSize: NataloTextSize.title,
+                fontWeight: NataloWeight.strong,
                 height: 1,
               ),
             ),
@@ -2202,8 +2203,8 @@ class _StickyVoucherBar extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
+                    fontSize: NataloTextSize.body,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -2326,8 +2327,8 @@ class _VoucherMiniChip extends StatelessWidget {
             text,
             style: TextStyle(
               color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
+              fontSize: NataloTextSize.micro,
+              fontWeight: NataloWeight.strong,
             ),
           ),
         ],
@@ -2501,8 +2502,8 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                       'Pilih voucher atau promo',
                       style: TextStyle(
                         color: cs.onSurface,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
+                        fontSize: NataloTextSize.title,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                   ),
@@ -2520,8 +2521,8 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                     'Voucher untukmu sudah diterapkan',
                     style: TextStyle(
                       color: _brandBlue,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
+                      fontSize: NataloTextSize.caption,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ),
@@ -2604,7 +2605,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: cs.onSurfaceVariant,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                       ),
@@ -2615,8 +2616,8 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                         'Belum bisa dipakai',
                         style: TextStyle(
                           color: cs.onSurfaceVariant,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
+                          fontSize: NataloTextSize.caption,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -2701,7 +2702,7 @@ class _CartVoucherSheetState extends State<_CartVoucherSheet> {
                       ),
                       child: const Text(
                         'Pakai Voucher',
-                        style: TextStyle(fontWeight: FontWeight.w900),
+                        style: TextStyle(fontWeight: NataloWeight.strong),
                       ),
                     ),
                   ),
@@ -2796,8 +2797,8 @@ class _CartVoucherCard extends StatelessWidget {
                           badge,
                           style: TextStyle(
                             color: effectiveAccent,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
+                            fontSize: NataloTextSize.micro,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                       ),
@@ -2817,8 +2818,8 @@ class _CartVoucherCard extends StatelessWidget {
                             'Brand Eksklusif',
                             style: TextStyle(
                               color: _brandExclusiveAmber,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
+                              fontSize: NataloTextSize.micro,
+                              fontWeight: NataloWeight.strong,
                             ),
                           ),
                         ),
@@ -2827,8 +2828,8 @@ class _CartVoucherCard extends StatelessWidget {
                           'Terpilih',
                           style: TextStyle(
                             color: accent,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
+                            fontSize: NataloTextSize.micro,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                     ],
@@ -2840,8 +2841,8 @@ class _CartVoucherCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: enabled ? cs.onSurface : cs.onSurfaceVariant,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
+                      fontSize: NataloTextSize.bodyLg,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -2852,8 +2853,8 @@ class _CartVoucherCard extends StatelessWidget {
                     style: TextStyle(
                       color:
                           enabled ? cs.onSurfaceVariant : cs.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      fontSize: NataloTextSize.caption,
+                      fontWeight: NataloWeight.body,
                     ),
                   ),
                 ],
@@ -2865,8 +2866,8 @@ class _CartVoucherCard extends StatelessWidget {
                 trailing!,
                 style: TextStyle(
                   color: effectiveAccent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
+                  fontSize: NataloTextSize.caption,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
             ],
@@ -2932,8 +2933,8 @@ class _CartRecommendationsSection extends StatelessWidget {
                   title,
                   style: TextStyle(
                     color: cs.onSurface,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
+                    fontSize: NataloTextSize.subtitle,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ),
@@ -3082,8 +3083,8 @@ class _CartSummaryBar extends StatelessWidget {
                         'Belum ada pilihan',
                         style: TextStyle(
                           color: cs.onSurfaceVariant,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
+                          fontSize: NataloTextSize.title,
+                          fontWeight: NataloWeight.strong,
                         ),
                       )
                     else ...[
@@ -3093,8 +3094,8 @@ class _CartSummaryBar extends StatelessWidget {
                         'Subtotal',
                         style: TextStyle(
                           color: cs.onSurfaceVariant,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                          fontSize: NataloTextSize.micro,
+                          fontWeight: NataloWeight.body,
                         ),
                       ),
                       AnimatedRupiah(
@@ -3103,8 +3104,8 @@ class _CartSummaryBar extends StatelessWidget {
                           // Adaptif dark: priceText (slate gelap) invisible di
                           // surface gelap → resolve via onSurface.
                           color: Theme.of(context).colorScheme.onSurface,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
+                          fontSize: NataloTextSize.title,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                     ],
@@ -3116,8 +3117,8 @@ class _CartSummaryBar extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: _discountRed,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
+                          fontSize: NataloTextSize.caption,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                     ],
@@ -3312,9 +3313,9 @@ class _EmptyCartCard extends StatelessWidget {
             'Keranjang kamu masih kosong',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 24,
+              fontSize: NataloTextSize.headline,
               height: 1.18,
-              fontWeight: FontWeight.w900,
+              fontWeight: NataloWeight.strong,
               color: cs.onSurface,
               letterSpacing: -0.3,
             ),
@@ -3324,9 +3325,9 @@ class _EmptyCartCard extends StatelessWidget {
             'Yuk pilih makanan, vitamin, pasir, atau perlengkapan\nfavorit untuk hewan kesayanganmu.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: NataloTextSize.subtitle,
               height: 1.45,
-              fontWeight: FontWeight.w500,
+              fontWeight: NataloWeight.body,
               color: cs.onSurfaceVariant,
             ),
           ),
@@ -3347,8 +3348,8 @@ class _EmptyCartCard extends StatelessWidget {
               child: const Text(
                 'Jelajahi Produk',
                 style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
+                  fontSize: NataloTextSize.subtitle,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
             ),
@@ -3390,8 +3391,8 @@ class _EmptyCartProductCarouselSection extends StatelessWidget {
                 child: Text(
                   title,
                   style: TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w900,
+                    fontSize: NataloTextSize.title,
+                    fontWeight: NataloWeight.strong,
                     color: cs.onSurface,
                     letterSpacing: -0.2,
                   ),
@@ -3406,8 +3407,8 @@ class _EmptyCartProductCarouselSection extends StatelessWidget {
                     Text(
                       'Lihat semua',
                       style: TextStyle(
-                        fontSize: 15.5,
-                        fontWeight: FontWeight.w800,
+                        fontSize: NataloTextSize.subtitle,
+                        fontWeight: NataloWeight.strong,
                         color: _brandBlue,
                       ),
                     ),
