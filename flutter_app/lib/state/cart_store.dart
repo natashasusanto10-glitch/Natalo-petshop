@@ -199,6 +199,15 @@ class CartStore extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Add product langsung — convenience wrapper sekitar [addItem].
   /// Boleh pass `variant` (full ProductVariant) atau `variantId`/`variantLabel`.
+  ///
+  /// Return `true` HANYA kalau permintaan terpenuhi PENUH. `false` berarti:
+  /// - produk bervarian tanpa varian (di-block), ATAU
+  /// - qty ke-clamp ke stok — termasuk kasus keranjang sudah di batas
+  ///   sehingga TIDAK ADA yang masuk. Caller jangan toast "masuk keranjang"
+  ///   saat false; pakai pesan stok (pola product_detail_screen).
+  ///
+  /// AWAS bolak-balik makna: [addItem] return `clamped` (true = BERMASALAH),
+  /// method ini return `added` (true = SUKSES). Jangan diteruskan mentah.
   Future<bool> addProduct(
     Product product, {
     int quantity = 1,
@@ -238,8 +247,8 @@ class CartStore extends ChangeNotifier with WidgetsBindingObserver {
       quantity: quantity,
       effectiveStock: overrideStock ?? resolvedVariant?.stock ?? product.stock,
     );
-    await addItem(item);
-    return true;
+    final clamped = await addItem(item);
+    return !clamped;
   }
 
   /// Qty item tertentu di cart sekarang (0 kalau tidak ada). Dipakai
