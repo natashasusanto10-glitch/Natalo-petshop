@@ -15,6 +15,18 @@ const nextConfig: NextConfig = {
   // engine library normal yang menerima `postgresql://`.
   serverExternalPackages: ["@prisma/client", "prisma"],
 
+  // firebase-admin WAJIB ikut di-bundle (dia ada di daftar default
+  // serverExternalPackages Next.js). Sebagai modul eksternal, lambda Vercel
+  // me-`require()` dia apa adanya dari node_modules — dan sejak PR #305
+  // rantainya menarik `jwks-rsa` 4.x → `jose` v6 yang ESM-only, sehingga
+  // SEMUA rute yang import `firebase-admin/auth`/`firestore` (chat, upload
+  // bukti transfer, cron chat-order-outbox) mati 500 saat modul dimuat:
+  //   ERR_REQUIRE_ESM: require() of ES Module node_modules/jose/...
+  //   from node_modules/jwks-rsa/src/utils.js not supported
+  // Dengan masuk transpilePackages, Turbopack meng-compile rantai ini dan
+  // mengubah require-ESM jadi import yang sah — kebal versi Node runtime.
+  transpilePackages: ["firebase-admin"],
+
   // Bundle optimization
   experimental: {
     // `viewTransition: true` DIBUANG di Next 16.3 — flag experimental-nya
