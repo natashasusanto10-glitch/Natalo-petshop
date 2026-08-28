@@ -293,8 +293,12 @@ class _OrderFilterTabs extends StatelessWidget {
                         style: TextStyle(
                           color: active ? _brandBlue : cs.onSurfaceVariant,
                           fontSize: NataloTextSize.bodyLg,
+                          // Tab aktif vs nonaktif. Peta dua tingkat biasa
+                          // (w900 DAN w800 sama-sama -> strong) akan MENGHAPUS
+                          // beda ini dan membuat semua tab tampak aktif.
+                          // Nonaktif turun ke body, sesuai aturan token utk tab.
                           fontWeight:
-                              active ? FontWeight.w900 : FontWeight.w800,
+                              active ? NataloWeight.strong : NataloWeight.body,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -505,7 +509,7 @@ class _OrderCardState extends State<_OrderCard> {
         title: const Text(
           'Sudah terima pesanan?',
           textAlign: TextAlign.center,
-          style: TextStyle(fontWeight: FontWeight.w900),
+          style: TextStyle(fontWeight: NataloWeight.strong),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -517,7 +521,7 @@ class _OrderCardState extends State<_OrderCard> {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface,
                 fontSize: NataloTextSize.body,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.body,
                 height: 1.5,
               ),
             ),
@@ -528,7 +532,7 @@ class _OrderCardState extends State<_OrderCard> {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: NataloTextSize.caption,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 height: 1.5,
               ),
             ),
@@ -729,7 +733,7 @@ class _OrderCardState extends State<_OrderCard> {
         title: Text(
           paid ? 'Ajukan pembatalan?' : 'Batalkan pesanan?',
           textAlign: TextAlign.center,
-          style: const TextStyle(fontWeight: FontWeight.w900),
+          style: const TextStyle(fontWeight: NataloWeight.strong),
         ),
         content: Text(
           paid
@@ -739,7 +743,7 @@ class _OrderCardState extends State<_OrderCard> {
           style: TextStyle(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: NataloTextSize.body,
-            fontWeight: FontWeight.w700,
+            fontWeight: NataloWeight.body,
             height: 1.45,
           ),
         ),
@@ -952,7 +956,7 @@ class _OrderCardState extends State<_OrderCard> {
                             order.orderNumber,
                             style: TextStyle(
                               color: cs.onSurface,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: NataloWeight.strong,
                             ),
                           ),
                         ),
@@ -988,7 +992,7 @@ class _OrderCardState extends State<_OrderCard> {
                       '${_formatDate(order.createdAt)} • ${_displayItemCount(order)} item',
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                     if (_isUnpaid &&
@@ -1007,7 +1011,7 @@ class _OrderCardState extends State<_OrderCard> {
                         style: const TextStyle(
                           color: NataloColors.warningDark,
                           fontSize: NataloTextSize.caption,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: NataloWeight.body,
                         ),
                       ),
                     ],
@@ -1029,7 +1033,7 @@ class _OrderCardState extends State<_OrderCard> {
                                 style: TextStyle(
                                   color: cs.onSurfaceVariant,
                                   fontSize: NataloTextSize.caption,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: NataloWeight.strong,
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -1040,7 +1044,7 @@ class _OrderCardState extends State<_OrderCard> {
                                 style: const TextStyle(
                                   color: _brandBlue,
                                   fontSize: NataloTextSize.title,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: NataloWeight.strong,
                                 ),
                               ),
                               // Badge "💰 Saldo Refund Rp{X}" kalau order
@@ -1075,7 +1079,7 @@ class _OrderCardState extends State<_OrderCard> {
                                         style: const TextStyle(
                                           color: _brandBlue,
                                           fontSize: NataloTextSize.micro,
-                                          fontWeight: FontWeight.w800,
+                                          fontWeight: NataloWeight.strong,
                                         ),
                                       ),
                                     ],
@@ -1116,7 +1120,7 @@ class _OrderCardState extends State<_OrderCard> {
                                 : Text(
                                     actionLabel,
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
+                                      fontWeight: NataloWeight.strong,
                                     ),
                                   ),
                           ),
@@ -1152,7 +1156,7 @@ class _OrderCardState extends State<_OrderCard> {
                                   style: TextStyle(
                                     color: NataloColors.warningDark,
                                     fontSize: NataloTextSize.caption,
-                                    fontWeight: FontWeight.w900,
+                                    fontWeight: NataloWeight.strong,
                                   ),
                                 ),
                               ],
@@ -1267,7 +1271,7 @@ class _PaymentCountdownPillState extends State<_PaymentCountdownPill> {
               style: TextStyle(
                 color: fg,
                 fontSize: NataloTextSize.caption,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
                 // Angka countdown berubah tiap detik; tanpa lebar digit tetap
                 // pill-nya bergoyang mengikuti lebar tiap angka.
                 fontFeatures: const [FontFeature.tabularFigures()],
@@ -1332,7 +1336,7 @@ class _OrderMetaLabel extends StatelessWidget {
           style: TextStyle(
             color: cs.onSurfaceVariant,
             fontSize: NataloTextSize.caption,
-            fontWeight: FontWeight.w600,
+            fontWeight: NataloWeight.body,
           ),
         ),
       ],
@@ -1417,7 +1421,7 @@ class _OrderOptionsSheet extends StatelessWidget {
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurface,
                           fontSize: NataloTextSize.bodyLg,
-                          fontWeight: FontWeight.w900,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -1426,7 +1430,7 @@ class _OrderOptionsSheet extends StatelessWidget {
                         style: TextStyle(
                           color: _statusColor(order.status),
                           fontSize: NataloTextSize.caption,
-                          fontWeight: FontWeight.w900,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                     ],
@@ -1478,7 +1482,7 @@ class _OrderQuickActionTile extends StatelessWidget {
         style: TextStyle(
           color: color,
           fontSize: NataloTextSize.bodyLg,
-          fontWeight: FontWeight.w900,
+          fontWeight: NataloWeight.strong,
         ),
       ),
     );
@@ -1522,7 +1526,7 @@ class _OrderProductPreview extends StatelessWidget {
                   style: TextStyle(
                     color: cs.onSurface,
                     fontSize: NataloTextSize.bodyLg,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -1530,7 +1534,7 @@ class _OrderProductPreview extends StatelessWidget {
                   'Detail item akan dimuat di halaman detail.',
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: NataloWeight.body,
                   ),
                 ),
               ],
@@ -1596,7 +1600,7 @@ class _OrderProductPreview extends StatelessWidget {
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: NataloTextSize.body,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                   ),
@@ -1616,7 +1620,7 @@ class _OrderProductPreview extends StatelessWidget {
                 style: TextStyle(
                   color: cs.onSurface,
                   fontSize: NataloTextSize.bodyLg,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
               const SizedBox(height: 4),
@@ -1627,7 +1631,7 @@ class _OrderProductPreview extends StatelessWidget {
                 style: TextStyle(
                   color: cs.onSurfaceVariant,
                   fontSize: NataloTextSize.body,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: NataloWeight.body,
                 ),
               ),
             ],
@@ -1696,7 +1700,7 @@ class _EmptyOrdersState extends StatelessWidget {
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurface,
               fontSize: NataloTextSize.title,
-              fontWeight: FontWeight.w900,
+              fontWeight: NataloWeight.strong,
               letterSpacing: -0.2,
             ),
           ),
@@ -1710,7 +1714,7 @@ class _EmptyOrdersState extends StatelessWidget {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: NataloTextSize.body,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 height: 1.55,
               ),
             ),
@@ -1726,7 +1730,7 @@ class _EmptyOrdersState extends StatelessWidget {
                 icon: const Icon(Icons.shopping_bag_rounded, size: 18),
                 label: const Text(
                   'Mulai Belanja',
-                  style: TextStyle(fontWeight: FontWeight.w900),
+                  style: TextStyle(fontWeight: NataloWeight.strong),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: NataloColors.primaryDark,
@@ -1788,7 +1792,7 @@ class _FilteredOrdersEmptyState extends StatelessWidget {
             style: TextStyle(
               color: cs.onSurface,
               fontSize: NataloTextSize.title,
-              fontWeight: FontWeight.w900,
+              fontWeight: NataloWeight.strong,
             ),
           ),
           const SizedBox(height: 8),
@@ -1797,7 +1801,7 @@ class _FilteredOrdersEmptyState extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: cs.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
+              fontWeight: NataloWeight.body,
               height: 1.4,
             ),
           ),

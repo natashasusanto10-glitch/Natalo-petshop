@@ -174,7 +174,7 @@ class _TransactionsHeader extends StatelessWidget {
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: NataloTextSize.display,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: NataloWeight.strong,
                       height: 1.05,
                     ),
                   ),
@@ -184,7 +184,11 @@ class _TransactionsHeader extends StatelessWidget {
                     style: TextStyle(
                       color: NataloColors.onHeroBright,
                       fontSize: NataloTextSize.bodyLg,
-                      fontWeight: FontWeight.w600,
+                      // DI ATAS hero biru -> onMedia (w500), bukan body (w400).
+                      // Aturan token: teks pendamping di atas media/latar
+                      // berwarna punya lantai bobot lebih tinggi supaya tetap
+                      // terbaca.
+                      fontWeight: NataloWeight.onMedia,
                       height: 1.3,
                     ),
                   ),
@@ -448,7 +452,7 @@ class _TransactionAlertCard extends StatelessWidget {
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurface,
                     fontSize: NataloTextSize.bodyLg,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -459,7 +463,7 @@ class _TransactionAlertCard extends StatelessWidget {
                   style: TextStyle(
                     color: color,
                     fontSize: NataloTextSize.caption,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: NataloWeight.strong,
                     height: 1.25,
                   ),
                 ),
@@ -486,7 +490,7 @@ class _TransactionAlertCard extends StatelessWidget {
                     cta,
                     style: const TextStyle(
                       fontSize: NataloTextSize.caption,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 )
@@ -507,7 +511,7 @@ class _TransactionAlertCard extends StatelessWidget {
                     cta,
                     style: const TextStyle(
                       fontSize: NataloTextSize.caption,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ),
@@ -862,7 +866,7 @@ class _BalanceItem extends StatelessWidget {
                     style: TextStyle(
                       color: cs.onSurfaceVariant,
                       fontSize: NataloTextSize.caption,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: NataloWeight.body,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -873,7 +877,7 @@ class _BalanceItem extends StatelessWidget {
                     style: TextStyle(
                       color: valueColor ?? cs.onSurface,
                       fontSize: NataloTextSize.bodyLg,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ],
@@ -1033,7 +1037,7 @@ class _TransactionMenuItem extends StatelessWidget {
                           style: TextStyle(
                             color: cs.onSurface,
                             fontSize: NataloTextSize.bodyLg,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: NataloWeight.strong,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -1044,7 +1048,7 @@ class _TransactionMenuItem extends StatelessWidget {
                           style: TextStyle(
                             color: cs.onSurfaceVariant,
                             fontSize: NataloTextSize.caption,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: NataloWeight.body,
                           ),
                         ),
                       ],
@@ -1122,7 +1126,7 @@ class _HelpCard extends StatelessWidget {
                   style: TextStyle(
                     color: cs.onSurface,
                     fontSize: NataloTextSize.bodyLg,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -1131,7 +1135,7 @@ class _HelpCard extends StatelessWidget {
                   style: TextStyle(
                     color: cs.onSurfaceVariant,
                     fontSize: NataloTextSize.caption,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: NataloWeight.body,
                   ),
                 ),
               ],
@@ -1148,7 +1152,7 @@ class _HelpCard extends StatelessWidget {
             ),
             child: const Text(
               'Hubungi Kami',
-              style: TextStyle(fontSize: NataloTextSize.caption, fontWeight: FontWeight.w900),
+              style: TextStyle(fontSize: NataloTextSize.caption, fontWeight: NataloWeight.strong),
             ),
           ),
         ],
@@ -1304,7 +1308,7 @@ class _OrderStatusItem extends StatelessWidget {
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: NataloTextSize.caption,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: NataloWeight.strong,
                   height: 1.12,
                 ),
               ),
@@ -1337,7 +1341,7 @@ class _OrderStatusBadge extends StatelessWidget {
         style: const TextStyle(
           color: Colors.white,
           fontSize: NataloTextSize.micro,
-          fontWeight: FontWeight.w900,
+          fontWeight: NataloWeight.strong,
           height: 1,
         ),
       ),
@@ -1404,7 +1408,7 @@ class _SmallChip extends StatelessWidget {
         style: TextStyle(
           color: color,
           fontSize: NataloTextSize.micro,
-          fontWeight: FontWeight.w900,
+          fontWeight: NataloWeight.strong,
           height: 1,
         ),
       ),
@@ -1424,7 +1428,7 @@ class _SectionTitle extends StatelessWidget {
       style: TextStyle(
         color: Theme.of(context).colorScheme.onSurface,
         fontSize: NataloTextSize.title,
-        fontWeight: FontWeight.w900,
+        fontWeight: NataloWeight.strong,
       ),
     );
   }
@@ -1486,7 +1490,7 @@ void _showRefundBalanceInfo(BuildContext context) {
                 style: TextStyle(
                   color: cs.onSurface,
                   fontSize: NataloTextSize.title,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
               const SizedBox(height: 10),
@@ -1496,7 +1500,7 @@ void _showRefundBalanceInfo(BuildContext context) {
                   color: cs.onSurfaceVariant,
                   fontSize: NataloTextSize.bodyLg,
                   height: 1.45,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: NataloWeight.body,
                 ),
               ),
               const SizedBox(height: 22),
@@ -1517,7 +1521,7 @@ void _showRefundBalanceInfo(BuildContext context) {
                     'Mengerti',
                     style: TextStyle(
                       fontSize: NataloTextSize.bodyLg,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ),
