@@ -26,6 +26,7 @@ import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
 import '../state/trending_placeholder_controller.dart';
 import '../theme/natalo_colors.dart';
+import '../theme/natalo_text.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/in_app_browser.dart';
@@ -982,8 +983,8 @@ class _ExploreSectionHeader extends StatelessWidget {
             'Jelajahi Produk Natalo',
             style: TextStyle(
               color: cs.onSurface,
-              fontSize: 17,
-              fontWeight: FontWeight.w900,
+              fontSize: NataloTextSize.subtitle,
+              fontWeight: NataloWeight.strong,
             ),
           ),
           const SizedBox(height: 4),
@@ -991,8 +992,8 @@ class _ExploreSectionHeader extends StatelessWidget {
             'Temukan berbagai kebutuhan hewan kesayanganmu di Natalo',
             style: TextStyle(
               color: cs.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+              fontSize: NataloTextSize.caption,
+              fontWeight: NataloWeight.body,
             ),
           ),
         ],
@@ -1038,8 +1039,8 @@ class _ExploreFooter extends StatelessWidget {
             'Semua produk sudah ditampilkan',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
+              fontSize: NataloTextSize.body,
+              fontWeight: NataloWeight.body,
             ),
           ),
         ),
@@ -1227,8 +1228,8 @@ class _HomeHeader extends StatelessWidget {
                                         Text(
                                           'Natalo Petshop',
                                           style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w900,
+                                            fontSize: NataloTextSize.title,
+                                            fontWeight: NataloWeight.strong,
                                             color: Colors.white,
                                             height: 1.15,
                                           ),
@@ -1240,7 +1241,13 @@ class _HomeHeader extends StatelessWidget {
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
-                                              fontSize: 12,
+                                              fontSize: NataloTextSize.caption,
+                                              // Sebelumnya TANPA fontWeight
+                                              // sama sekali -> mewarisi w400.
+                                              // Teks redup di atas hero biru
+                                              // butuh lantai onMedia (w500)
+                                              // supaya tidak termakan latar.
+                                              fontWeight: NataloWeight.onMedia,
                                               color: _onHeroSubtle,
                                               height: 1.1,
                                             ),
@@ -1336,8 +1343,8 @@ class _HomeHeader extends StatelessWidget {
                                           textAlign: TextAlign.left,
                                           style: const TextStyle(
                                             color: Color(0xFF64748B),
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
+                                            fontSize: NataloTextSize.body,
+                                            fontWeight: NataloWeight.body,
                                             height: 1.2,
                                           ),
                                         ),
@@ -1701,7 +1708,7 @@ class _HomeSearchContent extends StatelessWidget {
               'Mencari saran...',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
               ),
             ),
           ],
@@ -1799,7 +1806,7 @@ class _PopularSearchSeeds extends StatelessWidget {
                 'Trending sekarang',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
             ],
@@ -1826,7 +1833,7 @@ class _PopularSearchSeeds extends StatelessWidget {
           'Pencarian populer',
           style: TextStyle(
             color: Theme.of(context).colorScheme.onSurface,
-            fontWeight: FontWeight.w900,
+            fontWeight: NataloWeight.strong,
           ),
         ),
         const SizedBox(height: 8),
@@ -1868,7 +1875,7 @@ class _HomeSearchRow extends StatelessWidget {
         title,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w900),
+        style: const TextStyle(fontWeight: NataloWeight.strong),
       ),
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.north_west_rounded, size: 18),
@@ -1899,7 +1906,7 @@ class _HomeProductSuggestionRow extends StatelessWidget {
         item.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w900),
+        style: const TextStyle(fontWeight: NataloWeight.strong),
       ),
       subtitle: Text('${item.brandName ?? 'Produk'} · $priceLabel'),
       trailing: const Icon(Icons.chevron_right_rounded),
@@ -1928,10 +1935,15 @@ class _TrustMarqueeState extends State<_TrustMarquee>
   // point-nya). Tetap sedikit di bawah putih penuh supaya search bar putih
   // masih jadi fokus utama.
   static const _marqueeTextColor = NataloColors.onHeroBright;
+  // Aturan token menaruh social-proof di atas media pada onMedia (w500).
+  // DI SINI SENGAJA strong (w600): komentar di atas mencatat versi lama
+  // pernah terlalu redup sampai tak terbaca, dan itu sudah diperbaiki dengan
+  // menaikkan kecerahan warna. Menurunkan bobot ke w500 berisiko
+  // mengembalikan masalah yang pernah diperbaiki itu.
   static const _textStyle = TextStyle(
     color: _marqueeTextColor,
-    fontSize: 12,
-    fontWeight: FontWeight.w800,
+    fontSize: NataloTextSize.caption,
+    fontWeight: NataloWeight.strong,
   );
 
   @override
@@ -2602,7 +2614,7 @@ class _ShortcutGrid extends StatelessWidget {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 10.5,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.body,
                 height: 1.12,
               ),
             ),
@@ -2725,8 +2737,8 @@ class _FlashSaleGrid extends StatelessWidget {
                   'Flash Sale',
                   style: TextStyle(
                     color: titleColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
+                    fontSize: NataloTextSize.subtitle,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
                 // Countdown kotak HH:MM:SS (Opsi B) — hanya kalau ada produk
@@ -2762,8 +2774,8 @@ class _FlashSaleGrid extends StatelessWidget {
                         'Lihat semua ›',
                         style: TextStyle(
                           color: _brandBlue,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                          fontSize: NataloTextSize.caption,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                     ),
@@ -2881,7 +2893,7 @@ class _FlashSaleCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 10.8,
                             height: 1.18,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: NataloWeight.strong,
                             color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
@@ -2914,9 +2926,9 @@ class _FlashSalePriceBlock extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 13,
+          fontSize: NataloTextSize.body,
           height: 1.05,
-          fontWeight: FontWeight.w900,
+          fontWeight: NataloWeight.strong,
           color: Theme.of(context).colorScheme.onSurface,
         ),
       );
@@ -2932,7 +2944,7 @@ class _FlashSalePriceBlock extends StatelessWidget {
           style: TextStyle(
             fontSize: 9.5,
             height: 1,
-            fontWeight: FontWeight.w600,
+            fontWeight: NataloWeight.body,
             color: Theme.of(context).colorScheme.onSurfaceVariant,
             decoration: TextDecoration.lineThrough,
             decorationThickness: 1.4,
@@ -2944,9 +2956,9 @@ class _FlashSalePriceBlock extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontSize: 13.5,
+            fontSize: NataloTextSize.bodyLg,
             height: 1.05,
-            fontWeight: FontWeight.w900,
+            fontWeight: NataloWeight.strong,
             color: Color(0xFFE11D48),
           ),
         ),
@@ -3005,7 +3017,7 @@ class _FlashSaleSoldProgress extends StatelessWidget {
             style: const TextStyle(
               fontSize: 9.5,
               height: 1.05,
-              fontWeight: FontWeight.w600,
+              fontWeight: NataloWeight.body,
               color: Color(0xFFA05252),
             ),
           ),
@@ -3043,7 +3055,7 @@ class _FlashSaleRatingSoldRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: 10.2,
                 height: 1,
-                fontWeight: FontWeight.w600,
+                fontWeight: NataloWeight.body,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
@@ -3069,7 +3081,7 @@ class _FlashSaleRatingSoldRow extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10.2,
                   height: 1,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: NataloWeight.body,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -3179,9 +3191,9 @@ class _HomeProductCard extends StatelessWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: NataloTextSize.body,
             height: 1.25,
-            fontWeight: FontWeight.w600,
+            fontWeight: NataloWeight.strong,
             color: cs.onSurface,
           ),
         ),
@@ -3404,7 +3416,7 @@ class _HomeProductRankBadge extends StatelessWidget {
         style: const TextStyle(
           color: Colors.white,
           fontSize: 10,
-          fontWeight: FontWeight.w800,
+          fontWeight: NataloWeight.strong,
           height: 1,
         ),
       ),
@@ -3412,6 +3424,18 @@ class _HomeProductRankBadge extends StatelessWidget {
   }
 }
 
+/// UKURAN DI SINI SENGAJA MASIH LITERAL — bukan kelalaian migrasi token.
+///
+/// Kartu produk Beranda memakai ukuran TURUNAN (`fontSize - 2`,
+/// `fontSize + 1`, `compact ? 9.5 : 11`) dan sebagian jatuh DI BAWAH 11,
+/// yaitu lantai `NataloTextSize.micro`. Menaikkannya ke lantai token akan
+/// MEMBESARKAN teks di dalam baris `maxLines: 1` + ellipsis pada kartu
+/// sempit — risiko terpotong/overflow yang tidak bisa dibuktikan aman tanpa
+/// mencobanya di perangkat.
+///
+/// Menyelesaikannya butuh keputusan desain lebih dulu: apakah skala token
+/// perlu tingkat di bawah `micro` untuk kartu padat, atau kartunya yang
+/// disesuaikan. Itu bukan pekerjaan substitusi mekanis.
 class _HomeProductPriceRow extends StatelessWidget {
   final Product product;
   final double fontSize;
@@ -3440,7 +3464,7 @@ class _HomeProductPriceRow extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: fontSize,
-          fontWeight: FontWeight.w900,
+          fontWeight: NataloWeight.strong,
           color: color,
           height: 1.1,
         ),
@@ -3456,7 +3480,7 @@ class _HomeProductPriceRow extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: compact ? fontSize - 2 : fontSize - 3,
-            fontWeight: FontWeight.w600,
+            fontWeight: NataloWeight.body,
             color: Theme.of(context).colorScheme.onSurfaceVariant,
             height: 1.05,
             decoration: TextDecoration.lineThrough,
@@ -3470,7 +3494,7 @@ class _HomeProductPriceRow extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: compact ? fontSize : fontSize + 1,
-            fontWeight: FontWeight.w900,
+            fontWeight: NataloWeight.strong,
             color: const Color(0xFFE11D48),
             height: 1.05,
           ),
@@ -3562,7 +3586,7 @@ class _HomeProductPromoBadge extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: compact ? 9.5 : 11,
-                fontWeight: FontWeight.w700,
+                fontWeight: NataloWeight.body,
                 color: color,
                 height: 1,
               ),
@@ -3606,7 +3630,7 @@ class _HomeProductRatingSoldRow extends StatelessWidget {
               product.rating.toStringAsFixed(1),
               style: TextStyle(
                 fontSize: textSize,
-                fontWeight: FontWeight.w500,
+                fontWeight: NataloWeight.body,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: 1,
               ),
@@ -3632,7 +3656,7 @@ class _HomeProductRatingSoldRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: textSize,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: NataloWeight.body,
                   color: const Color(0xFF4B5563),
                   height: 1,
                 ),
@@ -3740,7 +3764,7 @@ class _HomeProductRepurchaseBadge extends StatelessWidget {
               style: const TextStyle(
                 color: Color(0xFFD97706),
                 fontSize: 10.5,
-                fontWeight: FontWeight.w800,
+                fontWeight: NataloWeight.strong,
                 height: 1.0,
               ),
             ),
@@ -3786,7 +3810,7 @@ class _HomeProductDiscountBadge extends StatelessWidget {
         style: TextStyle(
           color: Colors.white,
           fontSize: compact ? 10.5 : 12,
-          fontWeight: FontWeight.w900,
+          fontWeight: NataloWeight.strong,
           height: 1,
         ),
       ),
@@ -3830,8 +3854,8 @@ class _HorizontalProductSection extends StatelessWidget {
                         title,
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurface,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
+                          fontSize: NataloTextSize.title,
+                          fontWeight: NataloWeight.strong,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -3839,8 +3863,8 @@ class _HorizontalProductSection extends StatelessWidget {
                         subtitle,
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontSize: NataloTextSize.caption,
+                          fontWeight: NataloWeight.body,
                         ),
                       ),
                     ],
@@ -4049,8 +4073,8 @@ class _BrandChoiceSectionState extends State<_BrandChoiceSection> {
                     'Brand Favorit',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurface,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
+                      fontSize: NataloTextSize.title,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ),
@@ -4162,8 +4186,8 @@ class BrandGridCard extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+                  fontSize: NataloTextSize.caption,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
             ],
@@ -4319,8 +4343,8 @@ class _CategorySection extends StatelessWidget {
                     'Kategori Populer',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurface,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
+                      fontSize: NataloTextSize.title,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ),
@@ -4442,8 +4466,8 @@ class _PopularCategoryCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: scheme.onSurface,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                    fontSize: NataloTextSize.bodyLg,
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ),
@@ -4475,8 +4499,8 @@ class _RecommendationGrid extends StatelessWidget {
             'Rekomendasi Untuk Kamu',
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurface,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
+              fontSize: NataloTextSize.title,
+              fontWeight: NataloWeight.strong,
             ),
           ),
           const SizedBox(height: 12),
