@@ -53,6 +53,85 @@ export type TusUploadResult = {
 
 const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
 
+/**
+ * Fingerprint resume WAJIB mengandung videoId.
+ *
+ * Default tus-js-client di browser adalah
+ * `tus-br-<name>-<type>-<size>-<lastModified>-<endpoint>` (lihat
+ * tus-js-client/lib/browser/fileSignature.js) — TIDAK memuat videoId,
+ * sedangkan endpoint kita SELALU sama (video.bunnycdn.com/tusupload).
+ * Jadi file yang sama selalu menghasilkan fingerprint identik, padahal
+ * SETIAP percobaan upload mem-provision videoId BARU di server.
+ *
+ * Akibatnya satu upload gagal meninggalkan entry localStorage yang menunjuk
+ * URL video LAMA. Percobaan berikutnya dengan file yang sama me-resume ke
+ * URL mati itu (videonya sudah dihapus, signature juga milik guid baru),
+ * PATCH chunk pertama ditolak Bunny tanpa header CORS, dan browser cuma
+ * bisa melaporkan ProgressEvent "response code: n/a". Karena
+ * `removeFingerprintOnSuccess` hanya menyapu saat SUKSES, entry beracun itu
+ * tidak pernah hilang — file tersebut gagal diunggah SELAMANYA.
+ */
+export function bunnyTusFingerprint(
+  videoId: string,
+  file: { name?: string; size?: number; type?: string; lastModified?: number },
+): string {
+  return [
+    "tus-bunny",
+    videoId,
+    file.name ?? "blob",
+    file.type ?? "",
+    file.size ?? 0,
+    file.lastModified ?? 0,
+  ].join("-");
+}
+
+/**
+ * Pertahanan lapis kedua: resume HANYA kalau URL simpanan memang milik
+ * videoId yang baru di-provision. Entry dari skema fingerprint lama (atau
+ * storage yang dirusak tangan) tidak boleh membajak upload baru.
+ */
+export function shouldResumePreviousUpload(
+  uploadUrl: string | null | undefined,
+  videoId: string,
+): boolean {
+  if (!uploadUrl || !videoId) return false;
+  return uploadUrl.includes(videoId);
+}
+
+/**
+ * Pesan untuk kasus berkas sumber hilang dari perangkat.
+ *
+ * KENAPA PERLU: form Produk menunda upload sampai produk disimpan
+ * ("Video akan diunggah saat produk disimpan"), jadi objek File hanya
+ * menunjuk ke berkas di disk. Kalau admin memindah / mengganti nama /
+ * menghapus video itu sebelum menekan Simpan, penunjuknya menggantung dan
+ * browser TIDAK BISA membaca byte-nya. XHR gagal di level jaringan tanpa
+ * status HTTP, sehingga tus hanya bisa melaporkan
+ * "failed to upload chunk at offset 0, caused by [object ProgressEvent]"
+ * — tidak ada petunjuk sama sekali bahwa penyebabnya berkas hilang.
+ */
+export const VIDEO_FILE_MISSING_MESSAGE =
+  "File video sudah tidak bisa dibaca dari perangkat — kemungkinan sudah " +
+  "dipindah, diganti nama, atau dihapus setelah dipilih. Pilih ulang videonya.";
+
+/**
+ * Baca 1 byte pertama untuk memastikan berkasnya masih ada.
+ *
+ * Blob hasil trim ada di memori, jadi selalu lolos. Yang disaring di sini
+ * adalah File yang menunjuk ke disk — browser melempar NotFoundError saat
+ * snapshot-nya sudah tidak cocok.
+ */
+export async function isVideoFileReadable(
+  file: Pick<Blob, "slice">,
+): Promise<boolean> {
+  try {
+    await file.slice(0, 1).arrayBuffer();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function uploadToBunnyViaTus(
   options: TusUploadOptions,
 ): Promise<TusUploadResult> {
@@ -74,11 +153,28 @@ export function uploadToBunnyViaTus(
       },
       // Resume support: tus-js-client simpan upload URL di localStorage
       // by default. Kalau user buka ulang halaman dengan file yang sama
-      // (file fingerprint match), upload lanjut dari last byte.
+      // DAN videoId yang sama, upload lanjut dari last byte.
       // Bunny TUS support resume, tapi window TTL terbatas (~24 jam).
+      //
+      // Fingerprint di-scope ke videoId — lihat bunnyTusFingerprint() untuk
+      // alasannya (tanpa itu, satu kegagalan meracuni file selamanya).
+      fingerprint: async (file) =>
+        bunnyTusFingerprint(
+          options.credentials.videoId,
+          file as { name?: string; size?: number; type?: string; lastModified?: number },
+        ),
       removeFingerprintOnSuccess: true,
       onError: (err) => {
-        reject(err instanceof Error ? err : new Error(String(err)));
+        // Berkas bisa juga lenyap DI TENGAH upload (admin bersih-bersih
+        // folder sambil menunggu). Cek ulang sebelum meneruskan error tus
+        // yang tidak terbaca manusia.
+        void isVideoFileReadable(options.file).then((readable) => {
+          if (!readable) {
+            reject(new Error(VIDEO_FILE_MISSING_MESSAGE));
+            return;
+          }
+          reject(err instanceof Error ? err : new Error(String(err)));
+        });
       },
       onProgress: (bytesAccepted, bytesTotal) => {
         const percent = bytesTotal > 0
@@ -111,15 +207,26 @@ export function uploadToBunnyViaTus(
     // Check apakah upload sebelumnya pernah ada (browser localStorage
     // fingerprint match). Kalau ya, resume dari titik itu — kalau gagal
     // cari, mulai dari 0. tus-js-client handle ini automatic.
-    upload.findPreviousUploads().then((previousUploads) => {
-      if (previousUploads.length > 0) {
-        upload.resumeFromPreviousUpload(previousUploads[0]);
+    // Gate berkas-masih-ada DULU: percuma provision & kirim chunk kalau
+    // sumbernya sudah lenyap — dan pesannya jadi jelas sejak awal.
+    void isVideoFileReadable(options.file).then((readable) => {
+      if (!readable) {
+        reject(new Error(VIDEO_FILE_MISSING_MESSAGE));
+        return;
       }
-      upload.start();
-    }).catch(() => {
-      // findPreviousUploads boleh fail kalau localStorage disabled.
-      // Fallback ke fresh start.
-      upload.start();
+      upload.findPreviousUploads().then((previousUploads) => {
+        const resumable = previousUploads.find((prev) =>
+          shouldResumePreviousUpload(prev.uploadUrl, options.credentials.videoId),
+        );
+        if (resumable) {
+          upload.resumeFromPreviousUpload(resumable);
+        }
+        upload.start();
+      }).catch(() => {
+        // findPreviousUploads boleh fail kalau localStorage disabled.
+        // Fallback ke fresh start.
+        upload.start();
+      });
     });
   });
 }
