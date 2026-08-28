@@ -5,7 +5,12 @@ import { Button, DangerButton, useAdminToast } from "@/components/admin/ui";
 import { readVideoMetadata } from "@/lib/feed/video-thumbnail";
 import { formatFileSize } from "@/lib/feed/video-config";
 import { trimVideo } from "@/lib/feed/video-trimmer";
-import { uploadToBunnyViaTus, type BunnyTusCredentials } from "@/lib/feed/tus-upload";
+import {
+  isVideoFileReadable,
+  uploadToBunnyViaTus,
+  VIDEO_FILE_MISSING_MESSAGE,
+  type BunnyTusCredentials,
+} from "@/lib/feed/tus-upload";
 
 const MAX_SOURCE = 200 * 1024 * 1024;
 const MIN_DURATION = 10;
@@ -52,7 +57,17 @@ export const ProductVideoDraft = forwardRef<ProductVideoDraftHandle, { productId
 
   useImperativeHandle(ref, () => ({
     openPicker() { inputRef.current?.click(); },
-    async prepareForSave() { return picked; },
+    async prepareForSave() {
+      // Berkas divalidasi SEBELUM produk disimpan: kalau videonya sudah
+      // dipindah/dihapus sejak dipilih, hentikan di sini supaya tidak ada
+      // produk tersimpan dengan status "uploading" + video Bunny yatim yang
+      // harus dikompensasi. Admin dapat pesan jelas, bukan error tus mentah.
+      if (picked && !(await isVideoFileReadable(picked.file))) {
+        setError(VIDEO_FILE_MISSING_MESSAGE);
+        throw new Error(VIDEO_FILE_MISSING_MESSAGE);
+      }
+      return picked;
+    },
     async commitAfterProductSave(id: string) {
       if (!picked) return;
       setBusy(true);
