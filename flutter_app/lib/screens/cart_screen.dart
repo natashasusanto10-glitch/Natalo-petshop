@@ -20,6 +20,7 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_chat_button.dart';
+import '../widgets/app_ui.dart';
 import '../widgets/cart_checkout_pill.dart';
 import '../widgets/cart_scroll_view.dart';
 import '../widgets/app_toast.dart';
@@ -1717,6 +1718,7 @@ class _CartItemCard extends StatelessWidget {
                           )
                         else
                           _QtyStepper(
+                            title: item.product.title,
                             quantity: item.quantity,
                             maxQty:
                                 reduced ? availableStock : item.effectiveStock,
@@ -1812,11 +1814,17 @@ class _VariantChipDropdown extends StatelessWidget {
 class _QtyStepper extends StatefulWidget {
   final int quantity;
   final int maxQty;
+
+  /// Nama produk — HANYA dipakai untuk label pembaca layar. Di daftar
+  /// keranjang semua stepper tampak identik; tanpa ini pengguna tak tahu
+  /// jumlah barang mana yang sedang diubah.
+  final String title;
   final ValueChanged<int> onSetQuantity;
   final VoidCallback onDecrement;
   final VoidCallback onIncrement;
 
   const _QtyStepper({
+    required this.title,
     required this.quantity,
     required this.maxQty,
     required this.onSetQuantity,
@@ -1910,7 +1918,10 @@ class _QtyStepperState extends State<_QtyStepper> {
     final decrementIsDelete = widget.quantity <= 1;
 
     return Container(
-      height: 36,
+      // 36 -> 46. SATU-SATUNYA perubahan visual di PR ini, dan tak bisa
+      // dihindari: pil ini MENGUNCI tinggi anaknya. 46 (bukan 44) karena
+      // border 1px atas-bawah memakan 2px — isinya harus tetap 44.
+      height: 46,
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(999),
@@ -1921,6 +1932,12 @@ class _QtyStepperState extends State<_QtyStepper> {
         children: [
           _StepperCell(
             onTap: widget.onDecrement,
+            // Tombol yang sama berubah peran saat jumlah tinggal 1 —
+            // labelnya wajib ikut berubah, kalau tidak pengguna mengira
+            // menekan "kurangi" padahal barangnya dihapus.
+            semanticLabel: decrementIsDelete
+                ? 'Hapus ${widget.title} dari keranjang'
+                : 'Kurangi jumlah ${widget.title}',
             child: decrementIsDelete
                 ? Icon(
                     Icons.delete_outline_rounded,
@@ -1939,7 +1956,7 @@ class _QtyStepperState extends State<_QtyStepper> {
           ),
           SizedBox(
             width: 46,
-            height: 36,
+            height: 44,
             child: TextField(
               controller: _controller,
               focusNode: _focusNode,
@@ -1981,6 +1998,11 @@ class _QtyStepperState extends State<_QtyStepper> {
           _StepperCell(
             enabled: canIncrement,
             onTap: canIncrement ? widget.onIncrement : null,
+            // Batas stok disampaikan lewat warna abu saja — pembaca layar
+            // butuh alasannya diucapkan, bukan cuma tombol mati.
+            semanticLabel: canIncrement
+                ? 'Tambah jumlah ${widget.title}'
+                : 'Jumlah maksimum ${widget.title} tercapai',
             child: Text(
               '+',
               style: TextStyle(
@@ -2002,21 +2024,36 @@ class _StepperCell extends StatelessWidget {
   final VoidCallback? onTap;
   final bool enabled;
 
+  /// Nama aksi yang diucapkan pembaca layar. Isinya '+', '−', atau ikon
+  /// tong sampah — semuanya tak berarti apa-apa kalau dibacakan apa adanya.
+  final String semanticLabel;
+
   const _StepperCell({
     required this.child,
     required this.onTap,
+    required this.semanticLabel,
     this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(999),
-      child: SizedBox(
-        height: 36,
-        width: 36,
-        child: Center(child: child),
+    return Semantics(
+      button: true,
+      enabled: enabled && onTap != null,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(999),
+        // Tinggi mengikuti pil (44). Lebar tetap 36 supaya lebar
+        // keseluruhan pil tidak berubah.
+        child: AppMinTapTarget(
+          child: SizedBox(
+            height: 44,
+            width: 36,
+            child: Center(child: child),
+          ),
+        ),
       ),
     );
   }

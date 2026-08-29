@@ -1420,18 +1420,24 @@ class _BackToCartDialog extends StatelessWidget {
             child: Material(
               color: Colors.transparent,
               shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: () {
-                  AppHaptics.tap();
-                  Navigator.pop(context, true);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 20,
-                    color: cs.onSurfaceVariant,
+              // Tombol ikon-saja: tanpa label hanya terucap "tombol".
+              child: Semantics(
+                button: true,
+                label: 'Tutup',
+                excludeSemantics: true,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () {
+                    AppHaptics.tap();
+                    Navigator.pop(context, true);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 20,
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),
@@ -2839,91 +2845,98 @@ class _ShippingRateTile extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final disabled = onTap == null;
-    return Material(
-      color: active
-          ? (isDark
-              ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-              : const Color(0xFFEAF5FF))
-          : cs.surface,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: active
-                  ? _brandBlue
-                  : (Theme.of(context).brightness == Brightness.dark
-                      ? cs.outlineVariant
-                      : const Color(0xFFE8EEF7)),
+    return Semantics(
+        // Status terpilih sebelumnya HANYA visual: warna latar, tebal
+        // border, dan ikon radio — ikon tak punya label bagi pembaca layar.
+        selected: active,
+        enabled: onTap != null,
+        inMutuallyExclusiveGroup: true,
+        child: Material(
+          color: active
+              ? (isDark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF5FF))
+              : cs.surface,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: active
+                      ? _brandBlue
+                      : (Theme.of(context).brightness == Brightness.dark
+                          ? cs.outlineVariant
+                          : const Color(0xFFE8EEF7)),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    active
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    color: active
+                        ? _brandBlue
+                        : disabled
+                            ? cs.outlineVariant
+                            : cs.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 10),
+                  _ShippingMethodIcon(rate: rate, disabled: disabled, size: 42),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          rate.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color:
+                                disabled ? cs.onSurfaceVariant : cs.onSurface,
+                            fontWeight: NataloWeight.strong,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          rate.isSelfPickup
+                              ? PickupStoreInfo.address
+                              : disabled
+                                  ? rate.unavailableReason ?? 'Tidak tersedia'
+                                  : rate.duration,
+                          maxLines: rate.isSelfPickup ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: NataloTextSize.caption,
+                            fontWeight: NataloWeight.body,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    rate.price == 0 ? 'Gratis' : formatRupiah(rate.price),
+                    style: TextStyle(
+                      color: disabled
+                          ? cs.onSurfaceVariant
+                          : rate.price == 0
+                              ? const Color(0xFF16A34A)
+                              : cs.onSurface,
+                      fontWeight: NataloWeight.strong,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          child: Row(
-            children: [
-              Icon(
-                active
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.radio_button_off_rounded,
-                color: active
-                    ? _brandBlue
-                    : disabled
-                        ? cs.outlineVariant
-                        : cs.onSurfaceVariant,
-              ),
-              const SizedBox(width: 10),
-              _ShippingMethodIcon(rate: rate, disabled: disabled, size: 42),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      rate.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: disabled ? cs.onSurfaceVariant : cs.onSurface,
-                        fontWeight: NataloWeight.strong,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      rate.isSelfPickup
-                          ? PickupStoreInfo.address
-                          : disabled
-                              ? rate.unavailableReason ?? 'Tidak tersedia'
-                              : rate.duration,
-                      maxLines: rate.isSelfPickup ? 2 : 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant,
-                        fontSize: NataloTextSize.caption,
-                        fontWeight: NataloWeight.body,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                rate.price == 0 ? 'Gratis' : formatRupiah(rate.price),
-                style: TextStyle(
-                  color: disabled
-                      ? cs.onSurfaceVariant
-                      : rate.price == 0
-                          ? const Color(0xFF16A34A)
-                          : cs.onSurface,
-                  fontWeight: NataloWeight.strong,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+        ));
   }
 }
 
@@ -3068,67 +3081,72 @@ class _PaymentMethodTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Material(
-      color: active
-          ? (isDark
-              ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-              : const Color(0xFFEAF5FF))
-          : cs.surface,
-      borderRadius: BorderRadius.circular(16),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: active
-                  ? _brandBlue
-                  : (Theme.of(context).brightness == Brightness.dark
-                      ? cs.outlineVariant
-                      : const Color(0xFFE8EEF7)),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                active
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.radio_button_off_rounded,
-                color: active ? _brandBlue : cs.onSurfaceVariant,
-              ),
-              const SizedBox(width: 12),
-              const _CheckoutSectionIcon(icon: Icons.credit_card_rounded),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      option,
-                      style: TextStyle(
-                        color: cs.onSurface,
-                        fontWeight: NataloWeight.strong,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant,
-                        fontSize: NataloTextSize.caption,
-                        fontWeight: NataloWeight.body,
-                      ),
-                    ),
-                  ],
+    return Semantics(
+        // Sama seperti tile ongkir: pilihan saling-eksklusif yang statusnya
+        // tak terucap tanpa ini.
+        selected: active,
+        inMutuallyExclusiveGroup: true,
+        child: Material(
+          color: active
+              ? (isDark
+                  ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
+                  : const Color(0xFFEAF5FF))
+              : cs.surface,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: active
+                      ? _brandBlue
+                      : (Theme.of(context).brightness == Brightness.dark
+                          ? cs.outlineVariant
+                          : const Color(0xFFE8EEF7)),
                 ),
               ),
-            ],
+              child: Row(
+                children: [
+                  Icon(
+                    active
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    color: active ? _brandBlue : cs.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 12),
+                  const _CheckoutSectionIcon(icon: Icons.credit_card_rounded),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          option,
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontWeight: NataloWeight.strong,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: cs.onSurfaceVariant,
+                            fontSize: NataloTextSize.caption,
+                            fontWeight: NataloWeight.body,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
-    );
+        ));
   }
 }
 
