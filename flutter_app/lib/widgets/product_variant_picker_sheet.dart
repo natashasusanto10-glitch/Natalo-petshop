@@ -484,8 +484,12 @@ class _VariantOptionChip extends StatelessWidget {
           // ber-border tetap 33 — menyisakan pita warna 5,5px di atas dan
           // bawah border pada chip terpilih. Diukur: 44,0 vs 33,0.
           child: Container(
+            // JANGAN set `alignment` di sini: Container yang punya alignment
+            // memuai memenuhi lebar Wrap, jadi tiap chip melar selebar sheet
+            // dan menumpuk satu per baris (bukan memeluk isi ala Tokopedia).
+            // Row.crossAxisAlignment center sudah menengahkan isi secara
+            // vertikal dalam ambang tinggi 44 tanpa perlu alignment.
             constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            alignment: Alignment.center,
             // Padding kiri mengecil saat ada thumbnail supaya foto
             // menempel rapi ke tepi pil, bukan mengambang.
             padding: EdgeInsets.fromLTRB(thumb.isEmpty ? 14 : 6, 6, 14, 6),
