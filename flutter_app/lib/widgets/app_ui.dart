@@ -76,6 +76,18 @@ class AppHeaderIconButton extends StatelessWidget {
 /// ```dart
 /// InkWell(onTap: ..., child: AppMinTapTarget(child: Icon(..., size: 18)))
 /// ```
+///
+/// BATASAN — GAGAL DIAM-DIAM KALAU INDUK MENGUNCI UKURAN. Widget ini memakai
+/// `ConstrainedBox`, dan batas minimum TIDAK bisa melampaui batas maksimum
+/// yang diturunkan induk. Kalau ia berada di dalam `Container(height: 36)`
+/// atau `SizedBox` bertinggi tetap, hasilnya tetap 36 — tanpa error, tanpa
+/// warning, dan terlihat seolah sudah benar.
+///
+/// Ini nyata: pil jumlah di keranjang mengunci tinggi 36, sehingga tombol
+/// +/- di dalamnya hanya 34 sampai pilnya sendiri dinaikkan ke 44.
+///
+/// Karena itu perbaikan area sentuh WAJIB diverifikasi lewat ukuran yang
+/// dirender (`tester.getSize`), bukan lewat "sudah dibungkus AppMinTapTarget".
 class AppMinTapTarget extends StatelessWidget {
   const AppMinTapTarget({super.key, required this.child, this.size = 44});
 
