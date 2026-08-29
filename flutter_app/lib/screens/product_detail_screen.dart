@@ -1674,7 +1674,9 @@ class _PromoVoucherSheet extends StatelessWidget {
                   style: TextStyle(
                     color: _successGreen,
                     fontSize: NataloTextSize.bodyLg,
-                    fontWeight: NataloWeight.body,
+                    // Callout manfaat, sejajar dengan 'Voucher tersedia' di
+                    // panel yang sama — keduanya strong, bukan body.
+                    fontWeight: NataloWeight.strong,
                   ),
                 ),
               ],
