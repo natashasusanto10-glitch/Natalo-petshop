@@ -28,6 +28,7 @@ import '../state/trending_placeholder_controller.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/natalo_text.dart';
 import '../utils/formatters.dart';
+import '../utils/daily_rotation.dart';
 import '../utils/haptics.dart';
 import '../utils/in_app_browser.dart';
 import '../widgets/app_cart_button.dart';
@@ -203,6 +204,9 @@ class _HomeScreenState extends State<HomeScreen> {
         // rotasi harian di grid punya pool untuk digilir — lihat
         // `_dailyRotatingPick` di builder _RecommendationGrid.
         limit: 18,
+        // Tanpa seed, POOL 18 ini sendiri identik setiap hari — rotasi
+        // klien cuma menggilir isi kolam yang airnya tak pernah diganti.
+        seed: ProductService.dailyRecommendationSeed(),
       );
       if (!mounted) return;
       setState(() => _personalizedRecs = recs);
@@ -271,6 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
           viewedIds: viewedIds,
           excludeIds: excludeForPersonalized,
           limit: 8,
+          seed: ProductService.dailyRecommendationSeed(),
         );
         accumulated.addAll(personalized);
       }
@@ -542,50 +547,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // generation): urutan STABIL sepanjang hari — user tidak disorientasi
   // saat scroll balik / buka-tutup app — lalu berganti sendiri tiap hari.
   //
-  // Bukan pengacakan bohong: `pinned` teratas (juara sejati) SELALU tampil
-  // dan seluruh kandidat berasal dari top-window yang memang kuat.
-
-  /// Angka tanggal lokal (YYYYMMDD) — sama sepanjang hari, ganti tengah malam.
-  int get _dailyRotationSeed {
-    final now = DateTime.now();
-    return now.year * 10000 + now.month * 100 + now.day;
-  }
-
-  /// Dari daftar `ranked` (sudah terurut, index kecil = paling kuat), ambil
-  /// `count` produk dengan rotasi harian: `pinned` teratas SELALU tampil,
-  /// sisanya dipilih bergilir tiap hari dari kandidat berikutnya. Hasil
-  /// di-sort ulang mengikuti urutan `ranked` supaya nomor #1..#N monoton.
-  List<Product> _dailyRotatingPick(
-    List<Product> ranked, {
-    required int pinned,
-    required int count,
-  }) {
-    if (ranked.length <= count) return ranked.take(count).toList();
-    final safePinned = pinned.clamp(0, count);
-    final pinnedItems = ranked.take(safePinned).toList();
-    final pool = ranked.sublist(safePinned);
-    final need = count - pinnedItems.length;
-
-    // Fisher-Yates ber-seed (LCG) — deterministik per hari, tanpa Random.
-    final order = List<int>.generate(pool.length, (i) => i);
-    var state = (_dailyRotationSeed & 0x7fffffff) | 1;
-    for (var i = order.length - 1; i > 0; i -= 1) {
-      state = (state * 1103515245 + 12345) & 0x7fffffff;
-      final j = state % (i + 1);
-      final tmp = order[i];
-      order[i] = order[j];
-      order[j] = tmp;
-    }
-    final picked = order.take(need).map((i) => pool[i]).toList();
-
-    final chosen = <Product>[...pinnedItems, ...picked];
-    final rankIndex = <String, int>{
-      for (var i = 0; i < ranked.length; i += 1) ranked[i].id: i,
-    };
-    chosen.sort((a, b) =>
-        (rankIndex[a.id] ?? 1 << 30).compareTo(rankIndex[b.id] ?? 1 << 30));
-    return chosen;
-  }
+  // Bukan pengacakan bohong: seluruh kandidat berasal dari top-window yang
+  // memang kuat, dan hasil akhirnya di-sort ulang mengikuti skor.
 
   /// Open fullscreen search page (BerandaSearchPage).
   ///
@@ -740,7 +703,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         // API banner carousel kalau ada banner aktif dari admin.
                         // Section auto-hide kalau banners kosong (di _HeroBanner).
                         SliverToBoxAdapter(
-                          child: _HeroBanner(banners: homeSnapshotStore.banners),
+                          child:
+                              _HeroBanner(banners: homeSnapshotStore.banners),
                         ),
                         SliverToBoxAdapter(
                           child: _ShortcutGrid(
@@ -820,21 +784,30 @@ class _HomeScreenState extends State<HomeScreen> {
                                 child: AnimatedBuilder(
                                   animation: recentlyViewedStore,
                                   builder: (context, _) {
-                                    final recPool =
-                                        _personalizedRecs.isNotEmpty
-                                            ? _personalizedRecs
-                                            : _buildPersonalizedRecommendations(
-                                                products);
+                                    final recPool = _personalizedRecs.isNotEmpty
+                                        ? _personalizedRecs
+                                        : _buildPersonalizedRecommendations(
+                                            products);
                                     if (recPool.isEmpty) {
                                       return const SizedBox.shrink();
                                     }
                                     // Rotasi harian: 4 rekomendasi paling
-                                    // relevan tetap di atas, 6 sisanya digilir
-                                    // tiap hari dari kandidat (pool 18 server).
-                                    final recommendations = _dailyRotatingPick(
+                                    // pinned: 0 — SEMUA 10 digilir harian
+                                    // dari pool 18. Dulu 4 teratas dipaku,
+                                    // tapi hanya ~4 kartu yang terlihat tanpa
+                                    // menggulir, jadi bagian yang terlihat
+                                    // tidak pernah berubah. Urutan hasil tetap
+                                    // ikut skor (di-sort ulang di
+                                    // _dailyRotatingPick), jadi relevansi
+                                    // tidak dibuang — monopolinya saja yang
+                                    // hilang. Naikkan lagi kalau katalog sudah
+                                    // punya sinyal nyata (rating/pembelian).
+                                    final recommendations = dailyRotatingPick(
                                       recPool,
-                                      pinned: 4,
+                                      seed: dailyRotationSeed(),
+                                      pinned: 0,
                                       count: 10,
+                                      idOf: (p) => p.id,
                                     );
                                     return _RecommendationGrid(
                                       products: recommendations,
@@ -3211,7 +3184,8 @@ class _HomeProductCard extends StatelessWidget {
         compact: compact,
         finalPriceOnly: railSlim,
       ),
-      if (!railSlim) _HomeProductSavingBadge(product: product, compact: compact),
+      if (!railSlim)
+        _HomeProductSavingBadge(product: product, compact: compact),
       _HomeProductRatingSoldRow(product: product, compact: compact),
     ];
 
