@@ -95,156 +95,174 @@ class ProductCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Image area: aspect square, object-contain dengan padding 8 ──
-              AspectRatio(
-                aspectRatio: 1,
-                child: Stack(
+              // Bagian INFORMASI dilebur jadi satu simpul tombol. Tombol
+              // keranjang sengaja di LUAR bungkus ini: excludeSemantics
+              // menelan seluruh keturunannya, jadi kalau ikut di dalam,
+              // aksinya hilang sama sekali bagi pembaca layar.
+              Semantics(
+                button: true,
+                label: productCardSemanticLabel(product),
+                excludeSemantics: true,
+                onTap: onTap,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Positioned.fill(
-                      child: ClipRRect(
-                        borderRadius: AppRadius.large,
-                        child: Container(
-                          color: cs.surfaceContainerHighest,
-                          padding: const EdgeInsets.all(AppSpacing.sm),
-                          child: Hero(
-                            tag: 'product-image-${product.id}',
-                            // Custom flight: rounded corner morph + subtle
-                            // scale-up (102% → 100%) saat sampai detail.
-                            // Tertiery: tambah cross-fade tipis supaya
-                            // transisi tidak jarring kalau image cache miss.
-                            flightShuttleBuilder: (
-                              flightContext,
-                              animation,
-                              flightDirection,
-                              fromHeroContext,
-                              toHeroContext,
-                            ) {
-                              final isPush =
-                                  flightDirection == HeroFlightDirection.push;
-                              final scaleTween = isPush
-                                  ? Tween<double>(begin: 0.96, end: 1.0)
-                                  : Tween<double>(begin: 1.0, end: 0.96);
-                              final curved = CurvedAnimation(
-                                parent: animation,
-                                curve: Curves.easeOutCubic,
-                                reverseCurve: Curves.easeInCubic,
-                              );
-                              return AnimatedBuilder(
-                                animation: curved,
-                                builder: (context, child) {
-                                  return Transform.scale(
-                                    scale: scaleTween.evaluate(curved),
-                                    child: child,
-                                  );
-                                },
-                                child: toHeroContext.widget,
-                              );
-                            },
-                            child: AppProductImage(
-                              imageUrl: product.imageUrl,
-                              fit: BoxFit.contain,
+                    // ── Image area: aspect square, object-contain dengan padding 8 ──
+                    AspectRatio(
+                      aspectRatio: 1,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: ClipRRect(
+                              borderRadius: AppRadius.large,
+                              child: Container(
+                                color: cs.surfaceContainerHighest,
+                                padding: const EdgeInsets.all(AppSpacing.sm),
+                                child: Hero(
+                                  tag: 'product-image-${product.id}',
+                                  // Custom flight: rounded corner morph + subtle
+                                  // scale-up (102% → 100%) saat sampai detail.
+                                  // Tertiery: tambah cross-fade tipis supaya
+                                  // transisi tidak jarring kalau image cache miss.
+                                  flightShuttleBuilder: (
+                                    flightContext,
+                                    animation,
+                                    flightDirection,
+                                    fromHeroContext,
+                                    toHeroContext,
+                                  ) {
+                                    final isPush = flightDirection ==
+                                        HeroFlightDirection.push;
+                                    final scaleTween = isPush
+                                        ? Tween<double>(begin: 0.96, end: 1.0)
+                                        : Tween<double>(begin: 1.0, end: 0.96);
+                                    final curved = CurvedAnimation(
+                                      parent: animation,
+                                      curve: Curves.easeOutCubic,
+                                      reverseCurve: Curves.easeInCubic,
+                                    );
+                                    return AnimatedBuilder(
+                                      animation: curved,
+                                      builder: (context, child) {
+                                        return Transform.scale(
+                                          scale: scaleTween.evaluate(curved),
+                                          child: child,
+                                        );
+                                      },
+                                      child: toHeroContext.widget,
+                                    );
+                                  },
+                                  child: AppProductImage(
+                                    imageUrl: product.imageUrl,
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
+                          if (hasMemberPrice)
+                            Positioned(
+                              left: AppSpacing.sm,
+                              top: AppSpacing.sm,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.sm,
+                                  vertical: AppSpacing.xs,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: NataloColors.info,
+                                  borderRadius: AppRadius.pill,
+                                  border: Border.all(
+                                    color: NataloColors.white
+                                        .withValues(alpha: 0.80),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: NataloColors.black
+                                          .withValues(alpha: 0.05),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                child: const Text(
+                                  'Member',
+                                  style: TextStyle(
+                                    color: NataloColors.white,
+                                    fontSize: NataloTextSize.micro,
+                                    fontWeight: NataloWeight.strong,
+                                    height: 1,
+                                  ),
+                                ),
+                              ),
+                            )
+                          // Member pill pakai slot kiri-atas yang sama — brand
+                          // badge cuma tampil kalau slot itu kosong.
+                          else if (productHasBrandExclusiveBadge(
+                            isBrandExclusive:
+                                product.voucherPreview?.isBrandExclusive,
+                            brand: product.brand,
+                          ))
+                            Positioned(
+                              left: AppSpacing.sm,
+                              top: AppSpacing.sm,
+                              child: BrandExclusiveBadge(brand: product.brand),
+                            ),
+                          if (discountPercent != null)
+                            Positioned(
+                              right: 0,
+                              top: 0,
+                              child:
+                                  _ImageDiscountBadge(percent: discountPercent),
+                            ),
+                          if (showWishlistButton)
+                            Positioned(
+                              right: AppSpacing.xs,
+                              top: discountPercent != null ? 38 : AppSpacing.xs,
+                              child: FavoriteButton(
+                                product: product,
+                                size: 34,
+                                elevated: false,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+
+                    // ── Info: nama (max 2 baris) + harga utama + strikethrough ──
+                    const SizedBox(height: AppSpacing.sm),
+                    SizedBox(
+                      height: 38,
+                      child: Text(
+                        product.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: NataloTextSize.caption,
+                          fontWeight: NataloWeight.strong,
+                          height: 1.3,
                         ),
                       ),
                     ),
-                    if (hasMemberPrice)
-                      Positioned(
-                        left: AppSpacing.sm,
-                        top: AppSpacing.sm,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.sm,
-                            vertical: AppSpacing.xs,
-                          ),
-                          decoration: BoxDecoration(
-                            color: NataloColors.info,
-                            borderRadius: AppRadius.pill,
-                            border: Border.all(
-                              color: NataloColors.white.withValues(alpha: 0.80),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color:
-                                    NataloColors.black.withValues(alpha: 0.05),
-                                blurRadius: 4,
-                                offset: const Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                          child: const Text(
-                            'Member',
-                            style: TextStyle(
-                              color: NataloColors.white,
-                              fontSize: NataloTextSize.micro,
-                              fontWeight: NataloWeight.strong,
-                              height: 1,
-                            ),
-                          ),
-                        ),
-                      )
-                    // Member pill pakai slot kiri-atas yang sama — brand
-                    // badge cuma tampil kalau slot itu kosong.
-                    else if (productHasBrandExclusiveBadge(
-                      isBrandExclusive:
-                          product.voucherPreview?.isBrandExclusive,
-                      brand: product.brand,
-                    ))
-                      Positioned(
-                        left: AppSpacing.sm,
-                        top: AppSpacing.sm,
-                        child: BrandExclusiveBadge(brand: product.brand),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      formatRupiah(product.finalPrice),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: NataloColors.nataloBlue,
+                        fontSize: NataloTextSize.bodyLg,
+                        fontWeight: NataloWeight.strong,
+                        height: 1.05,
                       ),
-                    if (discountPercent != null)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: _ImageDiscountBadge(percent: discountPercent),
-                      ),
-                    if (showWishlistButton)
-                      Positioned(
-                        right: AppSpacing.xs,
-                        top: discountPercent != null ? 38 : AppSpacing.xs,
-                        child: FavoriteButton(
-                          product: product,
-                          size: 34,
-                          elevated: false,
-                        ),
-                      ),
+                    ),
+                    ProductSavingsBadge(product: product),
+                    ProductRatingSoldMeta(product: product),
                   ],
                 ),
               ),
-
-              // ── Info: nama (max 2 baris) + harga utama + strikethrough ──
-              const SizedBox(height: AppSpacing.sm),
-              SizedBox(
-                height: 38,
-                child: Text(
-                  product.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: NataloTextSize.caption,
-                    fontWeight: NataloWeight.strong,
-                    height: 1.3,
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                formatRupiah(product.finalPrice),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: NataloColors.nataloBlue,
-                  fontSize: NataloTextSize.bodyLg,
-                  fontWeight: NataloWeight.strong,
-                  height: 1.05,
-                ),
-              ),
-              ProductSavingsBadge(product: product),
-              ProductRatingSoldMeta(product: product),
               if (showAddToCart) ...[
                 const Spacer(),
                 const SizedBox(height: AppSpacing.sm),
@@ -714,6 +732,35 @@ class ProductRatingSoldMeta extends StatelessWidget {
   }
 }
 
+/// Satu kalimat yang diucapkan pembaca layar untuk seluruh kartu.
+///
+/// Tanpa ini kartu terbaca sebagai potongan lepas — judul, lalu angka harga,
+/// lalu angka rating — tanpa penanda bahwa semuanya SATU tombol. Urutannya
+/// sengaja mengikuti urutan keputusan pembeli: apa barangnya, berapa
+/// harganya, apakah diskon, seberapa dipercaya, masih ada stok atau tidak.
+String productCardSemanticLabel(Product product) {
+  final parts = <String>[product.title, formatRupiah(product.finalPrice)];
+
+  final percent = productDiscountPercent(product);
+  if (percent != null) {
+    // Harga asli ikut disebut supaya diskonnya bermakna, bukan angka kosong.
+    parts.add('diskon $percent persen dari ${formatRupiah(product.price)}');
+  }
+  if (product.memberPrice != null && product.memberPrice! < product.price) {
+    parts.add('ada harga member');
+  }
+  if (product.rating > 0) {
+    parts.add('rating ${product.rating.toStringAsFixed(1)} dari 5');
+  }
+  if (product.reviewCount > 0) parts.add('${product.reviewCount} ulasan');
+  if (product.soldCount > 0) parts.add('${product.soldCount} terjual');
+  // Stok habis WAJIB terucap: kartunya tetap bisa ditekan, jadi tanpa ini
+  // pengguna baru tahu setelah membuka halaman detail.
+  parts.add(product.stock <= 0 ? 'stok habis' : 'tersedia');
+
+  return parts.join(', ');
+}
+
 String? productSavingsLabel(Product product) {
   if (!product.hasDiscount) return null;
   final savings = (product.price - product.finalPrice).round();
@@ -795,39 +842,53 @@ class _GridCartButton extends StatelessWidget {
     final outOfStock = product.stock <= 0;
     return Align(
       alignment: Alignment.centerRight,
-      child: Material(
-        color: outOfStock ? NataloColors.grey300 : NataloColors.primary,
-        borderRadius: AppRadius.medium,
-        child: InkWell(
-          onTap: outOfStock
-              ? null
-              : () {
-                  if (product.hasVariants) {
-                    AppHaptics.tap();
-                    onOpenDetail();
-                    AppToast.show(
-                      context,
-                      'Pilih varian produk dulu.',
-                      kind: ToastKind.info,
-                    );
-                    return;
-                  }
-                  AppHaptics.success();
-                  cartStore.addProduct(product);
-                  AppToast.showCartAdded(
-                    context,
-                    '${product.title} masuk keranjang',
-                    imageUrl: product.imageUrl,
-                  );
-                },
+      // Tombol ikon-saja: tanpa label ini pembaca layar hanya mengumumkan
+      // "tombol" tanpa memberi tahu tombol apa dan untuk produk mana.
+      child: Semantics(
+        button: true,
+        enabled: !outOfStock,
+        label: outOfStock
+            ? '${product.title}, stok habis'
+            : 'Tambah ${product.title} ke keranjang',
+        excludeSemantics: true,
+        child: Material(
+          color: outOfStock ? NataloColors.grey300 : NataloColors.primary,
           borderRadius: AppRadius.medium,
-          child: const SizedBox(
-            width: 34,
-            height: 34,
-            child: Icon(
-              Icons.add_shopping_cart_rounded,
-              color: NataloColors.white,
-              size: 18,
+          child: InkWell(
+            onTap: outOfStock
+                ? null
+                : () {
+                    if (product.hasVariants) {
+                      AppHaptics.tap();
+                      onOpenDetail();
+                      AppToast.show(
+                        context,
+                        'Pilih varian produk dulu.',
+                        kind: ToastKind.info,
+                      );
+                      return;
+                    }
+                    AppHaptics.success();
+                    cartStore.addProduct(product);
+                    AppToast.showCartAdded(
+                      context,
+                      '${product.title} masuk keranjang',
+                      imageUrl: product.imageUrl,
+                    );
+                  },
+            borderRadius: AppRadius.medium,
+            // Kotak visual tetap 34 supaya tata letak grid tidak bergeser;
+            // yang dinaikkan ke 44 hanya area yang menerima tap.
+            child: const AppMinTapTarget(
+              child: SizedBox(
+                width: 34,
+                height: 34,
+                child: Icon(
+                  Icons.add_shopping_cart_rounded,
+                  color: NataloColors.white,
+                  size: 18,
+                ),
+              ),
             ),
           ),
         ),
