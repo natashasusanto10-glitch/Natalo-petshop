@@ -350,6 +350,19 @@ class ProductService {
   ///
   /// Return empty list kalau API gagal (offline, server down). Caller
   /// harus fallback ke client-side scoring.
+  /// Seed harian (tanggal WIB) untuk rotasi rekomendasi sisi SERVER.
+  ///
+  /// Tanpa seed, server sengaja mengembalikan urutan skor murni yang SAMA
+  /// setiap hari (backward-compat) — rotasi tier dan pelebaran pool
+  /// fallback-nya tidur. Pola tanggal-WIB ini meniru _todayListingSeed di
+  /// halaman Produk yang sudah terbukti di produksi.
+  static String dailyRecommendationSeed() {
+    final wib = DateTime.now().toUtc().add(const Duration(hours: 7));
+    final bulan = wib.month.toString().padLeft(2, '0');
+    final tanggal = wib.day.toString().padLeft(2, '0');
+    return 'rec-${wib.year}-$bulan-$tanggal';
+  }
+
   Future<List<Product>> fetchPersonalizedRecommendations({
     List<String> viewedIds = const [],
     List<String> excludeIds = const [],

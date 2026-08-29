@@ -147,6 +147,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
             viewedIds: viewedIds,
             excludeIds: favoriteIds,
             limit: 20,
+            seed: ProductService.dailyRecommendationSeed(),
           ),
           productService.fetchProductsPage(
             cursor: _lookAgainNextCursor,
