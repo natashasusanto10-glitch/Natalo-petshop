@@ -244,23 +244,42 @@ class AppPressable extends StatelessWidget {
   final BorderRadius? borderRadius;
   final EdgeInsets padding;
 
+  /// Kalau diisi, seluruh isi [child] DILEBUR jadi satu simpul semantik
+  /// berperan tombol dengan label ini. Dipakai untuk kartu yang isinya
+  /// banyak Text terpisah (judul, harga, rating) — tanpa ini pembaca layar
+  /// mengeja tiap potongan satu-satu tanpa menyebut bahwa semuanya adalah
+  /// SATU tombol yang bisa ditekan.
+  ///
+  /// Dibiarkan null = perilaku lama persis, tak ada simpul tambahan.
+  final String? semanticLabel;
+
   const AppPressable({
     super.key,
     required this.child,
     this.onTap,
     this.borderRadius,
     this.padding = EdgeInsets.zero,
+    this.semanticLabel,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    final pressable = Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: borderRadius ?? AppRadius.medium,
         child: Padding(padding: padding, child: child),
       ),
+    );
+    if (semanticLabel == null) return pressable;
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: semanticLabel,
+      excludeSemantics: true,
+      onTap: onTap,
+      child: pressable,
     );
   }
 }
