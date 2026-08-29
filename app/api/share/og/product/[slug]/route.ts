@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { NextResponse } from "next/server";
 
 import { getPublicShareProduct } from "@/lib/share/product-share-data";
+import { toJpegOgResponse } from "@/lib/share/og/jpeg-response";
 import { renderProductShareCard } from "@/lib/share/og/product-card";
 import { fetchSafeOgImageData, resolveOgImageCachePolicy } from "@/lib/share/og-image-security";
 
@@ -55,15 +56,15 @@ export async function GET(
   const headers = { "Cache-Control": cachePolicy.cacheControl };
   try {
     const renderedImageUrl = await fetchSafeOgImageData(publicImageUrl(product.imageUrl));
-    return new ImageResponse(renderProductShareCard({ ...product, renderedImageUrl }), {
-      ...IMAGE_OPTIONS,
+    return await toJpegOgResponse(
+      new ImageResponse(renderProductShareCard({ ...product, renderedImageUrl }), IMAGE_OPTIONS),
       headers,
-    });
+    );
   } catch (error) {
     console.error("product_share_og_render_failed", { slug, error });
-    return new ImageResponse(renderProductShareCard({ ...product, renderedImageUrl: null }), {
-      ...IMAGE_OPTIONS,
+    return toJpegOgResponse(
+      new ImageResponse(renderProductShareCard({ ...product, renderedImageUrl: null }), IMAGE_OPTIONS),
       headers,
-    });
+    );
   }
 }
