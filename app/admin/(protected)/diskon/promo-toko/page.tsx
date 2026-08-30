@@ -5,12 +5,14 @@
  * Sedang Berlangsung / Kedaluwarsa) + action per row.
  */
 import Link from "next/link";
-import { AdminPage, Button } from "@/components/admin/ui";
+import { AdminPage, Button, ResultCount } from "@/components/admin/ui";
 import { prisma } from "@/lib/prisma";
 import { tokenizedSearchWhere } from "@/lib/search-tokens";
 import { DeletePromoTokoButton } from "@/components/admin/DeletePromoTokoButton";
 
 export const dynamic = "force-dynamic";
+
+const PROMO_LIST_LIMIT = 100;
 
 type StatusFilter = "all" | "ongoing" | "upcoming" | "expired";
 
@@ -62,17 +64,21 @@ export default async function PromoTokoListPage({
             }
           : {};
 
+  // Satu objek `where` dipakai bersama oleh daftar DAN penghitungnya, supaya
+  // angka "menampilkan N dari M" tidak bisa lepas dari filter yang aktif.
+  const listWhere = {
+    ...whereStatus,
+    // Nama campaign, bukan produk — tapi tetap token-based supaya
+    // "lebaran promo" ketemu "Promo Lebaran 2026".
+    ...(tokenizedSearchWhere(search, (token) => [
+      { name: { contains: token, mode: "insensitive" as const } },
+    ]) ?? {}),
+  };
+
   const promos = await prisma.productDiscount.findMany({
-    where: {
-      ...whereStatus,
-      // Nama campaign, bukan produk — tapi tetap token-based supaya
-      // "lebaran promo" ketemu "Promo Lebaran 2026".
-      ...(tokenizedSearchWhere(search, (token) => [
-        { name: { contains: token, mode: "insensitive" as const } },
-      ]) ?? {}),
-    },
+    where: listWhere,
     orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
-    take: 100,
+    take: PROMO_LIST_LIMIT,
     include: {
       items: {
         take: 3, // ambil 3 untuk thumbnail preview
@@ -85,8 +91,9 @@ export default async function PromoTokoListPage({
   });
 
   // Counts untuk tab
-  const [ongoingCount, upcomingCount, expiredCount, totalCount] =
+  const [matchingCount, ongoingCount, upcomingCount, expiredCount, totalCount] =
     await Promise.all([
+      prisma.productDiscount.count({ where: listWhere }),
       prisma.productDiscount.count({
         where: {
           isActive: true,
@@ -165,7 +172,10 @@ export default async function PromoTokoListPage({
       </form>
 
       {/* List */}
-      <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-200">
+      <div className="mt-4">
+        <ResultCount shown={promos.length} total={matchingCount} noun="promo" />
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-zinc-200">
         {promos.length === 0 ? (
           <div className="p-12 text-center">
             <p className="text-3xl">🏷</p>
