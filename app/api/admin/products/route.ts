@@ -1,6 +1,7 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseLimitParam, parsePageParam } from "@/lib/admin/pagination";
+import { productInStockWhere } from "@/lib/admin/stock-filters";
 import { getSession } from "@/lib/auth";
 import { syncProduct, productSearchWhere } from "@/lib/search";
 import { putVariantsPayloadSchema, formatVariantIssues } from "@/lib/validators/variant-schema";
@@ -38,12 +39,11 @@ export async function GET(request: NextRequest) {
   const where: Prisma.ProductWhereInput = {
     isActive: true,
     AND: [
-      {
-        OR: [
-          { hasVariants: false, stock: { gt: 0 } },
-          { hasVariants: true, variants: { some: { isActive: true, stock: { gt: 0 } } } },
-        ],
-      },
+      // Definisi "ada stok" dibagi dengan halaman admin lewat
+      // lib/admin/stock-filters — dulu disalin di sini, dan salinannya lupa
+      // mengecualikan varian yang sudah dihapus lunak, sehingga varian
+      // terhapus yang stoknya belum nol tetap menahan produk sebagai tersedia.
+      productInStockWhere(),
       ...(searchWhere ? [searchWhere] : []),
     ],
   };

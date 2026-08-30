@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  LOW_STOCK_LIMIT,
+  productStockWhere,
+  variantStockWhere,
+} from "@/lib/admin/stock-filters";
 
 /**
  * GET /api/admin/dashboard-stats
@@ -11,7 +16,13 @@ import { prisma } from "@/lib/prisma";
  * - `ordersToday` — count Order yang createdAt hari ini (timezone Asia/Jakarta)
  * - `omzetToday` — sum total dari Order PAID hari ini
  * - `pendingShipment` — count Order status=PAID atau PROCESSING (perlu dikirim)
- * - `lowStockCount` — count Product dengan totalStock <= 5 dan isActive
+ * - `lowStockCount` — jumlah item yang perlu di-restock: produk TANPA varian
+ *   dengan stok <= 5, DITAMBAH varian aktif dengan stok <= 5.
+ *
+ *   Dulu ini menghitung `Product.stock <= 5` polos. Stok induk produk
+ *   bervarian selalu 0 (form admin menulis 0 saat produk punya varian), jadi
+ *   SETIAP produk bervarian ikut terhitung "menipis" — alarm palsu permanen di
+ *   aplikasi admin. Bentuk responsnya tidak berubah, hanya angkanya jadi jujur.
  *
  * Dihitung di server-side dengan Prisma aggregations supaya cepat & akurat.
  */
@@ -42,8 +53,13 @@ export async function GET() {
     startOfDayJakarta.getTime() + 24 * 60 * 60 * 1000,
   );
 
-  const [ordersTodayCount, omzetTodayAgg, pendingShipCount, lowStockCount] =
-    await Promise.all([
+  const [
+    ordersTodayCount,
+    omzetTodayAgg,
+    pendingShipCount,
+    lowStockProductCount,
+    lowStockVariantCount,
+  ] = await Promise.all([
       prisma.order.count({
         where: {
           createdAt: { gte: startOfDayJakarta, lt: endOfDayJakarta },
@@ -61,11 +77,17 @@ export async function GET() {
           status: { in: ["PAID", "PROCESSING"] },
         },
       }),
+      // Produk TANPA varian yang stoknya menipis/habis. Produk bervarian
+      // sengaja tidak diukur lewat stok induknya — nilainya selalu 0, jadi
+      // dulu SETIAP produk bervarian ikut terhitung "menipis" dan angka ini
+      // jadi alarm palsu permanen di aplikasi admin.
       prisma.product.count({
-        where: {
-          isActive: true,
-          stock: { lte: 5 },
-        },
+        where: { ...productStockWhere("semua"), stock: { lte: LOW_STOCK_LIMIT } },
+      }),
+      // Varian yang benar-benar menipis dihitung terpisah lalu dijumlahkan,
+      // supaya sinyal aslinya tidak ikut hilang saat alarm palsunya dibuang.
+      prisma.productVariant.count({
+        where: { ...variantStockWhere("semua"), stock: { lte: LOW_STOCK_LIMIT } },
       }),
     ]);
 
@@ -73,6 +95,8 @@ export async function GET() {
     ordersToday: ordersTodayCount,
     omzetToday: omzetTodayAgg._sum.total ?? 0,
     pendingShipment: pendingShipCount,
-    lowStockCount,
+    // Dua himpunan yang saling lepas (produk tanpa varian vs varian), jadi
+    // penjumlahannya tidak menghitung apa pun dua kali.
+    lowStockCount: lowStockProductCount + lowStockVariantCount,
   });
 }

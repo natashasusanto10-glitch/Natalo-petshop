@@ -58,6 +58,48 @@ export function variantStockWhere(filter: StockFilter) {
   };
 }
 
+/**
+ * "Masih ada stok" untuk daftar produk GABUNGAN (varian dan non-varian
+ * bercampur), seperti /admin/products.
+ *
+ * Beda dengan `productStockWhere` di atas: di sana produk bervarian memang
+ * dikeluarkan karena halaman Stok memberi mereka tab sendiri. Di daftar produk
+ * utama, mengeluarkan mereka berarti produk bervarian lenyap dari tab
+ * "Tersedia" MAUPUN "Habis" — jadi di sini stoknya dinilai lewat variannya.
+ */
+export function productInStockWhere() {
+  return {
+    OR: [
+      { hasVariants: false, stock: { gt: 0 } },
+      {
+        hasVariants: true,
+        variants: {
+          some: { isActive: true, deletedAt: null, stock: { gt: 0 } },
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * Kebalikannya: tidak ada satu pun stok yang bisa dijual.
+ * `none` mencakup produk bervarian yang seluruh variannya habis ATAU yang
+ * variannya sudah terhapus semua.
+ */
+export function productOutOfStockWhere() {
+  return {
+    OR: [
+      { hasVariants: false, stock: { lte: 0 } },
+      {
+        hasVariants: true,
+        variants: {
+          none: { isActive: true, deletedAt: null, stock: { gt: 0 } },
+        },
+      },
+    ],
+  };
+}
+
 /** Label + warna satu angka stok. Dipakai baris produk maupun varian. */
 export function stockTone(stock: number): {
   label: string;

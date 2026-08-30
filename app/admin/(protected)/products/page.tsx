@@ -12,6 +12,10 @@ import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell"
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { PageHeader, EmptyState, AdminPage, Button } from "@/components/admin/ui";
 import {
+  productInStockWhere,
+  productOutOfStockWhere,
+} from "@/lib/admin/stock-filters";
+import {
   ProductSelectionProvider,
   ProductSelectAll,
   ProductRowCheckbox,
@@ -55,9 +59,13 @@ export default async function AdminProductsPage({
   // - "out" hanya produk aktif yg habis (yg perlu di-restock).
   // - "archived" semua produk non-aktif (termasuk soft-archive hasil reset
   //   yg di-set stock=0).
+  // Stok dinilai lewat varian untuk produk bervarian — stok INDUK mereka
+  // selalu 0 (form admin menulis 0 saat produk punya varian), jadi
+  // `stock: { equals: 0 }` polos akan membuang setiap produk bervarian ke
+  // tab "Habis" betapa pun penuh gudangnya.
   const stockWhere =
-    stockFilter === "ready"    ? { isActive: true, stock: { gt: 0 } }
-    : stockFilter === "out"    ? { isActive: true, stock: { equals: 0 } }
+    stockFilter === "ready"    ? { isActive: true, ...productInStockWhere() }
+    : stockFilter === "out"    ? { isActive: true, ...productOutOfStockWhere() }
     : stockFilter === "archived" ? { isActive: false }
     : {};
 
@@ -90,8 +98,12 @@ export default async function AdminProductsPage({
   // ── Fetch counts + produk ────────────────────────────────────
   const [totalAll, totalReady, totalOut, totalArchived, filtered, products] = await Promise.all([
     prisma.product.count({ where: baseWhere }),
-    prisma.product.count({ where: { ...baseWhere, isActive: true, stock: { gt: 0 } } }),
-    prisma.product.count({ where: { ...baseWhere, isActive: true, stock: { equals: 0 } } }),
+    prisma.product.count({
+      where: { AND: [baseWhere, { isActive: true }, productInStockWhere()] },
+    }),
+    prisma.product.count({
+      where: { AND: [baseWhere, { isActive: true }, productOutOfStockWhere()] },
+    }),
     prisma.product.count({ where: { ...baseWhere, isActive: false } }),
     prisma.product.count({ where }),
     prisma.product.findMany({

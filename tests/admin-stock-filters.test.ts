@@ -5,6 +5,8 @@ import {
   LOW_STOCK_LIMIT,
   parseStockFilter,
   parseStockTab,
+  productInStockWhere,
+  productOutOfStockWhere,
   productStockWhere,
   stockTone,
   variantStockWhere,
@@ -60,4 +62,30 @@ test("label stok: nol habis, batas ambang masih menipis, di atasnya tersedia", (
 
 test("stok negatif diperlakukan habis, tidak menyamar jadi tersedia", () => {
   assert.equal(stockTone(-3).label, "Habis");
+});
+
+test("daftar produk gabungan menilai stok lewat varian, bukan mengeluarkan produk bervarian", () => {
+  // Di /admin/products, mengeluarkan produk bervarian berarti mereka lenyap
+  // dari tab "Tersedia" MAUPUN "Habis" — hilang sama sekali dari halaman.
+  const inStock = productInStockWhere();
+  assert.equal(inStock.OR.length, 2);
+  assert.equal(inStock.OR[0].hasVariants, false);
+  assert.equal(inStock.OR[1].hasVariants, true);
+  assert.ok(inStock.OR[1].variants?.some, "cabang varian harus pakai `some`");
+});
+
+test("habis untuk produk bervarian berarti TIDAK ADA satu pun varian berstok", () => {
+  const outStock = productOutOfStockWhere();
+  assert.ok(outStock.OR[1].variants?.none, "cabang varian harus pakai `none`");
+});
+
+test("varian terhapus lunak tidak boleh membuat produk tampak masih ada stok", () => {
+  // Tanpa `deletedAt: null`, varian yang sudah dihapus tapi stoknya belum nol
+  // akan menahan produk di tab "Tersedia" selamanya.
+  assert.equal(productInStockWhere().OR[1].variants?.some?.deletedAt, null);
+  assert.equal(productOutOfStockWhere().OR[1].variants?.none?.deletedAt, null);
+});
+
+test("stok induk 'habis' pakai lte 0, bukan equals 0 — nilai negatif tetap tertangkap", () => {
+  assert.deepEqual(productOutOfStockWhere().OR[0].stock, { lte: 0 });
 });
