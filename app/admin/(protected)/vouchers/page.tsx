@@ -18,6 +18,7 @@ import {
   Button,
 } from "@/components/admin/ui";
 import { voucherSearchWhere } from "@/lib/admin-search";
+import { parsePageParam } from "@/lib/admin/pagination";
 import {
   LOYALTY_VOUCHER_WHERE,
   NON_LOYALTY_VOUCHER_WHERE,
@@ -32,7 +33,7 @@ export default async function AdminVouchersPage({
   searchParams: Promise<{ page?: string; q?: string }>;
 }) {
   const { page: pageStr, q } = await searchParams;
-  const page = Math.max(1, parseInt(pageStr || "1", 10));
+  const page = parsePageParam(pageStr);
   const search = q?.trim() ?? "";
 
   const searchWhere = voucherSearchWhere(search);
@@ -59,6 +60,11 @@ export default async function AdminVouchersPage({
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
+  // Halaman melampaui batas (mis. voucher terhapus saat admin di halaman 2,
+  // atau `?page=99` diketik manual). Tanpa ini daftar tampak kosong dengan
+  // pesan "belum ada voucher" padahal kartu statistik menunjukkan ratusan —
+  // pesan yang saling bertentangan lebih membingungkan daripada nol hasil.
+  const pageBeyondEnd = total > 0 && page > totalPages;
 
   // Pencarian ikut terbawa saat pindah halaman — kalau tidak, halaman 2
   // diam-diam kembali menampilkan seluruh voucher.
@@ -168,7 +174,15 @@ export default async function AdminVouchersPage({
       </form>
 
       <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-        {vouchers.length === 0 ? (
+        {pageBeyondEnd ? (
+          <EmptyState
+            icon="📄"
+            title={`Halaman ${page} tidak ada`}
+            description={`Daftar ini hanya sampai halaman ${totalPages}. Mungkin ada voucher yang terhapus setelah tautannya dibuka.`}
+            action={{ label: "Kembali ke halaman 1", href: pageHref(1) }}
+            size="full"
+          />
+        ) : vouchers.length === 0 ? (
           <EmptyState
             icon={search ? "🔍" : "🎟️"}
             title={search ? `Tidak ada voucher cocok "${search}"` : "Belum ada voucher"}
