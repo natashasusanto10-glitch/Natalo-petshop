@@ -134,7 +134,14 @@ export default async function AdminOrdersPage({
   // Masuk ke AND, bukan OR, supaya pencarian MEMPERSEMPIT filter status yang
   // aktif — bukan menembusnya.
   const searchWhere = orderSearchWhere(search);
-  if (searchWhere) where.AND = searchWhere.AND;
+  if (searchWhere) {
+    // Digabung, bukan ditimpa. Hari ini tak ada filter lain yang memakai AND,
+    // tapi menulis `where.AND = ...` menaruh ranjau: filter baru di atas yang
+    // kebetulan juga memakai AND (mis. rentang tanggal) akan saling menghapus
+    // diam-diam, dan `Record<string, unknown>` tidak akan mengeluh.
+    const existing = Array.isArray(where.AND) ? where.AND : [];
+    where.AND = [...existing, ...searchWhere.AND];
+  }
 
   const [orders, total, statusCounts, needPackingCount] = await Promise.all([
     prisma.order.findMany({
