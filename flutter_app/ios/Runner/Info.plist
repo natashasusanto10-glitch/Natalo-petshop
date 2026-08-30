@@ -2,6 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 	<dict>
+		<!-- WAJIB false: sejak Flutter 3.27 deep-link BAWAAN engine default
+		     MENYALA dan menyerobot universal link cold-start sebelum
+		     app_links melihatnya — engine menjadikan /products/<slug> rute
+		     awal, onGenerateRoute jatuh ke Beranda, getInitialLink() null.
+		     Warm tetap bekerja (stream masih menerima), jadi gejalanya
+		     asimetris dan menipu. app_links mensyaratkan flag ini false.
+		     Pasangan Android: meta-data flutter_deeplinking_enabled. -->
+		<key>FlutterDeepLinkingEnabled</key>
+		<false/>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
 		<key>CFBundleDevelopmentRegion</key>
