@@ -64,6 +64,17 @@
                 <data android:scheme="https" android:host="natalopetshop.com"/>
                 <data android:scheme="https" android:host="www.natalopetshop.com"/>
             </intent-filter>
+            <!-- WAJIB false: sejak Flutter 3.27 deep-link BAWAAN engine
+                 default MENYALA dan MENYEROBOT link cold-start sebelum
+                 app_links melihatnya. Engine menjadikan /products/<slug>
+                 rute awal Navigator; onGenerateRoute tak mengenalinya dan
+                 jatuh ke Beranda, sementara getInitialLink() dapat null.
+                 Gejala: share link produk bekerja saat app warm (stream
+                 app_links masih menerima), tapi cold start selalu nyangkut
+                 di Beranda. app_links mensyaratkan flag ini false. -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false" />
         </activity>
         <!-- Default FCM channel — pesan background/terminated yang di-render OS
              pakai channel ini (harus cocok dengan _channelId 'natalo_default'
