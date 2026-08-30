@@ -6,24 +6,13 @@ import {
   LOW_STOCK_LIMIT,
   parseStockFilter,
   parseStockTab,
-  productInStockWhere,
-  productOutOfStockWhere,
   productStockWhere,
   stockTone,
   variantStockWhere,
 } from "../lib/admin/stock-filters";
 
-test("baris berbasis stok induk SELALU membatasi hasVariants:false", () => {
-  // Ini penjaga bug utamanya: form admin menulis stok induk = 0 untuk produk
-  // bervarian, jadi tanpa batas ini query "habis" menyapu seluruh produk
-  // bervarian betapa pun penuh gudangnya.
-  for (const filter of ["semua", "menipis", "habis"] as const) {
-    assert.equal(productStockWhere(filter).hasVariants, false, `bocor di ${filter}`);
-  }
-});
-
-test("filter habis berarti tepat nol, bukan 'kurang dari satu'", () => {
-  assert.deepEqual(productStockWhere("habis").stock, { equals: 0 });
+test("filter habis pakai lte 0, bukan equals 0 — stok negatif tetap tertangkap", () => {
+  assert.deepEqual(productStockWhere("habis").stock, { lte: 0 });
 });
 
 test("filter menipis tidak ikut menyerap yang sudah habis", () => {
@@ -34,8 +23,19 @@ test("filter menipis tidak ikut menyerap yang sudah habis", () => {
 });
 
 test("filter semua tidak menyebut stok sama sekali", () => {
+  // Dashboard memakai `{ ...productStockWhere("semua"), stock: {...} }`.
+  // Kalau "semua" ikut membawa kunci stock, spread itu diam-diam saling timpa.
   assert.equal("stock" in productStockWhere("semua"), false);
   assert.equal("stock" in variantStockWhere("semua"), false);
+});
+
+test("filter produk TIDAK mengecualikan produk bervarian", () => {
+  // `Product.stock` adalah agregat terpelihara (jumlah stok varian aktif),
+  // jadi mengecualikan produk bervarian justru menyembunyikan mereka dari
+  // daftar stok tanpa alasan.
+  for (const filter of ["semua", "menipis", "habis"] as const) {
+    assert.equal("hasVariants" in productStockWhere(filter), false);
+  }
 });
 
 test("varian terhapus lunak dan varian dari produk nonaktif tidak ikut terhitung", () => {
@@ -65,35 +65,9 @@ test("stok negatif diperlakukan habis, tidak menyamar jadi tersedia", () => {
   assert.equal(stockTone(-3).label, "Habis");
 });
 
-test("daftar produk gabungan menilai stok lewat varian, bukan mengeluarkan produk bervarian", () => {
-  // Di /admin/products, mengeluarkan produk bervarian berarti mereka lenyap
-  // dari tab "Tersedia" MAUPUN "Habis" — hilang sama sekali dari halaman.
-  const inStock = productInStockWhere();
-  assert.equal(inStock.OR.length, 2);
-  assert.equal(inStock.OR[0].hasVariants, false);
-  assert.equal(inStock.OR[1].hasVariants, true);
-  assert.ok(inStock.OR[1].variants?.some, "cabang varian harus pakai `some`");
-});
-
-test("habis untuk produk bervarian berarti TIDAK ADA satu pun varian berstok", () => {
-  const outStock = productOutOfStockWhere();
-  assert.ok(outStock.OR[1].variants?.none, "cabang varian harus pakai `none`");
-});
-
-test("varian terhapus lunak tidak boleh membuat produk tampak masih ada stok", () => {
-  // Tanpa `deletedAt: null`, varian yang sudah dihapus tapi stoknya belum nol
-  // akan menahan produk di tab "Tersedia" selamanya.
-  assert.equal(productInStockWhere().OR[1].variants?.some?.deletedAt, null);
-  assert.equal(productOutOfStockWhere().OR[1].variants?.none?.deletedAt, null);
-});
-
-test("stok induk 'habis' pakai lte 0, bukan equals 0 — nilai negatif tetap tertangkap", () => {
-  assert.deepEqual(productOutOfStockWhere().OR[0].stock, { lte: 0 });
-});
-
-test("impor: produk bervarian TIDAK dinonaktifkan hanya karena stok induknya 0", () => {
-  // Regresi paling merusak dari seluruh keluarga bug ini: menjalankan importer
-  // menghapus seluruh produk bervarian dari toko, diam-diam.
+test("impor: produk bervarian dinilai lewat variannya kalau variannya ikut dikirim", () => {
+  // Importer satu-satunya jalur tulis yang TIDAK menghitung ulang agregat stok
+  // induk, jadi payload dengan stok induk 0 akan menonaktifkan produk.
   assert.equal(
     importedProductIsActive({
       hasVariants: true,
@@ -102,20 +76,20 @@ test("impor: produk bervarian TIDAK dinonaktifkan hanya karena stok induknya 0",
     }),
     true,
   );
-});
-
-test("impor: produk bervarian yang SEMUA variannya habis memang nonaktif", () => {
   assert.equal(
     importedProductIsActive({ hasVariants: true, stock: 0, variants: [{ stock: 0 }] }),
     false,
   );
-  assert.equal(
-    importedProductIsActive({ hasVariants: true, stock: 0, variants: [] }),
-    false,
-  );
 });
 
-test("impor: produk tanpa varian tetap dinilai dari stok induknya, seperti dulu", () => {
+test("impor: tanpa varian dalam payload, penilaian kembali ke stok induk seperti dulu", () => {
+  // Penting: `hasVariants: true` dengan array varian KOSONG itu sah — importer
+  // punya cabang `prod.variants.length > 0`. Menilainya lewat varian akan
+  // menonaktifkan produk yang sebelumnya aktif; itu regresi, bukan perbaikan.
+  assert.equal(
+    importedProductIsActive({ hasVariants: true, stock: 7, variants: [] }),
+    true,
+  );
   assert.equal(
     importedProductIsActive({ hasVariants: false, stock: 3, variants: [] }),
     true,

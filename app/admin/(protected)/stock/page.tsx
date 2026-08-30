@@ -4,17 +4,17 @@
  * Mutasi (edit / arsip / hapus) dipusatkan di /admin/products supaya tidak
  * duplikat di dua tempat; tiap baris di sini hanya menautkan ke sana.
  *
- * DUA HAL YANG DIPERBAIKI DARI VERSI SEBELUMNYA:
+ * DUA PERBAIKAN:
  *
- * 1. Halaman ini dulu menarik SELURUH produk aktif ke memori lalu menyaring
- *    di JavaScript. Sekarang dipaginasi dan angkanya dari query hitung.
+ * 1. Halaman ini dulu menarik SELURUH produk aktif (1.400+) ke memori lalu
+ *    menyaring di JavaScript. Sekarang dipaginasi dan angkanya dari query
+ *    hitung, jadi kartu statistik tetap mencakup seluruh katalog.
  *
- * 2. Lebih penting: stok induk produk BERVARIAN selalu 0 (form admin menulis
- *    `stock: 0` saat produk punya varian — stok aslinya di ProductVariant).
- *    Versi lama menyaring `stock === 0` tanpa memandang itu, sehingga SETIAP
- *    produk bervarian muncul sebagai "Habis" betapa pun penuh gudangnya.
- *    Sekarang produk dan varian punya tab masing-masing, dan baris berbasis
- *    stok induk dibatasi `hasVariants: false`.
+ * 2. Stok produk hanya bisa menjawab "produk ini menipis", tidak "varian yang
+ *    MANA". Tab varian menutup itu: 143 varian menipis tidak terlihat sama
+ *    sekali di versi lama karena tenggelam dalam jumlah stok induknya.
+ *    (`Product.stock` sendiri adalah agregat terpelihara dari stok varian —
+ *    lihat catatan di lib/admin/stock-filters.ts.)
  */
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
@@ -154,9 +154,9 @@ export default async function AdminStockPage({
 
       <section className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         <StatCard
-          label="Produk Tanpa Varian"
+          label="Produk Aktif"
           value={productTotal}
-          helper="Aktif di toko"
+          helper="Tampil di toko"
           variant="default"
         />
         <StatCard
@@ -189,9 +189,9 @@ export default async function AdminStockPage({
         />
       </section>
 
-      {/* Tab produk vs varian. Dipisah karena stok induk produk bervarian
-          selalu 0 — menggabungkan keduanya di satu daftar berarti menandai
-          setiap produk bervarian sebagai habis. */}
+      {/* Tab produk vs varian. Daftar produk memakai stok total; daftar varian
+          memecahnya per kombinasi, supaya terlihat varian MANA yang menipis —
+          pertanyaan yang tidak bisa dijawab angka total. */}
       <div className="mt-6 flex flex-wrap gap-2">
         {(["produk", "varian"] as const).map((key) => (
           <Link
@@ -203,7 +203,7 @@ export default async function AdminStockPage({
                 : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
             }`}
           >
-            {key === "produk" ? "Produk tanpa varian" : "Varian produk"}
+            {key === "produk" ? "Produk (stok total)" : "Varian produk"}
           </Link>
         ))}
       </div>

@@ -1,15 +1,20 @@
 /**
  * Filter halaman Stok admin.
  *
- * KENAPA PRODUK BERVARIAN DIPISAH — bukan sekadar rapi-rapi:
- * saat sebuah produk punya varian, form admin menulis stok INDUKNYA sebagai 0
- * (`ProductForm.tsx`: `stock: effective ? 0 : ...`) karena stok yang asli
- * hidup di `ProductVariant.stock`. Akibatnya query `stock: 0` menandai SETIAP
- * produk bervarian sebagai "Habis", betapa pun penuh gudangnya. Angka itu
- * tidak salah sedikit — ia salah untuk seluruh kelas produk.
+ * CATATAN PENTING soal `Product.stock` pada produk bervarian — mudah salah
+ * paham, dan aku sendiri sempat salah:
  *
- * Jadi baris berbasis stok induk HARUS dibatasi `hasVariants: false`, dan stok
- * varian dihitung dari tabel varian.
+ * Form admin memang menulis stok induk sebagai 0 saat produk punya varian
+ * (`ProductForm.tsx`: `stock: effective ? 0 : ...`). TAPI angka itu langsung
+ * ditimpa: setiap jalur yang menyentuh varian (`/api/admin/products`,
+ * `.../[id]/variants`, `.../variants/bulk`, pembuatan & pembatalan pesanan)
+ * menghitung ulang `Product.stock` sebagai JUMLAH stok varian yang aktif dan
+ * belum terhapus. Jadi `Product.stock` adalah agregat yang terpelihara, dan
+ * `stock: 0` pada produk bervarian benar-benar berarti semua variannya habis.
+ *
+ * Karena itu filter berbasis stok induk TIDAK perlu mengecualikan produk
+ * bervarian. Yang tidak bisa dijawab stok induk hanyalah "varian yang MANA
+ * yang menipis" — untuk itu ada `variantStockWhere` dan tab varian tersendiri.
  */
 
 /** Ambang "menipis". Sengaja satu tempat — dashboard memakai angka yang sama. */
@@ -29,25 +34,27 @@ export function parseStockTab(raw: string | undefined): StockTab {
 
 /** Rentang stok untuk satu filter, atau `undefined` kalau "semua". */
 function stockRange(filter: StockFilter) {
-  if (filter === "habis") return { equals: 0 };
+  if (filter === "habis") return { lte: 0 };
   if (filter === "menipis") return { gt: 0, lte: LOW_STOCK_LIMIT };
   return undefined;
 }
 
 /**
- * Produk yang stok induknya BERMAKNA — yaitu yang tidak punya varian.
- * `hasVariants: false` bukan pilihan gaya; tanpa itu angkanya bohong.
+ * Produk aktif menurut stok induknya — yang untuk produk bervarian adalah
+ * jumlah stok seluruh variannya (lihat catatan di atas berkas ini).
  */
 export function productStockWhere(filter: StockFilter) {
   const range = stockRange(filter);
   return {
     isActive: true,
-    hasVariants: false,
     ...(range ? { stock: range } : {}),
   };
 }
 
-/** Varian aktif dari produk aktif. Varian terhapus lunak tidak dihitung. */
+/**
+ * Varian aktif dari produk aktif. Varian terhapus lunak tidak dihitung —
+ * sama dengan yang dipakai saat menghitung ulang agregat stok induk.
+ */
 export function variantStockWhere(filter: StockFilter) {
   const range = stockRange(filter);
   return {
@@ -55,48 +62,6 @@ export function variantStockWhere(filter: StockFilter) {
     deletedAt: null,
     product: { isActive: true },
     ...(range ? { stock: range } : {}),
-  };
-}
-
-/**
- * "Masih ada stok" untuk daftar produk GABUNGAN (varian dan non-varian
- * bercampur), seperti /admin/products.
- *
- * Beda dengan `productStockWhere` di atas: di sana produk bervarian memang
- * dikeluarkan karena halaman Stok memberi mereka tab sendiri. Di daftar produk
- * utama, mengeluarkan mereka berarti produk bervarian lenyap dari tab
- * "Tersedia" MAUPUN "Habis" — jadi di sini stoknya dinilai lewat variannya.
- */
-export function productInStockWhere() {
-  return {
-    OR: [
-      { hasVariants: false, stock: { gt: 0 } },
-      {
-        hasVariants: true,
-        variants: {
-          some: { isActive: true, deletedAt: null, stock: { gt: 0 } },
-        },
-      },
-    ],
-  };
-}
-
-/**
- * Kebalikannya: tidak ada satu pun stok yang bisa dijual.
- * `none` mencakup produk bervarian yang seluruh variannya habis ATAU yang
- * variannya sudah terhapus semua.
- */
-export function productOutOfStockWhere() {
-  return {
-    OR: [
-      { hasVariants: false, stock: { lte: 0 } },
-      {
-        hasVariants: true,
-        variants: {
-          none: { isActive: true, deletedAt: null, stock: { gt: 0 } },
-        },
-      },
-    ],
   };
 }
 
@@ -113,19 +78,23 @@ export function stockTone(stock: number): {
 /**
  * Apakah produk hasil impor layak tampil di toko?
  *
- * JEBAKAN yang ditutup fungsi ini: importer dulu menulis `isActive:
- * prod.stock > 0` apa adanya. Untuk produk bervarian, `stock` induk pada
- * payload memang 0 (stok aslinya di tiap varian) — jadi setiap kali importer
- * dijalankan, SELURUH produk bervarian dinonaktifkan dari toko meski gudangnya
- * penuh. Tidak ada error, tidak ada laporan; produknya hanya hilang.
+ * Importer adalah SATU-SATUNYA jalur tulis yang TIDAK menghitung ulang agregat
+ * stok induk dari varian yang dibuatnya — ia menulis `stock` apa adanya dari
+ * payload. Jadi kalau suatu payload mengirim produk bervarian dengan stok
+ * induk 0 (dan stok sesungguhnya hanya di tiap varian), aturan lama
+ * `isActive: stock > 0` akan menonaktifkan produk itu dari toko diam-diam.
+ *
+ * Fungsi ini menutup celah itu tanpa mengubah perilaku untuk payload yang
+ * sudah benar: kalau variannya tidak ikut dikirim, penilaiannya kembali ke
+ * stok induk persis seperti sebelumnya.
  */
 export function importedProductIsActive(product: {
   hasVariants: boolean;
   stock: number;
   variants: Array<{ stock: number }>;
 }): boolean {
-  if (!product.hasVariants) return product.stock > 0;
-  // Produk bervarian tanpa satu pun varian berstok memang layak nonaktif —
-  // yang salah hanyalah menilainya lewat stok induk.
-  return product.variants.some((v) => v.stock > 0);
+  if (product.hasVariants && product.variants.length > 0) {
+    return product.variants.some((v) => v.stock > 0);
+  }
+  return product.stock > 0;
 }
