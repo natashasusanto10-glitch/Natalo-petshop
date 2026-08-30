@@ -103,6 +103,11 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <Glyph d="m12 2 3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2Z" />,
       },
       {
+        href: "/admin/abuse-flags",
+        label: "Abuse Flags",
+        icon: <Glyph d="M4 22V4a1 1 0 0 1 1-1h13l-2.5 4.5L18 12H5M12 22v-4" />,
+      },
+      {
         // CS tool: override tgl lahir customer yang ke-lock setelah dapat
         // voucher ultah. Anti-abuse lock di sistem otomatis, tapi genuine
         // cases (salah input) butuh manual override dengan audit log.
@@ -119,6 +124,11 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/reports",
         label: "Laporan",
         icon: <Glyph d="M18 20V10M12 20V4M6 20v-6" />,
+      },
+      {
+        href: "/admin/audit-log",
+        label: "Audit Log",
+        icon: <Glyph d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13h6M9 17h4" />,
       },
       {
         href: "/admin/settings",

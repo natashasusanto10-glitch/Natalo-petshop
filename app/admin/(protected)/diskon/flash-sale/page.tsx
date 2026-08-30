@@ -10,13 +10,15 @@
  * Untuk akhiri lebih awal, edit produk + clear flashSaleEndsAt.
  */
 import Link from "next/link";
-import { AdminPage, Button } from "@/components/admin/ui";
+import { AdminPage, Button, ResultCount } from "@/components/admin/ui";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { productSearchWhere } from "@/lib/search";
 import { EndFlashSaleButton } from "@/components/admin/EndFlashSaleButton";
 
 export const dynamic = "force-dynamic";
+
+const FLASH_SALE_LIST_LIMIT = 100;
 
 type StatusFilter = "all" | "ongoing" | "expired";
 
@@ -59,14 +61,18 @@ export default async function FlashSaleListPage({
         ? { flashSaleEndsAt: { lt: now, gt: thirtyDaysAgo } }
         : { flashSaleEndsAt: { gt: sevenDaysAgo } }; // "all" default — active + recent 7d
 
+  // Satu objek `where` dipakai bersama oleh daftar DAN penghitungnya, supaya
+  // angka "menampilkan N dari M" tidak bisa lepas dari filter yang aktif.
+  const listWhere = {
+    ...whereStatus,
+    // Matcher sama dengan katalog: token multi-kata + nama brand + SKU.
+    ...((search ? productSearchWhere(search) : undefined) ?? {}),
+  };
+
   const products = await prisma.product.findMany({
-    where: {
-      ...whereStatus,
-      // Matcher sama dengan katalog: token multi-kata + nama brand + SKU.
-      ...((search ? productSearchWhere(search) : undefined) ?? {}),
-    },
+    where: listWhere,
     orderBy: { flashSaleEndsAt: "desc" },
-    take: 100,
+    take: FLASH_SALE_LIST_LIMIT,
     select: {
       id: true,
       name: true,
@@ -79,7 +85,8 @@ export default async function FlashSaleListPage({
     },
   });
 
-  const [ongoingCount, expiredCount, totalCount] = await Promise.all([
+  const [matchingCount, ongoingCount, expiredCount, totalCount] = await Promise.all([
+    prisma.product.count({ where: listWhere }),
     prisma.product.count({ where: { flashSaleEndsAt: { gt: now } } }),
     prisma.product.count({
       where: { flashSaleEndsAt: { lt: now, gt: thirtyDaysAgo } },
@@ -147,7 +154,14 @@ export default async function FlashSaleListPage({
       </form>
 
       {/* List */}
-      <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-200">
+      <div className="mt-4">
+        <ResultCount
+          shown={products.length}
+          total={matchingCount}
+          noun="produk Flash Sale"
+        />
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-zinc-200">
         {products.length === 0 ? (
           <div className="p-12 text-center">
             <p className="text-3xl">⚡</p>

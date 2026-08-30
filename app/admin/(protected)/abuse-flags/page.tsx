@@ -23,9 +23,12 @@ import {
   PageHeader,
   StatCard,
   EmptyState,
+  ResultCount,
   Badge,
   type BadgeVariant,
 } from "@/components/admin/ui";
+
+const FLAG_LIST_LIMIT = 100;
 
 const SEVERITY_VARIANT: Record<string, BadgeVariant> = {
   HIGH: "danger",
@@ -79,31 +82,40 @@ export default async function AbuseFlagsPage({
   // Severity ordering: HIGH > MEDIUM > LOW (Postgres alphabetical
   // happens to put HIGH > MEDIUM > LOW kalau di-cast, but defensive
   // we sort secondary by createdAt desc).
-  const [flags, openCount, reviewedCount, dismissedCount, blockedCount] =
-    await Promise.all([
-      prisma.abuseFlag.findMany({
-        where,
-        orderBy: [{ severity: "asc" }, { createdAt: "desc" }],
-        take: 100,
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true,
-              username: true,
-              createdAt: true,
-            },
+  const [
+    flags,
+    matchingCount,
+    openCount,
+    reviewedCount,
+    dismissedCount,
+    blockedCount,
+  ] = await Promise.all([
+    prisma.abuseFlag.findMany({
+      where,
+      orderBy: [{ severity: "asc" }, { createdAt: "desc" }],
+      take: FLAG_LIST_LIMIT,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            username: true,
+            createdAt: true,
           },
-          reviewedBy: { select: { name: true } },
         },
-      }),
-      prisma.abuseFlag.count({ where: { status: "OPEN" } }),
-      prisma.abuseFlag.count({ where: { status: "REVIEWED" } }),
-      prisma.abuseFlag.count({ where: { status: "DISMISSED" } }),
-      prisma.abuseFlag.count({ where: { status: "BLOCKED" } }),
-    ]);
+        reviewedBy: { select: { name: true } },
+      },
+    }),
+    // `where` yang SAMA dengan findMany di atas — kalau beda, angka
+    // "N dari M" jadi bohong dengan cara baru.
+    prisma.abuseFlag.count({ where }),
+    prisma.abuseFlag.count({ where: { status: "OPEN" } }),
+    prisma.abuseFlag.count({ where: { status: "REVIEWED" } }),
+    prisma.abuseFlag.count({ where: { status: "DISMISSED" } }),
+    prisma.abuseFlag.count({ where: { status: "BLOCKED" } }),
+  ]);
 
   return (
     <AdminPage maxWidth="xl">
@@ -227,11 +239,14 @@ export default async function AbuseFlagsPage({
           />
         </div>
       ) : (
-        <div className="space-y-3">
-          {flags.map((flag) => (
-            <FlagCard key={flag.id} flag={flag} />
-          ))}
-        </div>
+        <>
+          <ResultCount shown={flags.length} total={matchingCount} noun="flag" />
+          <div className="space-y-3">
+            {flags.map((flag) => (
+              <FlagCard key={flag.id} flag={flag} />
+            ))}
+          </div>
+        </>
       )}
     </AdminPage>
   );
