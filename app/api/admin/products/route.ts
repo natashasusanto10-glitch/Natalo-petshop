@@ -1,5 +1,6 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { parseLimitParam, parsePageParam } from "@/lib/admin/pagination";
 import { getSession } from "@/lib/auth";
 import { syncProduct, productSearchWhere } from "@/lib/search";
 import { putVariantsPayloadSchema, formatVariantIssues } from "@/lib/validators/variant-schema";
@@ -19,11 +20,8 @@ export async function GET(request: NextRequest) {
   }
 
   const sp = request.nextUrl.searchParams;
-  const page = Math.max(1, parseInt(sp.get("page") || "1", 10));
-  const limit = Math.min(
-    MAX_LIMIT,
-    Math.max(1, parseInt(sp.get("limit") || String(DEFAULT_LIMIT), 10))
-  );
+  const page = parsePageParam(sp.get("page") ?? undefined);
+  const limit = parseLimitParam(sp.get("limit") ?? undefined, DEFAULT_LIMIT, MAX_LIMIT);
   const q = sp.get("q")?.trim() ?? "";
   const categorySlug = sp.get("category")?.trim() ?? "";
 
