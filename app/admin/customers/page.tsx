@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/session-guards";
 import { PageHeader, EmptyState, Badge, Button, AdminPage } from "@/components/admin/ui";
 import { customerSearchWhere } from "@/lib/admin-search";
+import { parsePageParam } from "@/lib/admin/pagination";
 
 const PAGE_SIZE = 20;
 
@@ -13,7 +14,7 @@ export default async function AdminCustomersPage({
   await requireAdminSession();
 
   const { page: pageStr, q } = await searchParams;
-  const page = Math.max(1, parseInt(pageStr || "1", 10));
+  const page = parsePageParam(pageStr);
   const search = q?.trim() ?? "";
 
   // Nama / email / HP / username. Satu objek `where` dipakai bersama daftar

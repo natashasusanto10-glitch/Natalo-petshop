@@ -14,6 +14,7 @@ import {
 } from "@/components/admin/ui";
 import { orderStatusLabel, paymentStatusLabel } from "@/lib/order-labels";
 import { orderSearchWhere } from "@/lib/admin-search";
+import { parsePageParam } from "@/lib/admin/pagination";
 
 // Special variant override untuk NEED_PACKING (bukan order.status real, tapi
 // filter combine PAID + status ∈ {PENDING,PAID,PROCESSING}). Treat as success.
@@ -103,7 +104,7 @@ export default async function AdminOrdersPage({
   }>;
 }) {
   const { status, pay, type, page: pageStr, q } = await searchParams;
-  const page = Math.max(1, parseInt(pageStr || "1", 10));
+  const page = parsePageParam(pageStr);
   const search = q?.trim() ?? "";
 
   const where: Record<string, unknown> = {};
