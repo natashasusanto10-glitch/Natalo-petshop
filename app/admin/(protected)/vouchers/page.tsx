@@ -17,11 +17,58 @@ import {
   AdminPage,
   Button,
 } from "@/components/admin/ui";
+import { voucherSearchWhere } from "@/lib/admin-search";
+import {
+  LOYALTY_VOUCHER_WHERE,
+  NON_LOYALTY_VOUCHER_WHERE,
+  tallyVoucherCategories,
+} from "@/lib/admin/voucher-categories";
 
-export default async function AdminVouchersPage() {
-  const vouchers = await prisma.voucher.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+const PAGE_SIZE = 20;
+
+export default async function AdminVouchersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; q?: string }>;
+}) {
+  const { page: pageStr, q } = await searchParams;
+  const page = Math.max(1, parseInt(pageStr || "1", 10));
+  const search = q?.trim() ?? "";
+
+  const searchWhere = voucherSearchWhere(search);
+  const where = searchWhere ? { AND: searchWhere.AND } : {};
+
+  // Voucher loyalty dibuat PER PENGGUNA, jadi jumlah barisnya tumbuh mengikuti
+  // member — bukan campaign. Sebelumnya halaman ini menarik SEMUANYA lalu
+  // menghitung kategori di JavaScript; sekarang hitungannya di database dan
+  // barisnya dipaginasi.
+  const [vouchers, total, loyaltyCount, nonLoyaltyGroups] = await Promise.all([
+    prisma.voucher.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    prisma.voucher.count({ where }),
+    prisma.voucher.count({ where: LOYALTY_VOUCHER_WHERE }),
+    prisma.voucher.groupBy({
+      by: ["kind", "sourceType"],
+      where: NON_LOYALTY_VOUCHER_WHERE,
+      _count: { _all: true },
+    }),
+  ]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  // Pencarian ikut terbawa saat pindah halaman — kalau tidak, halaman 2
+  // diam-diam kembali menampilkan seluruh voucher.
+  const pageHref = (target: number) => {
+    const sp = new URLSearchParams();
+    if (search) sp.set("q", search);
+    if (target > 1) sp.set("page", String(target));
+    const str = sp.toString();
+    return `/admin/vouchers${str ? `?${str}` : ""}`;
+  };
 
   async function toggleVoucher(formData: FormData) {
     "use server";
@@ -47,25 +94,25 @@ export default async function AdminVouchersPage() {
   }
 
   const now = new Date();
-  const counts = {
-    PRODUCT_DISCOUNT: 0,
-    FREE_SHIPPING: 0,
-    LOYALTY_CLAIM: 0,
-    MANUAL_PRIVATE: 0,
-  };
-  for (const voucher of vouchers) {
-    if (isLoyaltyClaimVoucher(voucher)) counts.LOYALTY_CLAIM += 1;
-    else if (voucher.kind === "FREE_SHIPPING") counts.FREE_SHIPPING += 1;
-    else if (voucher.kind === "MANUAL_PRIVATE" || voucher.sourceType === "SELLER_MANUAL") {
-      counts.MANUAL_PRIVATE += 1;
-    } else counts.PRODUCT_DISCOUNT += 1;
-  }
+  // Kartu statistik menghitung SELURUH tabel, bukan hanya halaman yang tampil.
+  const counts = tallyVoucherCategories(
+    loyaltyCount,
+    nonLoyaltyGroups.map((g) => ({
+      kind: g.kind,
+      sourceType: g.sourceType,
+      _count: g._count._all,
+    })),
+  );
 
   return (
     <AdminPage maxWidth="xl">
       <PageHeader
         title="Voucher"
-        subtitle={`${vouchers.length} voucher total · kelola promo & loyalty reward`}
+        subtitle={
+          search
+            ? `${total} voucher cocok dengan "${search}".`
+            : `${total} voucher total · kelola promo & loyalty reward`
+        }
         actions={
           <Button href="/admin/vouchers/new" size="sm">
             + Buat voucher
@@ -100,13 +147,41 @@ export default async function AdminVouchersPage() {
         />
       </section>
 
-      <div className="mt-5 overflow-hidden rounded-2xl border border-zinc-200 bg-white md:mt-8">
+      {/* Kotak cari — kode atau nama campaign. Wajib ada begitu daftarnya
+          dipaginasi: tanpa ini, mencari satu voucher berarti menggulir
+          halaman demi halaman. */}
+      <form className="mt-5 flex gap-2 md:mt-8" method="GET" action="/admin/vouchers">
+        <input
+          type="search"
+          name="q"
+          defaultValue={search}
+          aria-label="Cari kode atau nama voucher"
+          placeholder="🔍 Cari kode / nama voucher..."
+          className="min-w-0 flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
+        />
+        <Button type="submit">Cari</Button>
+        {search && (
+          <Button href="/admin/vouchers" variant="secondary">
+            Reset
+          </Button>
+        )}
+      </form>
+
+      <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
         {vouchers.length === 0 ? (
           <EmptyState
-            icon="🎟️"
-            title="Belum ada voucher"
-            description="Buat voucher pertama untuk mulai campaign promo atau loyalty reward."
-            action={{ label: "Buat voucher pertama", href: "/admin/vouchers/new" }}
+            icon={search ? "🔍" : "🎟️"}
+            title={search ? `Tidak ada voucher cocok "${search}"` : "Belum ada voucher"}
+            description={
+              search
+                ? "Coba kata kunci lain — pencarian mencakup kode dan nama voucher."
+                : "Buat voucher pertama untuk mulai campaign promo atau loyalty reward."
+            }
+            action={
+              search
+                ? { label: "Reset pencarian", href: "/admin/vouchers" }
+                : { label: "Buat voucher pertama", href: "/admin/vouchers/new" }
+            }
             size="full"
           />
         ) : (
@@ -255,6 +330,27 @@ export default async function AdminVouchersPage() {
           </div>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="mt-6 flex items-center justify-between gap-3">
+          <p className="text-sm text-zinc-500">
+            Halaman <span className="font-black text-zinc-950">{page}</span> dari{" "}
+            <span className="font-black text-zinc-950">{totalPages}</span>
+          </p>
+          <div className="flex gap-2">
+            {page > 1 && (
+              <Button href={pageHref(page - 1)} variant="secondary" size="sm">
+                ← Sebelumnya
+              </Button>
+            )}
+            {page < totalPages && (
+              <Button href={pageHref(page + 1)} size="sm">
+                Berikutnya →
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
     </AdminPage>
   );
 }
