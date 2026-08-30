@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/session-guards";
-import { PageHeader, EmptyState, Badge, Button, AdminPage } from "@/components/admin/ui";
+import { PageHeader, EmptyState, Badge, Button, AdminPage, Pagination } from "@/components/admin/ui";
 import { customerSearchWhere } from "@/lib/admin-search";
 import { parsePageParam } from "@/lib/admin/pagination";
 
@@ -220,31 +220,12 @@ export default async function AdminCustomersPage({
         </>
       )}
 
-      {totalPages > 1 && (
-        <div className="mt-6 flex items-center justify-between">
-          <p className="text-sm text-zinc-500">
-            Halaman{" "}
-            <span className="font-black text-zinc-950">{page}</span> dari{" "}
-            <span className="font-black text-zinc-950">{totalPages}</span>
-          </p>
-          <div className="flex gap-2">
-            {page > 1 && (
-              <Button
-                href={pageHref(page - 1)}
-                variant="secondary"
-                size="sm"
-              >
-                ← Sebelumnya
-              </Button>
-            )}
-            {page < totalPages && (
-              <Button href={pageHref(page + 1)} size="sm">
-                Berikutnya →
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        hrefFor={pageHref}
+        summary={`${total} customer`}
+      />
     </AdminPage>
   );
 }
