@@ -210,6 +210,18 @@ export default async function AdminProductsPage({
         subtitle={`${totalAll} total · ${totalReady} ready · ${totalOut} habis · ${totalArchived} arsip${activeCategory ? ` · ${activeCategory.name}` : ""}`}
         actions={
           <>
+            {/* SENGAJA <a> polos, BUKAN Button ber-href: Button merender
+                next/link yang MEM-PREFETCH tujuannya saat tombol masuk
+                viewport — artinya setiap render halaman ini diam-diam
+                menjalankan query katalog penuh + build xlsx di server,
+                hasilnya dibuang. Kelas disamakan dgn Button secondary sm. */}
+            <a
+              href="/api/admin/products/export"
+              download
+              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full border border-zinc-300 bg-white px-3.5 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-natalo-400 focus-visible:ring-offset-2"
+            >
+              ↥ Ekspor Excel
+            </a>
             <Button href="/admin/products/import" variant="secondary" size="sm">
               ↧ Import
             </Button>

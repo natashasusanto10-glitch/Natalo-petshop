@@ -75,6 +75,7 @@
     "bcryptjs": "^3.0.3",
     "blurhash": "^2.0.5",
     "dotenv": "^17.4.2",
+    "exceljs": "4.4.0",
     "firebase-admin": "^14.3.0",
     "hls.js": "^1.6.16",
     "jose": "^6.2.3",
@@ -120,6 +121,9 @@
   "overrides": {
     "@effect/platform": {
       "effect": "3.17.7"
+    },
+    "exceljs": {
+      "uuid": "^11.1.1"
     }
   }
 }
