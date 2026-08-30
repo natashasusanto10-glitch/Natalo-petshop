@@ -540,14 +540,12 @@ export default async function AdminOrdersPage({
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <Pagination
-          currentPage={page}
-          totalPages={totalPages}
-          hrefFor={(target) => buildUrl({ page: String(target) })}
-          summary={`${total} order`}
-        />
-      )}
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        hrefFor={(target) => buildUrl({ page: String(target) })}
+        summary={`${total} order`}
+      />
     </AdminPage>
   );
 }

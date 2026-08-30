@@ -33,8 +33,13 @@ export function paginationRange(
 
   const left = Math.max(safeCurrent - safeSiblings, 1);
   const right = Math.min(safeCurrent + safeSiblings, total);
-  const showLeftGap = left > 2;
-  const showRightGap = right < total - 1;
+  // "…" hanya dipakai kalau ia menyembunyikan MINIMAL DUA halaman. Kalau cuma
+  // satu yang tersembunyi, titik-titiknya justru memakan tempat yang sama
+  // dengan angkanya sambil menghilangkan satu tujuan yang bisa diklik —
+  // pada halaman 4 dari 29 dulu muncul "1 … 3 4 5", padahal "1 2 3 4 5"
+  // sama panjangnya dan tidak menyembunyikan apa pun.
+  const showLeftGap = left > 3;
+  const showRightGap = right < total - 2;
 
   // Saat berada di dekat salah satu ujung, deret digeser ke sisi itu supaya
   // jumlah tombolnya tetap sama — bukan menyusut jadi "1 2 3 … 29".

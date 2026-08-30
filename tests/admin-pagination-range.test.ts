@@ -79,3 +79,43 @@ test("siblings 0 tetap menampilkan halaman aktif", () => {
   const list = paginationRange(15, 29, 0);
   assert.ok(nums(list).includes(15));
 });
+
+test('"…" tidak pernah menyembunyikan hanya SATU halaman', () => {
+  // Regresi nyata: pada halaman 4 dari 29 dulu muncul "1 … 3 4 5 … 29" —
+  // titik-titiknya hanya menutupi halaman 2, memakan tempat yang sama dengan
+  // angkanya sambil menghilangkan satu tujuan yang bisa diklik. Aturan umum
+  // ini menjaga kedua ujung sekaligus, bukan cuma dua kasus yang kebetulan
+  // kuperiksa.
+  for (const total of [7, 8, 9, 10, 12, 29, 140]) {
+    for (let page = 1; page <= total; page++) {
+      const slots = paginationRange(page, total);
+      for (let i = 0; i < slots.length; i++) {
+        if (slots[i] !== "gap") continue;
+        const before = slots[i - 1];
+        const after = slots[i + 1];
+        assert.equal(typeof before, "number", `gap di tepi kiri (${page}/${total})`);
+        assert.equal(typeof after, "number", `gap di tepi kanan (${page}/${total})`);
+        const hidden = (after as number) - (before as number) - 1;
+        assert.ok(
+          hidden >= 2,
+          `gap cuma menyembunyikan ${hidden} halaman di ${page}/${total}: ${JSON.stringify(slots)}`,
+        );
+      }
+    }
+  }
+});
+
+test("batas tempat bug itu bersembunyi: halaman 4 dan halaman ke-4-dari-belakang", () => {
+  assert.deepEqual(paginationRange(4, 29), [1, 2, 3, 4, 5, "gap", 29]);
+  assert.deepEqual(paginationRange(26, 29), [1, "gap", 25, 26, 27, 28, 29]);
+});
+
+test("lebar deret tetap — diperiksa untuk banyak total, bukan hanya 29", () => {
+  for (const total of [8, 9, 10, 12, 29, 140]) {
+    const widths = new Set<number>();
+    for (let page = 1; page <= total; page++) {
+      widths.add(paginationRange(page, total).length);
+    }
+    assert.equal(widths.size, 1, `total ${total}: lebar berubah (${[...widths].join(", ")})`);
+  }
+});
