@@ -109,3 +109,23 @@ export function stockTone(stock: number): {
   if (stock <= LOW_STOCK_LIMIT) return { label: "Menipis", badge: "warning" };
   return { label: "Tersedia", badge: "success" };
 }
+
+/**
+ * Apakah produk hasil impor layak tampil di toko?
+ *
+ * JEBAKAN yang ditutup fungsi ini: importer dulu menulis `isActive:
+ * prod.stock > 0` apa adanya. Untuk produk bervarian, `stock` induk pada
+ * payload memang 0 (stok aslinya di tiap varian) — jadi setiap kali importer
+ * dijalankan, SELURUH produk bervarian dinonaktifkan dari toko meski gudangnya
+ * penuh. Tidak ada error, tidak ada laporan; produknya hanya hilang.
+ */
+export function importedProductIsActive(product: {
+  hasVariants: boolean;
+  stock: number;
+  variants: Array<{ stock: number }>;
+}): boolean {
+  if (!product.hasVariants) return product.stock > 0;
+  // Produk bervarian tanpa satu pun varian berstok memang layak nonaktif —
+  // yang salah hanyalah menilainya lewat stok induk.
+  return product.variants.some((v) => v.stock > 0);
+}

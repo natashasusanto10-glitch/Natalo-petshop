@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  importedProductIsActive,
   LOW_STOCK_LIMIT,
   parseStockFilter,
   parseStockTab,
@@ -88,4 +89,39 @@ test("varian terhapus lunak tidak boleh membuat produk tampak masih ada stok", (
 
 test("stok induk 'habis' pakai lte 0, bukan equals 0 — nilai negatif tetap tertangkap", () => {
   assert.deepEqual(productOutOfStockWhere().OR[0].stock, { lte: 0 });
+});
+
+test("impor: produk bervarian TIDAK dinonaktifkan hanya karena stok induknya 0", () => {
+  // Regresi paling merusak dari seluruh keluarga bug ini: menjalankan importer
+  // menghapus seluruh produk bervarian dari toko, diam-diam.
+  assert.equal(
+    importedProductIsActive({
+      hasVariants: true,
+      stock: 0,
+      variants: [{ stock: 0 }, { stock: 12 }],
+    }),
+    true,
+  );
+});
+
+test("impor: produk bervarian yang SEMUA variannya habis memang nonaktif", () => {
+  assert.equal(
+    importedProductIsActive({ hasVariants: true, stock: 0, variants: [{ stock: 0 }] }),
+    false,
+  );
+  assert.equal(
+    importedProductIsActive({ hasVariants: true, stock: 0, variants: [] }),
+    false,
+  );
+});
+
+test("impor: produk tanpa varian tetap dinilai dari stok induknya, seperti dulu", () => {
+  assert.equal(
+    importedProductIsActive({ hasVariants: false, stock: 3, variants: [] }),
+    true,
+  );
+  assert.equal(
+    importedProductIsActive({ hasVariants: false, stock: 0, variants: [] }),
+    false,
+  );
 });

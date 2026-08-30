@@ -39,6 +39,7 @@
  * tidak nuke catalog kalau admin upload JSON partial/test.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { importedProductIsActive } from "@/lib/admin/stock-filters";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
             stock: prod.stock,
             weightGram: prod.weightGram,
             hasVariants: prod.hasVariants,
-            isActive: prod.stock > 0,
+            isActive: importedProductIsActive(prod),
             categoryId,
             // brandAutoAssigned TIDAK di-set di update branch — hanya
             // di create. Sebelumnya overwrite manual brand assignment
@@ -183,7 +184,7 @@ export async function POST(request: NextRequest) {
             stock: prod.stock,
             weightGram: prod.weightGram,
             hasVariants: prod.hasVariants,
-            isActive: prod.stock > 0,
+            isActive: importedProductIsActive(prod),
             categoryId,
             brandId,
             brandAutoAssigned: true,
