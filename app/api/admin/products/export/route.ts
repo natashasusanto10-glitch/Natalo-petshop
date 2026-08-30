@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   EXPORT_COLUMNS,
   buildExportRows,
+  formatWib,
   type ExportProduct,
 } from "@/lib/admin/product-export";
 
@@ -39,6 +40,7 @@ export async function GET() {
       stock: true,
       weightGram: true,
       isActive: true,
+      creationState: true,
       hasVariants: true,
       brand: { select: { name: true } },
       category: { select: { name: true } },
@@ -79,6 +81,7 @@ export async function GET() {
     stock: p.stock,
     weightGram: p.weightGram,
     isActive: p.isActive,
+    creationState: p.creationState,
     hasVariants: p.hasVariants,
     variants: p.variants.map((v) => ({
       sku: v.sku,
@@ -94,7 +97,10 @@ export async function GET() {
     })),
   }));
 
-  const rows = buildExportRows(exportProducts);
+  const rows = buildExportRows(
+    exportProducts,
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://natalopetshop.com",
+  );
 
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Produk");
@@ -107,10 +113,16 @@ export async function GET() {
     from: { row: 1, column: 1 },
     to: { row: 1, column: EXPORT_COLUMNS.length },
   };
+  // Catatan keamanan: exceljs menulis string sebagai SEL TEKS xlsx — nama
+  // produk berawalan =/+/-/@ (impor Shopee) TIDAK dievaluasi Excel sebagai
+  // formula. Kalau kelak ada varian ekspor CSV, injeksi formula terbuka
+  // lagi dan wajib di-escape.
   for (const row of rows) sheet.addRow(row);
 
   const buffer = await workbook.xlsx.writeBuffer();
-  const tanggal = new Date().toISOString().slice(0, 10);
+  // Tanggal nama berkas dalam WIB — toISOString mentah = kemarin utk ekspor
+  // sebelum jam 07:00 pagi.
+  const tanggal = formatWib(new Date()).slice(0, 10);
   return new NextResponse(Buffer.from(buffer), {
     headers: {
       "Content-Type":

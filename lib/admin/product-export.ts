@@ -42,6 +42,11 @@ export type ExportProduct = {
   stock: number;
   weightGram: number;
   isActive: boolean;
+  /** "ready" = produk utuh; selain itu = baris setengah jadi (mis. stuck
+   *  "creating" — kelas insiden yang pernah terjadi di repo ini). Jalur
+   *  PUBLIK memfilter ready; ekspor SENGAJA menyertakannya dengan status
+   *  jujur supaya baris hantu terlihat, bukan terhitung sebagai stok. */
+  creationState: string;
   hasVariants: boolean;
   variants: ExportVariant[];
 };
@@ -80,19 +85,25 @@ export const EXPORT_COLUMNS: Array<{
   { header: "Stok", key: "stok", width: 8 },
   { header: "Berat (gram)", key: "beratGram", width: 11 },
   { header: "Status", key: "status", width: 10 },
-  { header: "Flash Sale Berakhir", key: "flashSaleBerakhir", width: 19 },
+  { header: "Flash Sale Berakhir (WIB)", key: "flashSaleBerakhir", width: 21 },
   { header: "Link", key: "link", width: 44 },
 ];
 
 /** "Rasa: Salmon, Ukuran: 1KG" — urut mengikuti posisi atribut di admin. */
 export function variantLabel(options: ExportVariantOption[]): string {
   return [...options]
-    .sort((a, b) => a.attributePosition - b.attributePosition)
+    // Tie-break nama: dua atribut berbagi position → urutan stabil antar
+    // ekspor (tanpa ini, diff dua lembar opname bisa palsu berbeda).
+    .sort(
+      (a, b) =>
+        a.attributePosition - b.attributePosition ||
+        a.attributeName.localeCompare(b.attributeName),
+    )
     .map((o) => `${o.attributeName}: ${o.value}`)
     .join(", ");
 }
 
-function baseRow(p: ExportProduct): Omit<
+function baseRow(p: ExportProduct, siteUrl: string): Omit<
   ExportRow,
   "varian" | "skuVarian" | "harga" | "stok" | "beratGram" | "status"
 > {
@@ -103,24 +114,39 @@ function baseRow(p: ExportProduct): Omit<
     kategori: p.categoryName ?? "",
     hargaDiskon: p.discountPrice,
     hargaMember: p.memberPrice,
-    flashSaleBerakhir: p.flashSaleEndsAt
-      ? p.flashSaleEndsAt.toISOString().slice(0, 16).replace("T", " ")
-      : "",
-    link: `https://natalopetshop.com/products/${p.slug}`,
+    // WIB, bukan UTC: admin beroperasi di zona toko. toISOString mentah
+    // membuat sale yang berakhir 20:00 WIB terbaca 13:00 — data salah 7 jam
+    // di lembar yang justru dibuat supaya bisa dipercaya.
+    flashSaleBerakhir: p.flashSaleEndsAt ? formatWib(p.flashSaleEndsAt) : "",
+    link: `${siteUrl}/products/${p.slug}`,
   };
 }
 
-function statusLabel(active: boolean): string {
+function statusLabel(active: boolean, creationState: string): string {
+  if (creationState !== "ready") return "Draft (belum jadi)";
   return active ? "Aktif" : "Nonaktif";
 }
 
-export function buildExportRows(products: ExportProduct[]): ExportRow[] {
+/** "2026-09-01 20:00" dalam WIB (UTC+7), zona operasional toko. */
+export function formatWib(d: Date): string {
+  return new Date(d.getTime() + 7 * 3600_000)
+    .toISOString()
+    .slice(0, 16)
+    .replace("T", " ");
+}
+
+export function buildExportRows(
+  products: ExportProduct[],
+  // Ikuti konvensi repo (lib/email.ts dkk): basis URL dari env, modul tetap
+  // murni lewat parameter — default = produksi supaya tes tak berubah.
+  siteUrl: string = "https://natalopetshop.com",
+): ExportRow[] {
   const rows: ExportRow[] = [];
   for (const p of products) {
     if (p.hasVariants && p.variants.length > 0) {
       for (const v of p.variants) {
         rows.push({
-          ...baseRow(p),
+          ...baseRow(p, siteUrl),
           varian: variantLabel(v.options),
           skuVarian: v.sku ?? "",
           harga: v.price,
@@ -129,18 +155,21 @@ export function buildExportRows(products: ExportProduct[]): ExportRow[] {
           // Varian nonaktif tetap diekspor (stok fisiknya bisa masih ada
           // di rak) tapi statusnya jujur; produk nonaktif menular ke
           // semua barisnya.
-          status: statusLabel(p.isActive && v.isActive),
+          status: statusLabel(p.isActive && v.isActive, p.creationState),
         });
       }
     } else {
       rows.push({
-        ...baseRow(p),
-        varian: "",
+        ...baseRow(p, siteUrl),
+        // hasVariants tapi nol varian hidup (semua terhapus): baris jatuh ke
+        // harga/stok dasar yang utk produk bervarian lazimnya 0 — tanpa
+        // penanda ini ia terbaca sebagai "produk gratis stok kosong".
+        varian: p.hasVariants ? "(semua varian terhapus)" : "",
         skuVarian: "",
         harga: p.price,
         stok: p.stock,
         beratGram: p.weightGram,
-        status: statusLabel(p.isActive),
+        status: statusLabel(p.isActive, p.creationState),
       });
     }
   }

@@ -21,6 +21,7 @@ function produk(over: Partial<ExportProduct> = {}): ExportProduct {
     stock: 12,
     weightGram: 1000,
     isActive: true,
+    creationState: "ready",
     hasVariants: false,
     variants: [],
     ...over,
@@ -123,7 +124,7 @@ describe("ekspor produk gaya Shopee", () => {
     assert.equal(rows[0].flashSaleBerakhir, "");
   });
 
-  it("flash sale diformat tanggal-jam pendek", () => {
+  it("flash sale diformat tanggal-jam pendek DALAM WIB", () => {
     const rows = buildExportRows([
       produk({
         discountPrice: 40000,
@@ -131,7 +132,10 @@ describe("ekspor produk gaya Shopee", () => {
       }),
     ]);
     assert.equal(rows[0].hargaDiskon, 40000);
-    assert.equal(rows[0].flashSaleBerakhir, "2026-09-01 13:00");
+    // 13:00 UTC = 20:00 WIB — zona toko, bukan UTC. Regresi #review: versi
+    // pertama mengekspor UTC dan tes ini sempat MENGUNCI data yang salah
+    // 7 jam.
+    assert.equal(rows[0].flashSaleBerakhir, "2026-09-01 20:00");
   });
 
   it("kolom worksheet dan kunci baris sinkron — kolom yatim = sel kosong diam-diam", () => {
@@ -139,5 +143,63 @@ describe("ekspor produk gaya Shopee", () => {
     for (const col of EXPORT_COLUMNS) {
       assert.ok(col.key in row, `kolom '${col.header}' tak punya data`);
     }
+  });
+
+  it("hasVariants=true tapi nol varian hidup: fallback DIBERI PENANDA", () => {
+    // Semua varian soft-deleted -> baris jatuh ke harga/stok dasar yang utk
+    // produk bervarian lazimnya 0. Tanpa penanda, terbaca "produk gratis
+    // stok kosong" — persis baris menyesatkan yang desain ini hindari.
+    const rows = buildExportRows([
+      produk({ hasVariants: true, stock: 0, price: 0, variants: [] }),
+    ]);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].varian, "(semua varian terhapus)");
+  });
+
+  it("produk nonaktif menular ke baris varian yang aktif", () => {
+    const rows = buildExportRows([
+      produk({
+        isActive: false,
+        hasVariants: true,
+        variants: [
+          { sku: null, price: 1, stock: 1, weightGram: 1, isActive: true, options: [] },
+        ],
+      }),
+    ]);
+    assert.equal(rows[0].status, "Nonaktif");
+  });
+
+  it("creationState bukan ready -> status Draft, MENGALAHKAN Aktif", () => {
+    // Produk stuck "creating" (kelas insiden nyata di repo) tak boleh
+    // terhitung sebagai stok sehat di lembar opname.
+    const rows = buildExportRows([
+      produk({ creationState: "creating", isActive: true }),
+    ]);
+    assert.equal(rows[0].status, "Draft (belum jadi)");
+  });
+
+  it("katalog kosong -> array kosong", () => {
+    assert.deepEqual(buildExportRows([]), []);
+  });
+
+  it("label varian stabil saat dua atribut berbagi position", () => {
+    const a = variantLabel([
+      { value: "1KG", attributeName: "Ukuran", attributePosition: 0 },
+      { value: "Salmon", attributeName: "Rasa", attributePosition: 0 },
+    ]);
+    const b = variantLabel([
+      { value: "Salmon", attributeName: "Rasa", attributePosition: 0 },
+      { value: "1KG", attributeName: "Ukuran", attributePosition: 0 },
+    ]);
+    assert.equal(a, b);
+    assert.equal(a, "Rasa: Salmon, Ukuran: 1KG");
+  });
+
+  it("siteUrl parameter menimpa basis link", () => {
+    const rows = buildExportRows([produk()], "https://staging.example.com");
+    assert.equal(
+      rows[0].link,
+      "https://staging.example.com/products/whiskas-tuna-1kg",
+    );
   });
 });
