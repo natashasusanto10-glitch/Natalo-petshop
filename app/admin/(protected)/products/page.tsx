@@ -210,6 +210,13 @@ export default async function AdminProductsPage({
         subtitle={`${totalAll} total · ${totalReady} ready · ${totalOut} habis · ${totalArchived} arsip${activeCategory ? ` · ${activeCategory.name}` : ""}`}
         actions={
           <>
+            <Button
+              href="/api/admin/products/export"
+              variant="secondary"
+              size="sm"
+            >
+              ↥ Ekspor Excel
+            </Button>
             <Button href="/admin/products/import" variant="secondary" size="sm">
               ↧ Import
             </Button>
