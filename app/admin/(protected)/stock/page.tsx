@@ -1,3 +1,22 @@
+/**
+ * /admin/stock — pemantauan stok (MONITORING-only).
+ *
+ * Mutasi (edit / arsip / hapus) dipusatkan di /admin/products supaya tidak
+ * duplikat di dua tempat; tiap baris di sini hanya menautkan ke sana.
+ *
+ * DUA HAL YANG DIPERBAIKI DARI VERSI SEBELUMNYA:
+ *
+ * 1. Halaman ini dulu menarik SELURUH produk aktif ke memori lalu menyaring
+ *    di JavaScript. Sekarang dipaginasi dan angkanya dari query hitung.
+ *
+ * 2. Lebih penting: stok induk produk BERVARIAN selalu 0 (form admin menulis
+ *    `stock: 0` saat produk punya varian — stok aslinya di ProductVariant).
+ *    Versi lama menyaring `stock === 0` tanpa memandang itu, sehingga SETIAP
+ *    produk bervarian muncul sebagai "Habis" betapa pun penuh gudangnya.
+ *    Sekarang produk dan varian punya tab masing-masing, dan baris berbasis
+ *    stok induk dibatasi `hasVariants: false`.
+ */
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   PageHeader,
@@ -7,36 +26,125 @@ import {
   AdminPage,
   Button,
 } from "@/components/admin/ui";
+import { parsePageParam } from "@/lib/admin/pagination";
+import {
+  LOW_STOCK_LIMIT,
+  parseStockFilter,
+  parseStockTab,
+  productStockWhere,
+  stockTone,
+  variantStockWhere,
+  type StockFilter,
+  type StockTab,
+} from "@/lib/admin/stock-filters";
 
-// Halaman ini selalu render fresh — tidak boleh kena Next.js full-route cache
-// karena perubahan stok sering & user expect angka-nya selalu akurat.
+// Selalu render fresh — stok sering berubah dan admin mengharapkan angkanya
+// akurat, jadi halaman ini tidak boleh kena full-route cache Next.js.
 export const dynamic = "force-dynamic";
 
-export default async function AdminStockPage() {
-  // Hanya produk aktif. Produk soft-archive tidak ditampilkan di sini.
-  const products = await prisma.product.findMany({
-    where: { isActive: true },
-    orderBy: { stock: "asc" },
-    select: {
-      id: true,
-      name: true,
-      stock: true,
-      isActive: true,
-      category: { select: { name: true } },
-    },
-  });
+const PAGE_SIZE = 25;
 
-  const lowStock = products.filter((p) => p.stock <= 5);
-  const outOfStock = products.filter((p) => p.stock === 0);
+const FILTER_TABS: Array<{ key: StockFilter; label: string }> = [
+  { key: "semua", label: "Semua" },
+  { key: "menipis", label: `Menipis (1-${LOW_STOCK_LIMIT})` },
+  { key: "habis", label: "Habis" },
+];
 
-  // Halaman ini MONITORING-only. Mutasi (edit/arsip/hapus) dipusatkan di
-  // /admin/products supaya tidak duplikat di dua tempat — tiap baris hanya
-  // menautkan ke halaman kelola produk.
+function variantLabel(options: Array<{ option: { value: string } }>): string {
+  return options.map((o) => o.option.value).join(" / ") || "Tanpa opsi";
+}
+
+export default async function AdminStockPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; filter?: string; page?: string }>;
+}) {
+  const sp = await searchParams;
+  const tab = parseStockTab(sp.tab);
+  const filter = parseStockFilter(sp.filter);
+  const page = parsePageParam(sp.page);
+
+  const productWhere = productStockWhere(filter);
+  const varianWhere = variantStockWhere(filter);
+  const skip = (page - 1) * PAGE_SIZE;
+
+  const [
+    productTotal,
+    productLow,
+    productOut,
+    variantLow,
+    variantOut,
+    listedTotal,
+    products,
+    variants,
+  ] = await Promise.all([
+    prisma.product.count({ where: productStockWhere("semua") }),
+    prisma.product.count({ where: productStockWhere("menipis") }),
+    prisma.product.count({ where: productStockWhere("habis") }),
+    prisma.productVariant.count({ where: variantStockWhere("menipis") }),
+    prisma.productVariant.count({ where: variantStockWhere("habis") }),
+    tab === "produk"
+      ? prisma.product.count({ where: productWhere })
+      : prisma.productVariant.count({ where: varianWhere }),
+    tab === "produk"
+      ? prisma.product.findMany({
+          where: productWhere,
+          orderBy: [{ stock: "asc" }, { name: "asc" }],
+          skip,
+          take: PAGE_SIZE,
+          select: {
+            id: true,
+            name: true,
+            stock: true,
+            category: { select: { name: true } },
+          },
+        })
+      : Promise.resolve([]),
+    tab === "varian"
+      ? prisma.productVariant.findMany({
+          where: varianWhere,
+          orderBy: [{ stock: "asc" }, { sku: "asc" }],
+          skip,
+          take: PAGE_SIZE,
+          select: {
+            id: true,
+            sku: true,
+            stock: true,
+            product: { select: { id: true, name: true } },
+            options: { select: { option: { select: { value: true } } } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const totalPages = Math.ceil(listedTotal / PAGE_SIZE);
+  const pageBeyondEnd = listedTotal > 0 && page > totalPages;
+
+  const buildUrl = (overrides: {
+    tab?: StockTab;
+    filter?: StockFilter;
+    page?: number;
+  }) => {
+    const next = new URLSearchParams();
+    const t = overrides.tab ?? tab;
+    const f = overrides.filter ?? filter;
+    // Ganti tab atau filter selalu kembali ke halaman 1 — nomor halaman lama
+    // tidak berarti apa-apa di kumpulan baris yang berbeda.
+    const p = overrides.page ?? 1;
+    if (t !== "produk") next.set("tab", t);
+    if (f !== "semua") next.set("filter", f);
+    if (p > 1) next.set("page", String(p));
+    const str = next.toString();
+    return `/admin/stock${str ? `?${str}` : ""}`;
+  };
+
+  const isEmpty = tab === "produk" ? products.length === 0 : variants.length === 0;
+
   return (
     <AdminPage maxWidth="lg">
       <PageHeader
         title="📦 Stok"
-        subtitle="Pantau stok produk. Kelola (edit / arsip / hapus) di halaman Produk."
+        subtitle="Pantau stok produk & varian. Kelola (edit / arsip / hapus) di halaman Produk."
         actions={
           <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
@@ -44,184 +152,290 @@ export default async function AdminStockPage() {
         }
       />
 
-      <section className="mt-6 grid grid-cols-3 gap-3">
+      <section className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         <StatCard
-          label="Total Produk"
-          value={products.length}
+          label="Produk Tanpa Varian"
+          value={productTotal}
           helper="Aktif di toko"
           variant="default"
         />
         <StatCard
-          label="Stok Menipis"
-          value={lowStock.length}
-          helper="Stok 1-5"
+          label="Produk Menipis"
+          value={productLow}
+          helper={`Stok 1-${LOW_STOCK_LIMIT}`}
+          href={buildUrl({ tab: "produk", filter: "menipis" })}
           variant="warning"
         />
         <StatCard
-          label="Habis"
-          value={outOfStock.length}
+          label="Produk Habis"
+          value={productOut}
           helper="Stok 0"
+          href={buildUrl({ tab: "produk", filter: "habis" })}
+          variant="danger"
+        />
+        <StatCard
+          label="Varian Menipis"
+          value={variantLow}
+          helper={`Stok 1-${LOW_STOCK_LIMIT}`}
+          href={buildUrl({ tab: "varian", filter: "menipis" })}
+          variant="warning"
+        />
+        <StatCard
+          label="Varian Habis"
+          value={variantOut}
+          helper="Stok 0"
+          href={buildUrl({ tab: "varian", filter: "habis" })}
           variant="danger"
         />
       </section>
 
-      {products.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-zinc-200 bg-white">
+      {/* Tab produk vs varian. Dipisah karena stok induk produk bervarian
+          selalu 0 — menggabungkan keduanya di satu daftar berarti menandai
+          setiap produk bervarian sebagai habis. */}
+      <div className="mt-6 flex flex-wrap gap-2">
+        {(["produk", "varian"] as const).map((key) => (
+          <Link
+            key={key}
+            href={buildUrl({ tab: key })}
+            className={`rounded-full px-4 py-2 text-sm font-bold transition ${
+              tab === key
+                ? "bg-natalo-600 text-white shadow-[0_4px_12px_-2px_rgba(30,95,191,0.4)]"
+                : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
+            }`}
+          >
+            {key === "produk" ? "Produk tanpa varian" : "Varian produk"}
+          </Link>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {FILTER_TABS.map((f) => (
+          <Link
+            key={f.key}
+            href={buildUrl({ filter: f.key })}
+            className={`rounded-full px-3 py-1 text-xs font-bold transition ${
+              filter === f.key
+                ? "bg-natalo-50 text-natalo-700"
+                : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700"
+            }`}
+          >
+            {f.label}
+          </Link>
+        ))}
+      </div>
+
+      <p className="mt-3 text-xs font-semibold text-zinc-500">
+        {listedTotal} baris{filter !== "semua" ? " pada filter ini" : ""}
+      </p>
+
+      {pageBeyondEnd ? (
+        <div className="mt-3 rounded-2xl border border-zinc-200 bg-white">
           <EmptyState
-            icon="📭"
-            title="Belum ada produk"
-            description="Tambahkan produk pertama untuk mulai monitor stok."
-            action={{
-              label: "Tambah produk",
-              href: "/admin/products/new",
-            }}
+            icon="📄"
+            title={`Halaman ${page} tidak ada`}
+            description={`Daftar ini hanya sampai halaman ${totalPages}.`}
+            action={{ label: "Kembali ke halaman 1", href: buildUrl({ page: 1 }) }}
             size="full"
           />
         </div>
+      ) : isEmpty ? (
+        <div className="mt-3 rounded-2xl border border-zinc-200 bg-white">
+          <EmptyState
+            icon={filter === "semua" ? "📭" : "✅"}
+            title={
+              filter === "habis"
+                ? "Tidak ada yang habis — aman"
+                : filter === "menipis"
+                  ? "Tidak ada yang menipis — aman"
+                  : tab === "varian"
+                    ? "Belum ada varian"
+                    : "Belum ada produk"
+            }
+            description={
+              filter === "semua"
+                ? "Tambahkan produk untuk mulai memantau stok."
+                : "Coba filter lain untuk melihat sisa daftarnya."
+            }
+            size="full"
+          />
+        </div>
+      ) : tab === "produk" ? (
+        <StockTable
+          rows={products.map((p) => ({
+            key: p.id,
+            productId: p.id,
+            title: p.name,
+            subtitle: p.category?.name ?? "Tanpa kategori",
+            stock: p.stock,
+          }))}
+        />
       ) : (
-        <>
-          {/* Mobile card list */}
-          <div className="mt-5 space-y-3 md:hidden">
-            {products.map((product) => (
-              <div
-                key={product.id}
-                className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 font-semibold text-zinc-950">{product.name}</p>
-                    <p className="mt-0.5 truncate text-xs text-zinc-500">{product.category?.name ?? "Tanpa kategori"}</p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p
-                      className={`text-2xl font-black ${
-                        product.stock === 0
-                          ? "text-red-600"
-                          : product.stock <= 5
-                          ? "text-amber-600"
-                          : "text-zinc-900"
-                      }`}
-                    >
-                      {product.stock}
-                    </p>
-                    <div className="mt-1">
-                      <Badge
-                        variant={
-                          product.stock === 0
-                            ? "danger"
-                            : product.stock <= 5
-                              ? "warning"
-                              : "success"
-                        }
-                      >
-                        {product.stock === 0
-                          ? "Habis"
-                          : product.stock <= 5
-                            ? "Menipis"
-                            : "Tersedia"}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 border-t border-zinc-100 pt-3">
-                  <Button
-                    href={`/admin/products/${product.id}/edit`}
-                    variant="secondary"
-                    size="sm"
-                    fullWidth
-                  >
-                    Kelola di Produk →
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
+        <StockTable
+          rows={variants.map((v) => ({
+            key: v.id,
+            productId: v.product.id,
+            title: v.product.name,
+            subtitle: `${variantLabel(v.options)}${v.sku ? ` · ${v.sku}` : ""}`,
+            stock: v.stock,
+          }))}
+        />
+      )}
 
-          {/* Desktop table */}
-          <div className="mt-6 hidden overflow-hidden rounded-2xl border border-zinc-200 bg-white md:block">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-100 bg-zinc-50/50">
-                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                      Produk
-                    </th>
-                    <th className="hidden px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500 lg:table-cell">
-                      Kategori
-                    </th>
-                    <th className="px-5 py-3.5 text-right text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                      Stok
-                    </th>
-                    <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                      Status
-                    </th>
-                    <th className="px-5 py-3.5 text-right text-[11px] font-black uppercase tracking-wider text-zinc-500">
-                      Aksi
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {products.map((product) => (
-                    <tr
-                      key={product.id}
-                      className="border-b border-zinc-100 transition last:border-0 hover:bg-natalo-50/40"
-                    >
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-zinc-900">{product.name}</p>
-                      </td>
-                      <td className="px-5 py-4 text-zinc-500 hidden lg:table-cell">
-                        {product.category?.name ?? "-"}
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <span
-                          className={`font-bold ${
-                            product.stock === 0
-                              ? "text-red-600"
-                              : product.stock <= 5
-                              ? "text-amber-600"
-                              : "text-zinc-900"
-                          }`}
-                        >
-                          {product.stock}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <Badge
-                          variant={
-                            product.stock === 0
-                              ? "danger"
-                              : product.stock <= 5
-                                ? "warning"
-                                : "success"
-                          }
-                          size="md"
-                        >
-                          {product.stock === 0
-                            ? "Habis"
-                            : product.stock <= 5
-                              ? "Menipis"
-                              : "Tersedia"}
-                        </Badge>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center justify-end">
-                          <Button
-                            href={`/admin/products/${product.id}/edit`}
-                            variant="secondary"
-                            size="sm"
-                          >
-                            Kelola →
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      {totalPages > 1 && !pageBeyondEnd && (
+        <div className="mt-6 flex items-center justify-between gap-3">
+          <p className="text-sm text-zinc-500">
+            Halaman <span className="font-black text-zinc-950">{page}</span> dari{" "}
+            <span className="font-black text-zinc-950">{totalPages}</span>
+          </p>
+          <div className="flex gap-2">
+            {page > 1 && (
+              <Button href={buildUrl({ page: page - 1 })} variant="secondary" size="sm">
+                ← Sebelumnya
+              </Button>
+            )}
+            {page < totalPages && (
+              <Button href={buildUrl({ page: page + 1 })} size="sm">
+                Berikutnya →
+              </Button>
+            )}
           </div>
-        </>
+        </div>
       )}
     </AdminPage>
+  );
+}
+
+type StockRow = {
+  key: string;
+  productId: string;
+  title: string;
+  subtitle: string;
+  stock: number;
+};
+
+/** Satu tabel dipakai tab produk maupun varian — bedanya hanya isi subtitle. */
+function StockTable({ rows }: { rows: StockRow[] }) {
+  return (
+    <>
+      {/* Kartu untuk layar sempit */}
+      <div className="mt-3 space-y-3 md:hidden">
+        {rows.map((row) => {
+          const tone = stockTone(row.stock);
+          return (
+            <div
+              key={row.key}
+              className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 font-semibold text-zinc-950">{row.title}</p>
+                  <p className="mt-0.5 truncate text-xs text-zinc-500">{row.subtitle}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p
+                    className={`text-2xl font-black ${
+                      tone.badge === "danger"
+                        ? "text-red-600"
+                        : tone.badge === "warning"
+                          ? "text-amber-600"
+                          : "text-zinc-900"
+                    }`}
+                  >
+                    {row.stock}
+                  </p>
+                  <div className="mt-1">
+                    <Badge variant={tone.badge}>{tone.label}</Badge>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 border-t border-zinc-100 pt-3">
+                <Button
+                  href={`/admin/products/${row.productId}/edit`}
+                  variant="secondary"
+                  size="sm"
+                  fullWidth
+                >
+                  Kelola di Produk →
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Tabel untuk layar lebar */}
+      <div className="mt-3 hidden overflow-hidden rounded-2xl border border-zinc-200 bg-white md:block">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-zinc-100 bg-zinc-50/50">
+                <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                  Produk
+                </th>
+                <th className="hidden px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500 lg:table-cell">
+                  Kategori / Varian
+                </th>
+                <th className="px-5 py-3.5 text-right text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                  Stok
+                </th>
+                <th className="px-5 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                  Status
+                </th>
+                <th className="px-5 py-3.5 text-right text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                  Aksi
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const tone = stockTone(row.stock);
+                return (
+                  <tr
+                    key={row.key}
+                    className="border-b border-zinc-100 transition last:border-0 hover:bg-natalo-50/40"
+                  >
+                    <td className="px-5 py-4">
+                      <p className="font-semibold text-zinc-900">{row.title}</p>
+                    </td>
+                    <td className="hidden px-5 py-4 text-zinc-500 lg:table-cell">
+                      {row.subtitle}
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <span
+                        className={`font-bold ${
+                          tone.badge === "danger"
+                            ? "text-red-600"
+                            : tone.badge === "warning"
+                              ? "text-amber-600"
+                              : "text-zinc-900"
+                        }`}
+                      >
+                        {row.stock}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <Badge variant={tone.badge} size="md">
+                        {tone.label}
+                      </Badge>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-end">
+                        <Button
+                          href={`/admin/products/${row.productId}/edit`}
+                          variant="secondary"
+                          size="sm"
+                        >
+                          Kelola →
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
   );
 }

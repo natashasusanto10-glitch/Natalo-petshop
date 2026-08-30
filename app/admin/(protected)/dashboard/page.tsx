@@ -13,6 +13,9 @@ import {
   STATUS_BADGE_VARIANT,
   PAY_BADGE_VARIANT,
 } from "@/components/admin/ui";
+// Ambang menipis + filter stok dibagi dengan halaman /admin/stock supaya dua
+// tempat tidak pernah memberi angka berbeda untuk produk yang sama.
+import { LOW_STOCK_LIMIT, productStockWhere } from "@/lib/admin/stock-filters";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "Order Baru",
@@ -32,8 +35,6 @@ const PAY_LABELS: Record<string, string> = {
   EXPIRED: "Kedaluwarsa",
   REFUNDED: "Refund",
 };
-
-const LOW_STOCK_LIMIT = 5;
 
 function formatDateTime(date: Date) {
   return new Intl.DateTimeFormat("id-ID", {
@@ -157,16 +158,20 @@ export default async function AdminDashboardPage() {
       take: 8,
       include: { items: { select: { quantity: true } } },
     }),
-    prisma.product.count({ where: { isActive: true, stock: { gt: 0, lte: LOW_STOCK_LIMIT } } }),
-    prisma.product.count({ where: { isActive: true, stock: 0 } }),
+    // `productStockWhere` membatasi hasVariants:false. Tanpa itu, stok induk
+    // produk bervarian yang memang selalu 0 membuat SETIAP produk bervarian
+    // terhitung habis — kartu "Stok Habis" melapor alarm palsu, dan varian
+    // yang benar-benar habis sudah dihitung terpisah di bawah.
+    prisma.product.count({ where: productStockWhere("menipis") }),
+    prisma.product.count({ where: productStockWhere("habis") }),
     prisma.product.findMany({
-      where: { isActive: true, stock: { gt: 0, lte: LOW_STOCK_LIMIT } },
+      where: productStockWhere("menipis"),
       orderBy: { stock: "asc" },
       take: 8,
       select: { id: true, name: true, stock: true, price: true },
     }),
     prisma.product.findMany({
-      where: { isActive: true, stock: 0 },
+      where: productStockWhere("habis"),
       orderBy: { updatedAt: "desc" },
       take: 8,
       select: { id: true, name: true, stock: true, price: true },
