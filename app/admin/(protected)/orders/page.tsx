@@ -13,6 +13,7 @@ import {
   type BadgeVariant,
 } from "@/components/admin/ui";
 import { orderStatusLabel, paymentStatusLabel } from "@/lib/order-labels";
+import { orderSearchWhere } from "@/lib/admin-search";
 
 // Special variant override untuk NEED_PACKING (bukan order.status real, tapi
 // filter combine PAID + status ∈ {PENDING,PAID,PROCESSING}). Treat as success.
@@ -93,10 +94,17 @@ const PAGE_SIZE = 20;
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; pay?: string; type?: string; page?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    pay?: string;
+    type?: string;
+    page?: string;
+    q?: string;
+  }>;
 }) {
-  const { status, pay, type, page: pageStr } = await searchParams;
+  const { status, pay, type, page: pageStr, q } = await searchParams;
   const page = Math.max(1, parseInt(pageStr || "1", 10));
+  const search = q?.trim() ?? "";
 
   const where: Record<string, unknown> = {};
   if (status === "NEED_PACKING") {
@@ -119,6 +127,14 @@ export default async function AdminOrdersPage({
   } else if (pay && pay !== "ALL") {
     where.paymentStatus = pay;
   }
+
+  // Nomor pesanan / nama pembeli / nomor HP — daftar field-nya dibagi dengan
+  // /api/admin/orders lewat lib/admin-search supaya halaman dan API tidak
+  // pernah memberi hasil berbeda untuk kata kunci yang sama.
+  // Masuk ke AND, bukan OR, supaya pencarian MEMPERSEMPIT filter status yang
+  // aktif — bukan menembusnya.
+  const searchWhere = orderSearchWhere(search);
+  if (searchWhere) where.AND = searchWhere.AND;
 
   const [orders, total, statusCounts, needPackingCount] = await Promise.all([
     prisma.order.findMany({
@@ -151,12 +167,16 @@ export default async function AdminOrdersPage({
       pay: pay || "ALL",
       type: type || "ALL",
       page: "1",
+      q: search,
       ...overrides,
     };
     if (merged.status && merged.status !== "ALL") sp.set("status", merged.status);
     if (merged.pay && merged.pay !== "ALL") sp.set("pay", merged.pay);
     if (merged.type && merged.type !== "ALL") sp.set("type", merged.type);
     if (merged.page && merged.page !== "1") sp.set("page", merged.page);
+    // Pencarian ikut terbawa saat admin ganti tab — kalau tidak, mengklik
+    // "Sudah Dibayar" diam-diam membuang kata kunci yang baru diketik.
+    if (merged.q) sp.set("q", merged.q);
     const str = sp.toString();
     return `/admin/orders${str ? `?${str}` : ""}`;
   }
@@ -182,7 +202,11 @@ export default async function AdminOrdersPage({
     <AdminPage maxWidth="xl">
       <PageHeader
         title="Manajemen Order"
-        subtitle={`${total} order ditemukan${activeStatus !== "ALL" ? " dengan filter aktif" : ""}.`}
+        subtitle={
+          search
+            ? `${total} order cocok dengan "${search}".`
+            : `${total} order ditemukan${activeStatus !== "ALL" ? " dengan filter aktif" : ""}.`
+        }
         actions={
           <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
@@ -263,13 +287,45 @@ export default async function AdminOrdersPage({
         </div>
       </div>
 
+      {/* Kotak cari — satu input untuk tiga hal sekaligus (nomor pesanan,
+          nama, nomor HP) karena saat customer bertanya, admin tidak selalu
+          punya nomor pesanannya. Filter aktif ikut terbawa lewat hidden
+          input supaya pencarian menyempitkan, bukan menyetel ulang. */}
+      <form className="mt-4 flex gap-2" method="GET" action="/admin/orders">
+        {activeStatus !== "ALL" && (
+          <input type="hidden" name="status" value={activeStatus} />
+        )}
+        {activePay !== "ALL" && <input type="hidden" name="pay" value={activePay} />}
+        {activeType !== "ALL" && (
+          <input type="hidden" name="type" value={activeType} />
+        )}
+        <input
+          type="search"
+          name="q"
+          defaultValue={search}
+          aria-label="Cari nomor pesanan, nama pembeli, atau nomor HP"
+          placeholder="🔍 Cari no. pesanan / nama / no. HP..."
+          className="min-w-0 flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
+        />
+        <Button type="submit">Cari</Button>
+        {search && (
+          <Button href={buildUrl({ q: "" })} variant="secondary">
+            Reset
+          </Button>
+        )}
+      </form>
+
       {/* Empty state */}
       {orders.length === 0 ? (
         <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
           <EmptyState
-            icon="📦"
-            title="Tidak ada order"
-            description="Coba ganti filter di atas untuk lihat order lain."
+            icon={search ? "🔍" : "📦"}
+            title={search ? `Tidak ada order cocok "${search}"` : "Tidak ada order"}
+            description={
+              search
+                ? "Coba kata kunci lain, atau reset pencarian. Filter status di atas juga ikut membatasi hasil."
+                : "Coba ganti filter di atas untuk lihat order lain."
+            }
             size="full"
           />
         </div>

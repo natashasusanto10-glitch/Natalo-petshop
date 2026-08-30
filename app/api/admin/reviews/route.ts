@@ -20,7 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma, ReviewStatus } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { tokenizedSearchWhere } from "@/lib/search-tokens";
+import { reviewSearchWhere } from "@/lib/admin-search";
 
 const PAGE_SIZE = 20;
 const VALID_STATUS: ReadonlyArray<string> = ["visible", "hidden", "deleted", "all"];
@@ -53,11 +53,7 @@ export async function GET(request: NextRequest) {
   }
   // Token-based supaya frasa parsial di isi ulasan tetap ketemu, dan nama
   // produk multi-kata tidak harus diketik urut persis.
-  const searchWhere = tokenizedSearchWhere(q, (token) => [
-    { title: { contains: token, mode: "insensitive" as const } },
-    { content: { contains: token, mode: "insensitive" as const } },
-    { product: { name: { contains: token, mode: "insensitive" as const } } },
-  ]);
+  const searchWhere = reviewSearchWhere(q);
   if (searchWhere) where.AND = searchWhere.AND;
 
   const reviews = await prisma.review.findMany({

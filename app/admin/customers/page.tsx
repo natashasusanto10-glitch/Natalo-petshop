@@ -1,37 +1,62 @@
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/session-guards";
 import { PageHeader, EmptyState, Badge, Button, AdminPage } from "@/components/admin/ui";
+import { customerSearchWhere } from "@/lib/admin-search";
 
 const PAGE_SIZE = 20;
 
 export default async function AdminCustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; q?: string }>;
 }) {
   await requireAdminSession();
 
-  const { page: pageStr } = await searchParams;
+  const { page: pageStr, q } = await searchParams;
   const page = Math.max(1, parseInt(pageStr || "1", 10));
+  const search = q?.trim() ?? "";
+
+  // Nama / email / HP / username. Satu objek `where` dipakai bersama daftar
+  // DAN penghitungnya supaya nomor halaman tidak pernah menjanjikan halaman
+  // yang isinya kosong.
+  const searchWhere = customerSearchWhere(search);
+  const where = {
+    role: "CUSTOMER",
+    ...(searchWhere ? { AND: searchWhere.AND } : {}),
+  };
 
   const [customers, total] = await Promise.all([
     prisma.user.findMany({
-      where: { role: "CUSTOMER" },
+      where,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       include: { _count: { select: { orders: true } } },
     }),
-    prisma.user.count({ where: { role: "CUSTOMER" } }),
+    prisma.user.count({ where }),
   ]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  // Pencarian ikut terbawa saat pindah halaman — kalau tidak, halaman 2
+  // diam-diam kembali menampilkan seluruh customer.
+  const pageHref = (target: number) => {
+    const sp = new URLSearchParams();
+    if (search) sp.set("q", search);
+    if (target > 1) sp.set("page", String(target));
+    const str = sp.toString();
+    return `/admin/customers${str ? `?${str}` : ""}`;
+  };
 
   return (
     <AdminPage maxWidth="lg">
       <PageHeader
         title="Customer"
-        subtitle={`${total} customer terdaftar.`}
+        subtitle={
+          search
+            ? `${total} customer cocok dengan "${search}".`
+            : `${total} customer terdaftar.`
+        }
         actions={
           <Button href="/admin/dashboard" variant="secondary" size="sm">
             ← Dashboard
@@ -39,12 +64,37 @@ export default async function AdminCustomersPage({
         }
       />
 
+      {/* Kotak cari — CS sering hanya pegang nomor HP atau email saat
+          customer menghubungi, jadi keempatnya dicari sekaligus. */}
+      <form className="mt-4 flex gap-2" method="GET" action="/admin/customers">
+        <input
+          type="search"
+          name="q"
+          defaultValue={search}
+          aria-label="Cari nama, email, nomor HP, atau username customer"
+          placeholder="🔍 Cari nama / email / no. HP / username..."
+          className="min-w-0 flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
+        />
+        <Button type="submit">Cari</Button>
+        {search && (
+          <Button href="/admin/customers" variant="secondary">
+            Reset
+          </Button>
+        )}
+      </form>
+
       {customers.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-zinc-200 bg-white">
           <EmptyState
-            icon="👥"
-            title="Belum ada customer"
-            description="Customer akan terdaftar setelah mereka register dari mobile app."
+            icon={search ? "🔍" : "👥"}
+            title={
+              search ? `Tidak ada customer cocok "${search}"` : "Belum ada customer"
+            }
+            description={
+              search
+                ? "Coba kata kunci lain — nama, email, nomor HP, atau username."
+                : "Customer akan terdaftar setelah mereka register dari mobile app."
+            }
             size="full"
           />
         </div>
@@ -179,7 +229,7 @@ export default async function AdminCustomersPage({
           <div className="flex gap-2">
             {page > 1 && (
               <Button
-                href={`/admin/customers?page=${page - 1}`}
+                href={pageHref(page - 1)}
                 variant="secondary"
                 size="sm"
               >
@@ -187,7 +237,7 @@ export default async function AdminCustomersPage({
               </Button>
             )}
             {page < totalPages && (
-              <Button href={`/admin/customers?page=${page + 1}`} size="sm">
+              <Button href={pageHref(page + 1)} size="sm">
                 Berikutnya →
               </Button>
             )}

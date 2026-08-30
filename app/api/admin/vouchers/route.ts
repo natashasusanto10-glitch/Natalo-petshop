@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { Prisma, VoucherKind } from "@prisma/client";
-import { tokenizedSearchWhere } from "@/lib/search-tokens";
+import { voucherSearchWhere } from "@/lib/admin-search";
 
 /**
  * GET /api/admin/vouchers
@@ -47,10 +47,7 @@ export async function GET(request: NextRequest) {
   // filter status. Dulu keduanya berbagi satu array OR, sehingga voucher
   // yang cocok namanya lolos walau statusnya tidak cocok — tab "Kedaluwarsa"
   // ikut menampilkan voucher yang masih aktif, dan sebaliknya.
-  const searchWhere = tokenizedSearchWhere(q, (token) => [
-    { code: { contains: token, mode: "insensitive" as const } },
-    { name: { contains: token, mode: "insensitive" as const } },
-  ]);
+  const searchWhere = voucherSearchWhere(q);
   if (searchWhere) where.AND = searchWhere.AND;
 
   const vouchers = await prisma.voucher.findMany({

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { OrderStatus, Prisma } from "@prisma/client";
-import { tokenizedSearchWhere } from "@/lib/search-tokens";
+import { orderSearchWhere } from "@/lib/admin-search";
 
 /**
  * GET /api/admin/orders
@@ -67,11 +67,7 @@ export async function GET(request: NextRequest) {
   // Token-based: "santoso budi" ketemu "Budi Santoso", dan nomor pesanan
   // ber-tanda-hubung ("INV-20260728-001") tetap cocok walau admin hanya
   // mengetik sebagian potongannya.
-  const searchWhere = tokenizedSearchWhere(q, (token) => [
-    { orderNumber: { contains: token, mode: "insensitive" as const } },
-    { customerName: { contains: token, mode: "insensitive" as const } },
-    { customerPhone: { contains: token } },
-  ]);
+  const searchWhere = orderSearchWhere(q);
   if (searchWhere) where.AND = searchWhere.AND;
 
   const orders = await prisma.order.findMany({
