@@ -69,7 +69,13 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const limit = Math.min(
     Math.max(Number(searchParams.get("limit") ?? 10) || 10, 1),
-    20,
+    // 30 (dulu 20): beranda menampilkan 10 dari pool ini dengan rotasi
+    // harian. Matematika tumpang-tindih 10-dari-N antar dua hari:
+    // N=18 -> ~5.6 kartu sama (terasa "tidak berubah", laporan user),
+    // N=30 -> ~3.3. Pool server sendiri nyaris statis utk user ber-riwayat
+    // (16/18 sama antar seed harian, terukur), jadi lebar pool inilah
+    // satu-satunya tuas kesegaran yang efektif.
+    30,
   );
   const clientViewIds = parseIds(searchParams.get("viewed"));
   const callerExcludeIds = parseIds(searchParams.get("exclude"));
