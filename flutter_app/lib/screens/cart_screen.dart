@@ -1957,41 +1957,49 @@ class _QtyStepperState extends State<_QtyStepper> {
           SizedBox(
             width: 46,
             height: 44,
-            child: TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              enabled: widget.maxQty > 0,
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.done,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onTap: _selectAll,
-              onChanged: _scheduleInlineCommit,
-              onEditingComplete: () {
-                _commitDebounce?.cancel();
-                _commitInlineQuantity(resetEmpty: true);
-                _focusNode.unfocus();
-              },
-              onTapOutside: (_) {
-                _commitDebounce?.cancel();
-                _commitInlineQuantity(resetEmpty: true);
-                _focusNode.unfocus();
-              },
-              onSubmitted: (_) {
-                _commitDebounce?.cancel();
-                _commitInlineQuantity(resetEmpty: true);
-                _focusNode.unfocus();
-              },
-              style: TextStyle(
-                color: cs.onSurface,
-                fontSize: NataloTextSize.bodyLg,
-                fontWeight: NataloWeight.strong,
-                height: 1,
-              ),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 10),
+            // Center + TextField intrinsik (isCollapsed) = penengah
+            // deterministik. textAlignVertical DIABAIKAN saat isCollapsed
+            // (terukur di tes: meleset 15px), dan contentPadding manual
+            // adalah cara lama yang patah saat tinggi pil berubah (#341:
+            // padding utk kotak 36 membuat angka nangkring di atas pil 46
+            // — laporan user dgn pembanding Tokopedia, meleset 5px).
+            child: Center(
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                enabled: widget.maxQty > 0,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onTap: _selectAll,
+                onChanged: _scheduleInlineCommit,
+                onEditingComplete: () {
+                  _commitDebounce?.cancel();
+                  _commitInlineQuantity(resetEmpty: true);
+                  _focusNode.unfocus();
+                },
+                onTapOutside: (_) {
+                  _commitDebounce?.cancel();
+                  _commitInlineQuantity(resetEmpty: true);
+                  _focusNode.unfocus();
+                },
+                onSubmitted: (_) {
+                  _commitDebounce?.cancel();
+                  _commitInlineQuantity(resetEmpty: true);
+                  _focusNode.unfocus();
+                },
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: NataloTextSize.bodyLg,
+                  fontWeight: NataloWeight.strong,
+                  height: 1,
+                ),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isCollapsed: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
             ),
           ),
