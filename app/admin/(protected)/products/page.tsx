@@ -87,7 +87,11 @@ export default async function AdminProductsPage({
     : {};
 
   const baseWhere = { ...searchWhere, ...categoryWhere, ...brandWhere, ...productIsVisibleWhere() };
-  const where = { ...stockWhere, ...baseWhere };
+  // Digabung lewat AND, bukan di-spread. `stockWhere` kini membawa kunci `OR`
+  // (stok produk bervarian dinilai lewat variannya), dan `baseWhere` dirakit
+  // dari beberapa sumber — begitu salah satunya suatu hari ikut memakai `OR`,
+  // spread akan membuang klausa stok TANPA suara dan daftar diam-diam salah.
+  const where = { AND: [stockWhere, baseWhere] };
 
   // Satu titik waktu untuk seluruh render: dipakai filter promo di query
   // DAN resolveActiveDiscount saat render. Kalau keduanya memanggil
