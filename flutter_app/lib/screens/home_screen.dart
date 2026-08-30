@@ -203,7 +203,11 @@ class _HomeScreenState extends State<HomeScreen> {
         // Ambil kandidat lebih banyak dari yang ditampilkan (10) supaya
         // rotasi harian di grid punya pool untuk digilir — lihat
         // `_dailyRotatingPick` di builder _RecommendationGrid.
-        limit: 18,
+        // 30 (dulu 18): pilih-10-dari-18 antar dua hari rata-rata menyisakan
+        // ~5.6 kartu yang sama (hypergeometrik) — user melihat "6 kartu tidak
+        // berubah" padahal rotasi bekerja. Dari 30, tumpang-tindih turun ke
+        // ~3.3. Server memangkas limit di 30 (route personalized).
+        limit: 30,
         // Tanpa seed, POOL 18 ini sendiri identik setiap hari — rotasi
         // klien cuma menggilir isi kolam yang airnya tak pernah diganti.
         seed: ProductService.dailyRecommendationSeed(),
