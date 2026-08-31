@@ -20,7 +20,6 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/animated_counter.dart';
 import '../widgets/app_chat_button.dart';
-import '../widgets/app_ui.dart';
 import '../widgets/cart_checkout_pill.dart';
 import '../widgets/cart_scroll_view.dart';
 import '../widgets/app_toast.dart';
@@ -1917,109 +1916,141 @@ class _QtyStepperState extends State<_QtyStepper> {
     final canIncrement = widget.quantity < widget.maxQty;
     final decrementIsDelete = widget.quantity <= 1;
 
-    return Container(
-      // 36 -> 46. SATU-SATUNYA perubahan visual di PR ini, dan tak bisa
-      // dihindari: pil ini MENGUNCI tinggi anaknya. 46 (bukan 44) karena
-      // border 1px atas-bawah memakan 2px — isinya harus tetap 44.
-      height: 46,
-      decoration: BoxDecoration(
-        color: cs.surface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    // Pil digambar RAMPING (36) tapi area sentuhnya tetap 44. Flutter tidak
+    // punya hitSlop, jadi satu-satunya cara adalah memisahkan lapisan visual
+    // dari lapisan sentuh: bingkai pil dilukis di belakang dengan sisipan 4px
+    // atas-bawah, sementara tombolnya setinggi penuh dan menjulur ke luar
+    // bingkai tanpa terlihat.
+    //
+    // Sejarahnya: pil ini sempat 36 (enak dilihat, tapi area sentuh cuma 34),
+    // lalu dinaikkan ke 46 demi 44px sentuh — dan jadi gemuk (laporan user
+    // dgn tangkapan layar). Susunan ini memberi keduanya sekaligus.
+    return SizedBox(
+      height: 44,
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          _StepperCell(
-            onTap: widget.onDecrement,
-            // Tombol yang sama berubah peran saat jumlah tinggal 1 —
-            // labelnya wajib ikut berubah, kalau tidak pengguna mengira
-            // menekan "kurangi" padahal barangnya dihapus.
-            semanticLabel: decrementIsDelete
-                ? 'Hapus ${widget.title} dari keranjang'
-                : 'Kurangi jumlah ${widget.title}',
-            child: decrementIsDelete
-                ? Icon(
-                    Icons.delete_outline_rounded,
-                    size: 16,
-                    color: cs.onSurfaceVariant,
-                  )
-                : Text(
-                    '−',
+          // IgnorePointer: bingkai murni hiasan. Tanpa ini ia menyerap
+          // sentuhan di pinggir dan tombolnya terasa mati di tepi.
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 4,
+            bottom: 4,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                key: const ValueKey('cart-qty-pill'),
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: cs.outlineVariant),
+                ),
+              ),
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _StepperCell(
+                tapAreaKey: const ValueKey('cart-qty-decrement'),
+                onTap: widget.onDecrement,
+                // Tombol yang sama berubah peran saat jumlah tinggal 1 —
+                // labelnya wajib ikut berubah, kalau tidak pengguna mengira
+                // menekan "kurangi" padahal barangnya dihapus.
+                semanticLabel: decrementIsDelete
+                    ? 'Hapus ${widget.title} dari keranjang'
+                    : 'Kurangi jumlah ${widget.title}',
+                child: decrementIsDelete
+                    ? Icon(
+                        Icons.delete_outline_rounded,
+                        size: 16,
+                        color: cs.onSurfaceVariant,
+                      )
+                    : Text(
+                        '−',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: NataloTextSize.title,
+                          fontWeight: NataloWeight.strong,
+                          height: 1,
+                        ),
+                      ),
+              ),
+              SizedBox(
+                width: 46,
+                height: 44,
+                // Center + TextField intrinsik (isCollapsed) = penengah
+                // deterministik. textAlignVertical DIABAIKAN saat isCollapsed
+                // (terukur di tes: meleset 15px), dan contentPadding manual
+                // adalah cara lama yang patah saat tinggi pil berubah (#341:
+                // padding utk kotak 36 membuat angka nangkring di atas pil 46
+                // — laporan user dgn pembanding Tokopedia, meleset 5px).
+                child: Center(
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    enabled: widget.maxQty > 0,
+                    textAlign: TextAlign.center,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.done,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onTap: _selectAll,
+                    onChanged: _scheduleInlineCommit,
+                    onEditingComplete: () {
+                      _commitDebounce?.cancel();
+                      _commitInlineQuantity(resetEmpty: true);
+                      _focusNode.unfocus();
+                    },
+                    onTapOutside: (_) {
+                      _commitDebounce?.cancel();
+                      _commitInlineQuantity(resetEmpty: true);
+                      _focusNode.unfocus();
+                    },
+                    onSubmitted: (_) {
+                      _commitDebounce?.cancel();
+                      _commitInlineQuantity(resetEmpty: true);
+                      _focusNode.unfocus();
+                    },
                     style: TextStyle(
-                      color: cs.onSurfaceVariant,
-                      fontSize: NataloTextSize.title,
+                      color: cs.onSurface,
+                      fontSize: NataloTextSize.bodyLg,
                       fontWeight: NataloWeight.strong,
                       height: 1,
                     ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      // WAJIB eksplisit. Tema global memberi SEMUA kolom input
+                      // isian #F8FAFC sementara pil ini putih — mewarisi tema
+                      // berarti mencetak kotak abu di belakang angka (laporan
+                      // user dgn tangkapan layar).
+                      filled: false,
+                      isCollapsed: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
-          ),
-          SizedBox(
-            width: 46,
-            height: 44,
-            // Center + TextField intrinsik (isCollapsed) = penengah
-            // deterministik. textAlignVertical DIABAIKAN saat isCollapsed
-            // (terukur di tes: meleset 15px), dan contentPadding manual
-            // adalah cara lama yang patah saat tinggi pil berubah (#341:
-            // padding utk kotak 36 membuat angka nangkring di atas pil 46
-            // — laporan user dgn pembanding Tokopedia, meleset 5px).
-            child: Center(
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                enabled: widget.maxQty > 0,
-                textAlign: TextAlign.center,
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.done,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                onTap: _selectAll,
-                onChanged: _scheduleInlineCommit,
-                onEditingComplete: () {
-                  _commitDebounce?.cancel();
-                  _commitInlineQuantity(resetEmpty: true);
-                  _focusNode.unfocus();
-                },
-                onTapOutside: (_) {
-                  _commitDebounce?.cancel();
-                  _commitInlineQuantity(resetEmpty: true);
-                  _focusNode.unfocus();
-                },
-                onSubmitted: (_) {
-                  _commitDebounce?.cancel();
-                  _commitInlineQuantity(resetEmpty: true);
-                  _focusNode.unfocus();
-                },
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: NataloTextSize.bodyLg,
-                  fontWeight: NataloWeight.strong,
-                  height: 1,
-                ),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  isCollapsed: true,
-                  contentPadding: EdgeInsets.zero,
                 ),
               ),
-            ),
-          ),
-          _StepperCell(
-            enabled: canIncrement,
-            onTap: canIncrement ? widget.onIncrement : null,
-            // Batas stok disampaikan lewat warna abu saja — pembaca layar
-            // butuh alasannya diucapkan, bukan cuma tombol mati.
-            semanticLabel: canIncrement
-                ? 'Tambah jumlah ${widget.title}'
-                : 'Jumlah maksimum ${widget.title} tercapai',
-            child: Text(
-              '+',
-              style: TextStyle(
-                color: canIncrement ? cs.onSurfaceVariant : cs.outlineVariant,
-                fontSize: NataloTextSize.title,
-                fontWeight: NataloWeight.strong,
-                height: 1,
+              _StepperCell(
+                tapAreaKey: const ValueKey('cart-qty-increment'),
+                enabled: canIncrement,
+                onTap: canIncrement ? widget.onIncrement : null,
+                // Batas stok disampaikan lewat warna abu saja — pembaca layar
+                // butuh alasannya diucapkan, bukan cuma tombol mati.
+                semanticLabel: canIncrement
+                    ? 'Tambah jumlah ${widget.title}'
+                    : 'Jumlah maksimum ${widget.title} tercapai',
+                child: Text(
+                  '+',
+                  style: TextStyle(
+                    color:
+                        canIncrement ? cs.onSurfaceVariant : cs.outlineVariant,
+                    fontSize: NataloTextSize.title,
+                    fontWeight: NataloWeight.strong,
+                    height: 1,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),
@@ -2036,10 +2067,17 @@ class _StepperCell extends StatelessWidget {
   /// tong sampah — semuanya tak berarti apa-apa kalau dibacakan apa adanya.
   final String semanticLabel;
 
+  /// Kunci pada lapisan SENTUH (44px), bukan lapisan riak (36px). Ada supaya
+  /// tes bisa mengukur area sentuh yang sesungguhnya — tanpa ini, pencarian
+  /// dari teks '+' mendarat di GestureDetector internal milik InkWell yang
+  /// tingginya 36, dan tes akan 'lulus' pada implementasi yang salah.
+  final Key tapAreaKey;
+
   const _StepperCell({
     required this.child,
     required this.onTap,
     required this.semanticLabel,
+    required this.tapAreaKey,
     this.enabled = true,
   });
 
@@ -2050,16 +2088,35 @@ class _StepperCell extends StatelessWidget {
       enabled: enabled && onTap != null,
       label: semanticLabel,
       excludeSemantics: true,
-      child: InkWell(
+      // DUA LAPIS, dan pembagiannya penting:
+      //
+      // GestureDetector luar = area SENTUH 44px, menjulur 4px di atas & bawah
+      // bingkai pil yang cuma 36px. `opaque` supaya band kosong itu benar-
+      // benar menangkap jari, bukan meneruskannya ke belakang.
+      //
+      // InkWell dalam = riak visual, dikurung 36px agar PAS dengan pil.
+      // Kalau riaknya ikut 44px ia menyembul di luar bingkai saat ditekan —
+      // terlihat seperti noda yang bocor dari pil.
+      //
+      // Keduanya memanggil callback yang sama; yang di dalam menang di
+      // wilayahnya sendiri, jadi tidak ada tap ganda.
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(999),
-        // Tinggi mengikuti pil (44). Lebar tetap 36 supaya lebar
-        // keseluruhan pil tidak berubah.
-        child: AppMinTapTarget(
-          child: SizedBox(
-            height: 44,
-            width: 36,
-            child: Center(child: child),
+        child: SizedBox(
+          key: tapAreaKey,
+          height: 44,
+          width: 36,
+          child: Center(
+            child: InkWell(
+              onTap: enabled ? onTap : null,
+              borderRadius: BorderRadius.circular(999),
+              child: SizedBox(
+                height: 36,
+                width: 36,
+                child: Center(child: child),
+              ),
+            ),
           ),
         ),
       ),

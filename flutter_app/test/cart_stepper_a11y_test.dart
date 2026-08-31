@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:natalo_petshop_flutter/models/product.dart';
 import 'package:natalo_petshop_flutter/screens/cart_screen.dart';
 import 'package:natalo_petshop_flutter/state/cart_store.dart';
-import 'package:natalo_petshop_flutter/widgets/app_ui.dart';
 
 Product _product({String title = 'Whiskas Tuna 1KG', int stock = 10}) {
   return Product.fromApiJson({
@@ -36,8 +35,7 @@ void main() {
     await cartStore.clear();
   });
 
-  testWidgets('tombol jumlah menyebut aksi DAN nama produknya',
-      (tester) async {
+  testWidgets('tombol jumlah menyebut aksi DAN nama produknya', (tester) async {
     await cartStore.addProduct(_product(), quantity: 2);
     final handle = tester.ensureSemantics();
     await _pumpCart(tester);
@@ -91,22 +89,33 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('area tap stepper >= 44 tanpa membesarkan kotak visual 36',
+  testWidgets('area tap kedua tombol >= 44 walau bingkai pil cuma 36',
       (tester) async {
     await cartStore.addProduct(_product(), quantity: 2);
     await _pumpCart(tester);
 
-    final boxes = tester
-        .widgetList<AppMinTapTarget>(find.byType(AppMinTapTarget))
-        .toList();
-    expect(boxes, isNotEmpty, reason: 'stepper harus pakai AppMinTapTarget');
-
-    // Diuji lewat ukuran yang DIRENDER, bukan "sudah dibungkus helper" —
-    // AppMinTapTarget gagal diam-diam kalau induknya mengunci tinggi.
-    for (final el in find.byType(AppMinTapTarget).evaluate()) {
-      expect(el.size!.height, greaterThanOrEqualTo(44),
-          reason: 'induk mengunci tinggi? cek Container/SizedBox di atasnya');
-      expect(el.size!.width, greaterThanOrEqualTo(36));
+    // Versi lama tes ini menuntut widget AppMinTapTarget dipakai. Itu menguji
+    // CARA, bukan HASIL — dan jadi salah begitu cara mencapai 44px berubah:
+    // stepper kini melapis GestureDetector 44px di atas bingkai 36px, yang
+    // memberi hasil sama persis tanpa helper itu.
+    //
+    // Yang diuji sekarang adalah yang benar-benar penting bagi pengguna:
+    // ukuran yang DIRENDER. AppMinTapTarget pernah gagal diam-diam saat
+    // induknya mengunci tinggi (terukur 34px padahal diminta 44), jadi
+    // "sudah dibungkus helper" tak pernah jadi bukti apa pun.
+    for (final key in const [
+      ValueKey('cart-qty-decrement'),
+      ValueKey('cart-qty-increment'),
+    ]) {
+      final size = tester.getSize(find.byKey(key));
+      expect(size.height, greaterThanOrEqualTo(44),
+          reason: 'area sentuh $key turun di bawah 44px');
+      expect(size.width, greaterThanOrEqualTo(36));
     }
+
+    // Dan bingkainya WAJIB tetap ramping — kalau ia ikut membesar sampai 44,
+    // kita kembali ke pil gemuk yang dikeluhkan user.
+    final pil = tester.getSize(find.byKey(const ValueKey('cart-qty-pill')));
+    expect(pil.height, closeTo(36, 0.5));
   });
 }
