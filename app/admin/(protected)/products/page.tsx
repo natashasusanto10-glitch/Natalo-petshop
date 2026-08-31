@@ -10,7 +10,7 @@ import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { InlineEditCell } from "@/components/admin/InlineEditCell";
 import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
-import { PageHeader, EmptyState, AdminPage, Button } from "@/components/admin/ui";
+import { PageHeader, EmptyState, AdminPage, Button, Pagination } from "@/components/admin/ui";
 import {
   ProductSelectionProvider,
   ProductSelectAll,
@@ -18,7 +18,11 @@ import {
   ProductBulkBar,
 } from "@/components/admin/ProductBulkSelect";
 
-const PAGE_SIZE = 50;
+// 25, bukan 50: baris produk membawa gambar, jadi 50 baris membuat halaman ini
+// jauh lebih panjang daripada daftar admin lain yang semuanya 20-25. Sekarang
+// ada nomor halaman, jadi halaman yang lebih pendek tidak berarti lebih banyak
+// menggulir untuk mencari sesuatu.
+const PAGE_SIZE = 25;
 
 // Produk yang diedit/dibuat admin dalam jendela ini dapat badge "Baru diedit".
 const RECENTLY_EDITED_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -714,32 +718,12 @@ export default async function AdminProductsPage({
       <ProductBulkBar />
       </ProductSelectionProvider>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-zinc-500">
-            Halaman {currentPage} dari {totalPages} · {filtered} produk
-          </p>
-          <div className="flex gap-2">
-            {currentPage > 1 && (
-              <Link
-                href={buildHref({ page: currentPage - 1 })}
-                className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-semibold hover:bg-zinc-50"
-              >
-                ← Sebelumnya
-              </Link>
-            )}
-            {currentPage < totalPages && (
-              <Link
-                href={buildHref({ page: currentPage + 1 })}
-                className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-semibold hover:bg-zinc-50"
-              >
-                Selanjutnya →
-              </Link>
-            )}
-          </div>
-        </div>
-      )}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        hrefFor={(page) => buildHref({ page })}
+        summary={`${filtered} produk`}
+      />
     </AdminPage>
   );
 }

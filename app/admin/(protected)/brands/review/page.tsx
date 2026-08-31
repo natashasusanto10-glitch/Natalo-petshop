@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { AdminPage, Button } from "@/components/admin/ui";
+import { AdminPage, Button, Pagination } from "@/components/admin/ui";
 
 const PAGE_SIZE = 30;
 
@@ -234,32 +234,14 @@ export default async function BrandReviewPage({
         )}
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-zinc-500">
-            Halaman {page} dari {totalPages} · {total} produk
-          </p>
-          <div className="flex gap-2">
-            {page > 1 && (
-              <Button
-                href={`/admin/brands/review?page=${page - 1}${brandFilter ? `&brand=${brandFilter}` : ""}`}
-                variant="secondary"
-              >
-                ← Sebelumnya
-              </Button>
-            )}
-            {page < totalPages && (
-              <Button
-                href={`/admin/brands/review?page=${page + 1}${brandFilter ? `&brand=${brandFilter}` : ""}`}
-                variant="secondary"
-              >
-                Selanjutnya →
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        hrefFor={(target) =>
+          `/admin/brands/review?page=${target}${brandFilter ? `&brand=${brandFilter}` : ""}`
+        }
+        summary={`${total} produk`}
+      />
     </AdminPage>
   );
 }

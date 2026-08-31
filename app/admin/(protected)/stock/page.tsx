@@ -25,6 +25,7 @@ import {
   Badge,
   AdminPage,
   Button,
+  Pagination,
 } from "@/components/admin/ui";
 import { parsePageParam } from "@/lib/admin/pagination";
 import {
@@ -281,25 +282,13 @@ export default async function AdminStockPage({
         />
       )}
 
-      {totalPages > 1 && !pageBeyondEnd && (
-        <div className="mt-6 flex items-center justify-between gap-3">
-          <p className="text-sm text-zinc-500">
-            Halaman <span className="font-black text-zinc-950">{page}</span> dari{" "}
-            <span className="font-black text-zinc-950">{totalPages}</span>
-          </p>
-          <div className="flex gap-2">
-            {page > 1 && (
-              <Button href={buildUrl({ page: page - 1 })} variant="secondary" size="sm">
-                ← Sebelumnya
-              </Button>
-            )}
-            {page < totalPages && (
-              <Button href={buildUrl({ page: page + 1 })} size="sm">
-                Berikutnya →
-              </Button>
-            )}
-          </div>
-        </div>
+      {!pageBeyondEnd && (
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          hrefFor={(target) => buildUrl({ page: target })}
+          summary={`${listedTotal} baris`}
+        />
       )}
     </AdminPage>
   );

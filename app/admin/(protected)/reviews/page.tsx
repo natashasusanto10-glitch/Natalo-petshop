@@ -12,6 +12,7 @@ import {
   Badge,
   Button,
   AdminPage,
+  Pagination,
   type BadgeVariant,
 } from "@/components/admin/ui";
 import { reviewStatusLabel } from "@/lib/order-labels";
@@ -285,32 +286,14 @@ export default async function AdminReviewsPage({
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="mt-6 flex items-center justify-between">
-          <p className="text-sm text-zinc-500">
-            Halaman {page} dari {totalPages} · {total} review
-          </p>
-          <div className="flex gap-2">
-            {page > 1 && (
-              <Button
-                href={`/admin/reviews?${filterStatus ? `status=${filterStatus}&` : ""}page=${page - 1}`}
-                variant="secondary"
-                size="sm"
-              >
-                ← Sebelumnya
-              </Button>
-            )}
-            {page < totalPages && (
-              <Button
-                href={`/admin/reviews?${filterStatus ? `status=${filterStatus}&` : ""}page=${page + 1}`}
-                size="sm"
-              >
-                Selanjutnya →
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        hrefFor={(target) =>
+          `/admin/reviews?${filterStatus ? `status=${filterStatus}&` : ""}page=${target}`
+        }
+        summary={`${total} review`}
+      />
     </AdminPage>
   );
 }

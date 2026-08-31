@@ -12,6 +12,7 @@ export type { StatCardVariant } from "./StatCard";
 export { SectionCard } from "./SectionCard";
 export { EmptyState } from "./EmptyState";
 export { ResultCount } from "./ResultCount";
+export { Pagination } from "./Pagination";
 export { PageHeader } from "./PageHeader";
 export { AdminPage } from "./AdminPage";
 export { FormField } from "./FormField";

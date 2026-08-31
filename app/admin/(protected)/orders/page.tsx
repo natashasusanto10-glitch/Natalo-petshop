@@ -8,6 +8,7 @@ import {
   Badge,
   Button,
   AdminPage,
+  Pagination,
   STATUS_BADGE_VARIANT,
   PAY_BADGE_VARIANT,
   type BadgeVariant,
@@ -539,34 +540,12 @@ export default async function AdminOrdersPage({
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="mt-5 flex items-center justify-between gap-3 md:mt-6">
-          <p className="text-sm text-zinc-500">
-            Halaman <span className="font-black text-zinc-950">{page}</span> dari{" "}
-            <span className="font-black text-zinc-950">{totalPages}</span>
-          </p>
-          <div className="flex gap-2">
-            {page > 1 && (
-              <Button
-                href={buildUrl({ page: String(page - 1) })}
-                variant="secondary"
-                size="sm"
-              >
-                ← Sebelumnya
-              </Button>
-            )}
-            {page < totalPages && (
-              <Button
-                href={buildUrl({ page: String(page + 1) })}
-                variant="primary"
-                size="sm"
-              >
-                Berikutnya →
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        hrefFor={(target) => buildUrl({ page: String(target) })}
+        summary={`${total} order`}
+      />
     </AdminPage>
   );
 }
