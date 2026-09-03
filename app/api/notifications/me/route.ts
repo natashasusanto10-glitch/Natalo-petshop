@@ -23,6 +23,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { announcementAudienceWhere } from "@/lib/notification-audience";
 import { signBunnyUrl } from "@/lib/feed/bunny";
 import {
   resolveNotificationActor,
@@ -136,7 +137,7 @@ export async function GET() {
     // (punya order PAID) dan "active30d" (order dalam 30 hari terakhir).
     // 1 query gabungan supaya cepat — pakai Promise.all.
     const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const [hasPaidOrder, hasRecentOrder] = await Promise.all([
+    const [hasPaidOrder, hasRecentOrder, viewer] = await Promise.all([
       prisma.order.findFirst({
         where: { userId, paymentStatus: "PAID" },
         select: { id: true },
@@ -144,6 +145,10 @@ export async function GET() {
       prisma.order.findFirst({
         where: { userId, createdAt: { gte: since30d } },
         select: { id: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { createdAt: true },
       }),
     ]);
 
@@ -163,12 +168,14 @@ export async function GET() {
         status: "PUBLISHED",
         AND: [
           ...activeDateFilters,
-          {
-            OR: [
-              { targetUserId: null, segment: { in: allowedSegments } },
-              { targetUserId: userId },
-            ],
-          },
+          // Broadcast dibatasi sejak akun lahir; personal tanpa batas.
+          // Aturannya + alasannya hidup di lib/notification-audience.ts
+          // (bertes) — jangan tulis ulang klausanya di sini.
+          announcementAudienceWhere({
+            userId,
+            allowedSegments,
+            viewerCreatedAt: viewer?.createdAt ?? null,
+          }),
         ],
       },
       orderBy: { createdAt: "desc" },
