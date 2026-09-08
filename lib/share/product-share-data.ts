@@ -137,6 +137,12 @@ export function buildProductShareMetadata(product: PublicShareProduct, siteUrl: 
     description,
     alternates: { canonical },
     robots: { index: true, follow: true },
+    // Smart App Banner Safari DIMATIKAN di sini: halaman produk kini punya
+    // OpenInAppTopStrip sendiri. Tanpa ini iPhone dapat dua ajakan sekaligus
+    // (banner Safari di atas + strip kita). Root layout mendeklarasikan
+    // banner lewat field `itunes`, jadi null di sini bisa menghapusnya —
+    // `other: {}` per-halaman TIDAK bisa (dibuktikan runtime di feed).
+    itunes: null,
     openGraph: {
       type: "website",
       title,

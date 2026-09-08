@@ -6,6 +6,7 @@ import { ProductImageCarousel } from "@/components/ProductImageCarousel";
 import { ProductPurchaseButtons } from "@/components/ProductPurchaseButtons";
 import { VariantSelector } from "@/components/VariantSelector";
 import { StickyAddToCartBar } from "@/components/products/StickyAddToCartBar";
+import OpenInAppTopStrip from "@/components/products/OpenInAppTopStrip";
 import { PriceBlock } from "@/components/products/PriceBlock";
 import { SocialProofRow } from "@/components/products/SocialProofRow";
 import { TrustInfoCard } from "@/components/products/TrustInfoCard";
@@ -193,6 +194,11 @@ export default async function ProductDetailPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+
+      {/* Ajakan buka app — hal pertama yang terlihat di layar kecil, di
+          atas konten, tanpa menyentuh bar belanja bawah. Lihat komentar di
+          komponennya untuk alasan tidak memakai bar bawah seperti feed. */}
+      <OpenInAppTopStrip path={`/products/${encodeURIComponent(product.slug)}`} />
 
       <div className="hidden border-b border-gray-100 bg-white md:block">
         <div className="mx-auto max-w-6xl px-4 py-3">
