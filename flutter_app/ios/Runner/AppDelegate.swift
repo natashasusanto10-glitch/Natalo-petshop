@@ -32,7 +32,15 @@ import app_links
     }
     application.registerForRemoteNotifications()
 
-    // COLD START universal link — WAJIB ditangkap manual di sini.
+    // CATATAN (#355 → direvisi): blok ini menangani jalur UIApplicationDelegate
+    // klasik. App ini ternyata berbasis UIScene (lihat Info.plist +
+    // SceneDelegate.swift), dan di mode scene kedua callback di bawah TIDAK
+    // dipanggil saat cold start — penanganan yang sesungguhnya ada di
+    // SceneDelegate.scene(_:willConnectTo:options:). Blok ini DIBIARKAN
+    // sebagai cadangan kalau manifest scene suatu hari dilepas; harmless
+    // saat tidak terpanggil.
+    //
+    // COLD START universal link — jalur UIApplicationDelegate (cadangan).
     //
     // app_links di iOS hanya menangkap tautan lewat callback
     // `application(_:continue:)`, yang diteruskan FlutterAppDelegate HANYA ke
