@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../utils/shop_navigation.dart';
 import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
 
@@ -178,12 +179,11 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
       AppAnalytics.logEvent('login', {'method': 'whatsapp_otp'});
       AppCrashlytics.setUserId(profile.email);
 
-      final redirectRoute = _redirectRoute;
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        redirectRoute ?? '/member',
-        (route) => false,
-        arguments: _redirectArguments,
+      // Lihat catatan di login_screen.dart / utils/shop_navigation.dart —
+      // tujuan tidak boleh sendirian di tumpukan.
+      navigateAfterLogin(
+        Navigator.of(context),
+        parseLoginRedirect(ModalRoute.of(context)?.settings.arguments),
       );
     } catch (error) {
       if (!mounted) return;
@@ -197,24 +197,6 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  String? get _redirectRoute {
-    final args = ModalRoute.of(context)?.settings.arguments;
-    if (args is Map && args['redirect'] is String) {
-      final route = (args['redirect'] as String).trim();
-      return route.isEmpty ? null : route;
-    }
-    if (args is String && args.trim().startsWith('/')) {
-      return args.trim();
-    }
-    return null;
-  }
-
-  Object? get _redirectArguments {
-    final args = ModalRoute.of(context)?.settings.arguments;
-    if (args is Map) return args['arguments'];
-    return null;
   }
 
   String _humanizeError(Object error) {
