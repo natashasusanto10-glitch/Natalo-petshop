@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../utils/shop_navigation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/cart_item.dart';
@@ -1068,7 +1069,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             // tampilkan dialog detail. Else dialog konfirmasi sederhana.
             final shouldPop = await _confirmBackToCart(context);
             if (shouldPop && context.mounted) {
-              Navigator.pop(context);
+              // BUKAN Navigator.pop polos: kalau Checkout sendirian di
+              // tumpukan (jalur login lama), pop = Navigator kosong = layar
+              // putih. Helper ini membangun ulang Keranjang bila perlu.
+              leaveCheckoutToCart(Navigator.of(context));
             }
           },
           child: Scaffold(
@@ -1092,7 +1096,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   AppHaptics.tap();
                   final shouldPop = await _confirmBackToCart(context);
                   if (shouldPop && context.mounted) {
-                    Navigator.pop(context);
+                    leaveCheckoutToCart(Navigator.of(context));
                   }
                 },
               ),

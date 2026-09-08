@@ -6,6 +6,7 @@ import '../services/api_client.dart';
 import '../services/app_analytics.dart';
 import '../services/app_crashlytics.dart';
 import '../services/auth_service.dart';
+import '../utils/shop_navigation.dart';
 import '../services/biometric_service.dart';
 import '../services/push_notification_service.dart';
 import '../state/cart_store.dart';
@@ -124,12 +125,14 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
-      final redirectRoute = _redirectRoute;
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        redirectRoute ?? '/member',
-        (route) => false,
-        arguments: _redirectArguments,
+      // Tumpukan setelah login SELALU berpijak di Beranda (+ perantara
+      // seperti /cart untuk /checkout). Dulu `pushNamedAndRemoveUntil(
+      // tujuan, (r) => false)` meninggalkan tujuan SENDIRIAN — "Kembali ke
+      // Keranjang" dari Checkout lalu mem-pop ke Navigator kosong = layar
+      // putih. Lihat utils/shop_navigation.dart.
+      navigateAfterLogin(
+        Navigator.of(context),
+        parseLoginRedirect(ModalRoute.of(context)?.settings.arguments),
       );
     } catch (error) {
       if (!mounted) return;
@@ -149,24 +152,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  String? get _redirectRoute {
-    final args = ModalRoute.of(context)?.settings.arguments;
-    if (args is Map && args['redirect'] is String) {
-      final route = (args['redirect'] as String).trim();
-      return route.isEmpty ? null : route;
-    }
-    if (args is String && args.trim().startsWith('/')) {
-      return args.trim();
-    }
-    return null;
-  }
-
-  Object? get _redirectArguments {
-    final args = ModalRoute.of(context)?.settings.arguments;
-    if (args is Map) return args['arguments'];
-    return null;
   }
 
   /// Translate technical error message dari API ke teks yang user-friendly.
