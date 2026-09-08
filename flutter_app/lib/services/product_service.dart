@@ -280,6 +280,11 @@ class ProductService {
     bool inStock = true,
     bool hasPrice = true,
     bool withImage = true,
+    /// Rotasi harian server. GATE SERVER: seed DIABAIKAN diam-diam kalau
+    /// request juga membawa `exclude`, `hasPrice`, atau `withImage` —
+    /// pemanggil yang ingin rotasi wajib mematikan ketiganya (terbukti di
+    /// produksi: seed + hasPrice=true balas urutan createdAt desc biasa).
+    String? seed,
   }) async {
     try {
       final data = await apiClient.getJson(
@@ -291,6 +296,7 @@ class ProductService {
           if (inStock) 'inStock': 'true',
           if (hasPrice) 'hasPrice': 'true',
           if (withImage) 'withImage': 'true',
+          if (seed != null && seed.isNotEmpty) 'seed': seed,
         },
       );
       final map = _asMap(data);

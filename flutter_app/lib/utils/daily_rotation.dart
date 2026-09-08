@@ -53,3 +53,18 @@ List<T> dailyRotatingPick<T>(
       (rankIndex[idOf(a)] ?? 1 << 30).compareTo(rankIndex[idOf(b)] ?? 1 << 30));
   return chosen;
 }
+
+/// Seed listing katalog untuk `/api/products?seed=` — tanggal WIB
+/// `YYYY-MM-DD`. Format ini yang dipahami server (lib/products.ts) dan yang
+/// dipakai halaman Produk; Beranda WAJIB memakai format yang sama supaya
+/// halaman berikutnya (cursor) tetap sejalan dengan halaman pertama.
+///
+/// Zona toko (UTC+7), bukan zona HP: pergantian urutan terasa "tengah
+/// malam" untuk pelanggan Indonesia, dan dua pelanggan di zona berbeda
+/// melihat katalog hari yang sama.
+String catalogListingSeed({DateTime? now}) {
+  final wib = (now ?? DateTime.now()).toUtc().add(const Duration(hours: 7));
+  final bulan = wib.month.toString().padLeft(2, '0');
+  final tanggal = wib.day.toString().padLeft(2, '0');
+  return '${wib.year}-$bulan-$tanggal';
+}
