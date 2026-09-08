@@ -92,24 +92,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _exploreHasMore = true;
   bool _exploreLoading = false;
   bool _exploreInitialLoaded = false;
-  int _exploreGeneration = 0;
-
-  // ── Global counter — survive across HomeScreen instances ──
-  //
-  // Counter di-static supaya hidup across navigation. Setiap kali user
-  // "balik ke Beranda" (initState run lagi via tab switch atau product
-  // detail close), counter +1. Saat counter >= threshold, reshuffle
-  // explore products dengan generation baru.
-  //
-  // Threshold alternate 2-3 — user spec "berubah setiap 2-3x user balik
-  // ke halaman Beranda". Bukan strict 2 atau 3, tapi variasi supaya
-  // user tidak bisa predict timing.
-  //
-  // Counter reset ke 0 saat app fully restart. Acceptable behavior:
-  // fresh session = fresh first ordering.
-  static int _globalHomeVisitCount = 0;
-  static int _globalExploreGeneration = 0;
-  static int _globalNextRegenerateThreshold = 2;
 
   /// Brand untuk slider "Brand Favorit" di Home — HANYA brand yang punya
   /// logo gambar (admin upload). Brand tanpa logo (fallback huruf inisial)
@@ -133,18 +115,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Increment global visit counter — every initState (fresh HomeScreen
-    // instance) counts as "user balik ke Beranda". Tab switch via
-    // pushNamedAndRemoveUntil creates fresh instance → triggers ini.
-    _globalHomeVisitCount += 1;
-    if (_globalHomeVisitCount >= _globalNextRegenerateThreshold) {
-      _globalHomeVisitCount = 0;
-      _globalExploreGeneration += 1;
-      // Alternate threshold 2 ↔ 3 supaya rotation tidak strict pattern.
-      _globalNextRegenerateThreshold =
-          _globalNextRegenerateThreshold == 2 ? 3 : 2;
-    }
-    _exploreGeneration = _globalExploreGeneration;
 
     // Cold-start resume check (Fase 2C-4) — bila ada upload feed yang
     // sempat jalan lalu app di-kill, tawarkan "Lanjutkan" di FeedUploadBar.
@@ -225,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _refreshAll() async {
     AppHaptics.impact();
     // Reset explore state supaya benar-benar refetch dari halaman 1.
-    _resetExploreProducts(regenerate: true);
+    _resetExploreProducts();
     // Reset debounce supaya pull-to-refresh selalu trigger ulang.
     _lastPersonalizedFetch = null;
     // Store refresh force:true — user eksplisit minta, bypass throttle;
@@ -264,38 +234,31 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!initial && !_exploreHasMore) return;
     setState(() => _exploreLoading = true);
     try {
-      final accumulated = <Product>[];
-
-      // Initial batch ditambah layer personalized (purchase × view signal).
-      // Exclude IDs yang sudah ada di "Rekomendasi Untuk Kamu" supaya tidak
-      // duplikat — section di atas Jelajahi. Personalized endpoint cap 20
-      // produk, jadi top 10 di Rekomendasi + next 10 di Jelajahi initial.
-      if (initial) {
-        final excludeForPersonalized =
-            _personalizedRecs.map((p) => p.id).toList();
-        final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
-        final personalized =
-            await productService.fetchPersonalizedRecommendations(
-          viewedIds: viewedIds,
-          excludeIds: excludeForPersonalized,
-          limit: 8,
-          seed: ProductService.dailyRecommendationSeed(),
-        );
-        accumulated.addAll(personalized);
-      }
-
-      // Cursor catalog browse — append untuk variation + scrollable depth.
-      // Filter `withImage=true` dihapus supaya produk dummy tanpa foto
-      // tetap muncul (placeholder fallback di _HomeProductCard).
+      // "Jelajahi" = pintu ke SISA katalog, bukan "lebih banyak dari yang
+      // barusan". Dulu section ini (1) menambah lapisan rekomendasi personal
+      // dan (2) mengurutkan ulang tiap batch berdasarkan brand/kategori yang
+      // baru dilihat — sinyal yang SAMA dengan "Rekomendasi Untuk Kamu" tepat
+      // di atasnya. Hasilnya dua section mengulang hal yang sama, dan lihat
+      // satu produk Happy Cat = dinding Happy Cat sepanjang scroll (laporan
+      // user). Sekarang urutannya rotasi harian server, sama dengan halaman
+      // Produk: berganti tiap hari, stabil dalam satu hari, lintas halaman.
+      //
+      // PENTING — dua parameter DIMATIKAN karena mematikan seed di server:
+      // `hasPrice` dan `withImage` (gate lib/product/seeded-listing.ts).
+      // Terbukti di produksi: seed + hasPrice=true balas createdAt desc —
+      // yang kebetulan adalah deretan Happy Cat yang terakhir diimpor.
+      // Pengecualian ID Rekomendasi juga TIDAK boleh lewat `exclude` server
+      // (gate yang sama) — dilakukan di klien di bawah.
       final page = await productService.fetchProductsPage(
         cursor: _exploreNextCursor,
         limit: 14,
+        hasPrice: false,
         withImage: false,
+        seed: catalogListingSeed(),
       );
-      accumulated.addAll(page.products);
 
       if (!mounted) return;
-      final nextProducts = _generateExploreProducts(accumulated);
+      final nextProducts = page.products;
       setState(() {
         final existingIds = _exploreProducts.map((item) => item.id).toSet();
         // Juga exclude IDs dari Rekomendasi Untuk Kamu section.
@@ -321,12 +284,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _resetExploreProducts({required bool regenerate}) {
+  void _resetExploreProducts() {
     setState(() {
-      if (regenerate) {
-        _globalExploreGeneration += 1;
-        _exploreGeneration = _globalExploreGeneration;
-      }
       _exploreProducts.clear();
       _exploreNextCursor = null;
       _exploreHasMore = true;
@@ -357,12 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// sebagai tab switch back to Beranda. Pakai global counter.
   void _maybeRegenerateExploreAfterReturn() {
     if (!mounted || _exploreLoading) return;
-    _globalHomeVisitCount += 1;
-    if (_globalHomeVisitCount < _globalNextRegenerateThreshold) return;
-    _globalHomeVisitCount = 0;
-    _globalNextRegenerateThreshold =
-        _globalNextRegenerateThreshold == 2 ? 3 : 2;
-    _resetExploreProducts(regenerate: true);
+    _resetExploreProducts();
     _loadMoreExplore(initial: true);
   }
 
@@ -485,61 +439,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ...popularProducts,
       ...products,
     ]).take(10).toList();
-  }
-
-  List<Product> _generateExploreProducts(List<Product> products) {
-    if (products.length <= 1) return products;
-    final viewed = recentlyViewedStore.items;
-    final brandScores = <String, int>{};
-    final categoryScores = <String, int>{};
-
-    for (var index = 0; index < viewed.length; index += 1) {
-      final weight = viewed.length - index;
-      final brand = viewed[index].brand.trim().toLowerCase();
-      final category = viewed[index].category.trim().toLowerCase();
-      if (brand.isNotEmpty) {
-        brandScores[brand] = (brandScores[brand] ?? 0) + weight;
-      }
-      if (category.isNotEmpty) {
-        categoryScores[category] = (categoryScores[category] ?? 0) + weight;
-      }
-    }
-
-    final generated = [...products]..sort((a, b) {
-        final scoreCompare = _exploreScore(
-          b,
-          brandScores,
-          categoryScores,
-        ).compareTo(_exploreScore(a, brandScores, categoryScores));
-        if (scoreCompare != 0) return scoreCompare;
-        return _stableExploreHash(a.id).compareTo(_stableExploreHash(b.id));
-      });
-    return generated;
-  }
-
-  int _exploreScore(
-    Product product,
-    Map<String, int> brandScores,
-    Map<String, int> categoryScores,
-  ) {
-    final brand = product.brand.trim().toLowerCase();
-    final category = product.category.trim().toLowerCase();
-    var score = 0;
-    score += (brandScores[brand] ?? 0) * 3;
-    score += (categoryScores[category] ?? 0) * 5;
-    if (product.hasDiscount) score += 2;
-    score += product.reviewCount.clamp(0, 200) ~/ 40;
-    score += _stableExploreHash(product.id) % 7;
-    return score;
-  }
-
-  int _stableExploreHash(String value) {
-    var hash = 0x811C9DC5 ^ _exploreGeneration;
-    for (final codeUnit in value.codeUnits) {
-      hash ^= codeUnit;
-      hash = (hash * 0x01000193) & 0x7fffffff;
-    }
-    return hash;
   }
 
   // ── Rotasi harian rail "etalase" (Terlaris & Rekomendasi) ──
