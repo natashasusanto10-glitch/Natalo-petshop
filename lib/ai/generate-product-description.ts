@@ -98,9 +98,18 @@ export async function generateProductDescription(
     try {
       response = await client.messages.create({
         model: MODEL_ID,
-        // Output yang diminta 100-180 kata; plafon longgar tapi tidak
-        // sampai mengundang model menulis panjang lalu kehabisan waktu.
-        max_tokens: 1200,
+        // JANGAN turunkan mendekati panjang deskripsi yang diminta.
+        // Di claude-sonnet-5 extended thinking aktif secara default dan
+        // token thinking DIHITUNG ke max_tokens — plafon ketat bisa habis
+        // sebelum satu huruf deskripsi ditulis, dan hasilnya nol blok
+        // `text` yang tampak seperti "response kosong". Plafon cuma batas
+        // atas, bukan biaya: yang ditagih hanya token yang benar-benar
+        // dipakai. Panjang output dikendalikan lewat system prompt.
+        max_tokens: 16000,
+        // Menulis deskripsi produk tak butuh penalaran dalam. Effort
+        // rendah memangkas waktu berpikir — tuas latensi yang tidak
+        // mengorbankan plafon token.
+        output_config: { effort: "low" },
         system: SYSTEM_PROMPT,
         tools: [
           {
@@ -130,6 +139,16 @@ export async function generateProductDescription(
       );
     }
     messages.push({ role: "assistant", content: response.content });
+  }
+
+  // Kehabisan plafon token sebelum sempat menulis. Tanpa cabang ini
+  // gejalanya menyamar jadi "response kosong" dan menuntun ke diagnosis
+  // yang salah — sebut apa adanya.
+  if (response.stop_reason === "max_tokens") {
+    throw new GenerateDescriptionError(
+      "Deskripsi terpotong karena kehabisan plafon token (max_tokens). Naikkan plafonnya di lib/ai/generate-product-description.ts.",
+      "MAX_TOKENS",
+    );
   }
 
   if (response.stop_reason === "refusal") {
