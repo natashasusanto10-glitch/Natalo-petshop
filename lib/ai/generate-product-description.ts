@@ -19,8 +19,14 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const MODEL_ID = "claude-sonnet-5";
 
-/** Pagar biaya: maks pencarian web per satu klik "Generate deskripsi". */
-const MAX_WEB_SEARCHES = 4;
+/**
+ * Pagar biaya DAN waktu: maks pencarian web per satu klik "Generate
+ * deskripsi". Tiap pencarian adalah satu round-trip penuh ke model,
+ * jadi angka ini yang paling menentukan lama request — 4 pencarian
+ * menembus batas durasi fungsi Vercel, 2 masih cukup untuk menemukan
+ * halaman resmi brand.
+ */
+const MAX_WEB_SEARCHES = 2;
 
 /**
  * Web search bisa bikin model minta jeda (`stop_reason: "pause_turn"`).
@@ -92,7 +98,9 @@ export async function generateProductDescription(
     try {
       response = await client.messages.create({
         model: MODEL_ID,
-        max_tokens: 4000,
+        // Output yang diminta 100-180 kata; plafon longgar tapi tidak
+        // sampai mengundang model menulis panjang lalu kehabisan waktu.
+        max_tokens: 1200,
         system: SYSTEM_PROMPT,
         tools: [
           {

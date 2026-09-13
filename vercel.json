@@ -11,6 +11,12 @@
     },
     "app/api/cron/**/*.ts": {
       "maxDuration": 60
+    },
+    "app/api/admin/products/generate-description/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/admin/products/[id]/generate-description/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
