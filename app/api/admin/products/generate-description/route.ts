@@ -3,6 +3,9 @@ import { getSession } from "@/lib/auth";
 import { generateProductDescription, GenerateDescriptionError } from "@/lib/ai/generate-product-description";
 import { buildDescriptionContext } from "@/lib/ai/product-description-context";
 
+/** Riset web + tulis deskripsi bisa makan 15-40 detik. */
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   if (!(await getSession("ADMIN"))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await request.json().catch(() => ({}));

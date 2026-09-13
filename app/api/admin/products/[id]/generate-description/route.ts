@@ -7,6 +7,9 @@ import {
 } from "@/lib/ai/generate-product-description";
 import { mergePersistedDescriptionContext } from "@/lib/ai/product-description-context";
 
+/** Riset web + tulis deskripsi bisa makan 15-40 detik. */
+export const maxDuration = 60;
+
 /**
  * POST /api/admin/products/[id]/generate-description
  *
