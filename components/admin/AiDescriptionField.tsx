@@ -67,7 +67,16 @@ export function AiDescriptionField({
       );
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        setError(data?.error ?? "Gagal generate deskripsi. Coba lagi.");
+        // `data` null = respons bukan JSON kita, jadi ini error platform
+        // (mis. 504 timeout fungsi), bukan error yang kita lempar sendiri.
+        // Sebut statusnya — pesan generik menyembunyikan bedanya dan
+        // bikin penyebabnya tak bisa dibedakan dari layar admin.
+        setError(
+          data?.error ??
+            (res.status === 504
+              ? "Riset produk kehabisan waktu di server (504). Coba lagi; kalau berulang, produk ini mungkin butuh deskripsi manual."
+              : `Gagal generate deskripsi (HTTP ${res.status}). Coba lagi.`),
+        );
       } else {
         const nextDescription = data?.description ?? "";
         setDescription(nextDescription);
