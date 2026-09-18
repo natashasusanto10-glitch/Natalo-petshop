@@ -16,6 +16,7 @@ import { BrandChoiceSection } from "@/components/home/BrandChoiceSection";
 import { HomeExploreProducts } from "@/components/home/HomeExploreProducts";
 import { HomeProductCard } from "@/components/home/HomeProductCard";
 import HeroBanner from "@/components/home/HeroBanner";
+import { loadHeroSlides } from "@/lib/hero-slides-server";
 import TrustMarquee from "@/components/home/TrustMarquee";
 import type { TrustItem } from "@/data/trustItems";
 import { ExternalLink } from "@/components/ExternalLink";
@@ -690,7 +691,14 @@ export default async function HomePage() {
     },
   ];
 
-  const [flashSaleRows, popularCategories, dbFeaturedBrands, availableHomeProducts, bestSellers] = await Promise.all([
+  const [
+    flashSaleRows,
+    popularCategories,
+    dbFeaturedBrands,
+    availableHomeProducts,
+    bestSellers,
+    heroSlides,
+  ] = await Promise.all([
     getFlashSaleProducts(7),
     getPopularCategories(6),
     prisma.brand
@@ -715,6 +723,7 @@ export default async function HomePage() {
       withImageOnly: true,
     }),
     getBestSellerProducts(6),
+    loadHeroSlides(),
   ]);
 
   const homeCategories = popularCategories;
@@ -822,8 +831,13 @@ export default async function HomePage() {
       </div>
 
       {/* ── 2. BANNER CAROUSEL UTAMA ── */}
+      {/* Slides dari tabel HomeBanner (dikelola admin, sumber yang SAMA
+          dengan app Flutter lewat /api/banners); fallback ke
+          data/heroSlides.ts kalau DB kosong. WAJIB terus dikirim sebagai
+          prop — tanpa prop, HeroBanner diam-diam kembali memakai daftar
+          statis dan banner admin tidak pernah tampil di web. */}
       <section className="pt-3">
-        <HeroBanner />
+        <HeroBanner slides={heroSlides} />
       </section>
 
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
