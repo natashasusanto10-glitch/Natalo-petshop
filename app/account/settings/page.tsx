@@ -7,7 +7,7 @@ import { requireCustomerSession } from "@/lib/session-guards";
 export const metadata: Metadata = { title: "Pengaturan" };
 
 export default async function AccountSettingsPage() {
-  await requireCustomerSession();
+  await requireCustomerSession("/account/settings");
 
   return (
     <>

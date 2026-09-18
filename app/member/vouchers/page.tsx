@@ -34,7 +34,7 @@ function describeVoucher(voucher: {
 }
 
 export default async function MemberVouchersPage() {
-  const session = await requireCustomerSession();
+  const session = await requireCustomerSession("/member/vouchers");
   const now = new Date();
   const [visibleVouchers, user, successfulOrderCount] = await Promise.all([
     loadActiveMemberVouchers(session.sub, now),

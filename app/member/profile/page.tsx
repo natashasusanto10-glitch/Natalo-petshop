@@ -9,7 +9,7 @@ import { PageStatusBar } from "@/components/PageStatusBar";
 export const metadata: Metadata = { title: "Profil Saya" };
 
 export default async function MemberProfilePage() {
-  const session = await requireCustomerSession();
+  const session = await requireCustomerSession("/member/profile");
 
   const user = await prisma.user.findUnique({
     where: { id: session.sub },

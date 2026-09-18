@@ -79,8 +79,13 @@ function ErrorState() {
 }
 
 export default async function AnnouncementDetailPage({ params }: Props) {
-  const [{ id }, session] = await Promise.all([params, requireCustomerSession()]);
+  const { id } = await params;
   const announcementId = decodeURIComponent(id);
+  // returnTo presisi ke notifikasi ini (bukan cuma "/notifications") — guest
+  // yang tap notifikasi lalu login WAJIB mendarat di pengumuman yang sama.
+  const session = await requireCustomerSession(
+    `/notifications/${encodeURIComponent(id)}`,
+  );
   const allowedSegments = await getAllowedSegments(session.sub);
   const now = new Date();
 

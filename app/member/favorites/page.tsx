@@ -9,7 +9,7 @@ import { requireCustomerSession } from "@/lib/session-guards";
 import Link from "next/link";
 
 export default async function MemberFavoritesPage() {
-  const session = await requireCustomerSession();
+  const session = await requireCustomerSession("/member/favorites");
 
   const favorites = await prisma.favorite.findMany({
     where: { userId: session.sub },

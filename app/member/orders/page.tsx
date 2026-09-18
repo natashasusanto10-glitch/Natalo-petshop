@@ -4,7 +4,7 @@ import { buildSelfPickupMapsUrl } from "@/lib/self-pickup";
 import { OrderErrorState, OrderHistoryClient } from "./OrderHistoryClient";
 
 export default async function MemberOrdersPage() {
-  const session = await requireCustomerSession();
+  const session = await requireCustomerSession("/member/orders");
 
   try {
     const orders = await prisma.order.findMany({

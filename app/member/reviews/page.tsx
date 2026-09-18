@@ -5,7 +5,7 @@ import { ReviewableItemCard } from "@/components/ReviewableItemCard";
 import { requireCustomerSession } from "@/lib/session-guards";
 
 export default async function MemberReviewsPage() {
-  const session = await requireCustomerSession();
+  const session = await requireCustomerSession("/member/reviews");
 
   const reviewableItems = await prisma.orderItem.findMany({
     where: {

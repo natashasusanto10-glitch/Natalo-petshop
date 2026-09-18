@@ -39,7 +39,7 @@ function summarizeUserAgent(ua: string) {
 export default async function ActiveSessionPage() {
   const session = await getSession("CUSTOMER");
   if (!session || session.role !== "CUSTOMER") {
-    redirect("/member/login");
+    redirect("/member/login?redirect=%2Fakun%2Fsesi-aktif");
   }
 
   const headerList = await headers();

@@ -57,7 +57,7 @@ export default async function MemberPetsPage({
 }: {
   searchParams: Promise<{ added?: string }>;
 }) {
-  const session = await requireCustomerSession();
+  const session = await requireCustomerSession("/member/pets");
   const { added } = await searchParams;
 
   const pets = await prisma.pet.findMany({
