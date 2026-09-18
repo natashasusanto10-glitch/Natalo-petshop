@@ -5,6 +5,6 @@ export default async function WishlistLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await requireCustomerSession();
+  await requireCustomerSession("/wishlist");
   return children;
 }

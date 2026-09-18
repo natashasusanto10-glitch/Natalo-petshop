@@ -62,7 +62,7 @@ function deletedSuccessCopy(value: string | undefined) {
 export default async function MyFeedPostsPage({ searchParams }: PageProps) {
   const [{ status, deleted }, session] = await Promise.all([
     searchParams,
-    requireCustomerSession(),
+    requireCustomerSession("/akun/postingan-saya"),
   ]);
   const filter = normalizeMyFeedFilter(status);
   const selectedStatus =

@@ -8,7 +8,7 @@ import { requireCustomerSession } from "@/lib/session-guards";
 export const metadata: Metadata = { title: "Ubah Profil" };
 
 export default async function AccountProfilePage() {
-  const session = await requireCustomerSession();
+  const session = await requireCustomerSession("/account/profile");
   const user = await prisma.user.findUnique({
     where: { id: session.sub },
     select: {

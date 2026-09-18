@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 };
 
 export default async function NotificationSettingsPage() {
-  await requireCustomerSession();
+  await requireCustomerSession("/akun/pengaturan/notifikasi");
 
   return (
     <main className="min-h-screen bg-slate-50 pb-24">

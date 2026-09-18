@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireCustomerSession } from "@/lib/session-guards";
 import { MY_FEED_VISIBLE_STATUSES } from "@/lib/feed/my-posts";
@@ -37,12 +37,16 @@ function extractCaption(description: string | null, title: string): string {
 }
 
 export default async function EditMyFeedPostPage({ params }: PageProps) {
-  const session = await requireCustomerSession();
-  if (!session) {
-    redirect("/member/login?returnUrl=/akun/postingan-saya");
-  }
-
   const { id: postId } = await params;
+  // returnTo presisi ke halaman edit postingan ini. Sebelumnya ada guard
+  // lokal `if (!session) redirect(...)` di sini — kode mati, karena
+  // requireCustomerSession() sendiri sudah redirect+throw sebelum pernah
+  // sempat return session kosong. Guard lokal itu juga pakai nama parameter
+  // salah (`returnUrl`, bukan `redirect` yang dibaca app/member/login/page.tsx)
+  // jadi walau sempat jalan pun tidak pernah benar-benar mengembalikan user.
+  const session = await requireCustomerSession(
+    `/akun/postingan-saya/${encodeURIComponent(postId)}/edit`,
+  );
 
   const post = await prisma.feedPost.findFirst({
     where: {

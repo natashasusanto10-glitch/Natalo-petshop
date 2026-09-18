@@ -14,7 +14,7 @@ export const metadata = {
 export default async function DeleteAccountPage() {
   const session = await getSession("CUSTOMER");
   if (!session || session.role !== "CUSTOMER") {
-    redirect("/member/login");
+    redirect("/member/login?redirect=%2Fakun%2Fhapus-akun");
   }
 
   const [pointTotal, voucherCount, orderCount] = await Promise.all([

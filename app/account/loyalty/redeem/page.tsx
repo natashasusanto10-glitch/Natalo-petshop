@@ -7,7 +7,7 @@ import { RedeemPointsClient } from "./RedeemPointsClient";
 export const metadata: Metadata = { title: "Tukar Poin" };
 
 export default async function RedeemLoyaltyPointsPage() {
-  const session = await requireCustomerSession();
+  const session = await requireCustomerSession("/account/loyalty/redeem");
   const aggregate = await prisma.customerPoint.aggregate({
     where: { userId: session.sub },
     _sum: { points: true },

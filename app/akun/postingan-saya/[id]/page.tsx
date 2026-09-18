@@ -36,10 +36,12 @@ function displayCaption(post: { title: string; description: string | null }) {
 }
 
 export default async function MyFeedPostDetailPage({ params }: PageProps) {
-  const [{ id }, session] = await Promise.all([
-    params,
-    requireCustomerSession(),
-  ]);
+  const { id } = await params;
+  // returnTo presisi ke postingan ini — guest yang buka link postingan sendiri
+  // lalu login WAJIB mendarat di postingan yang sama, bukan daftar generik.
+  const session = await requireCustomerSession(
+    `/akun/postingan-saya/${encodeURIComponent(id)}`,
+  );
 
   const post = await prisma.feedPost.findFirst({
     where: {

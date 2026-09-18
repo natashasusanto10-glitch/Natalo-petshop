@@ -26,7 +26,7 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 export default async function MemberPointsPage() {
-  const session = await requireCustomerSession();
+  const session = await requireCustomerSession("/member/points");
 
   const [aggregate, history] = await Promise.all([
     prisma.customerPoint.aggregate({

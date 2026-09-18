@@ -152,7 +152,7 @@ function FeedListItem({
 }
 
 export default async function MemberPage() {
-  const session = await requireCustomerSession();
+  const session = await requireCustomerSession("/member");
   const recentDoneSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
   const [totalPoints, orderGroups, recentDoneCount, user, pendingFeedPostCount] =
