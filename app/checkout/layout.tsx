@@ -5,6 +5,6 @@ export default async function CheckoutLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await requireCustomerSession();
+  await requireCustomerSession("/checkout");
   return children;
 }
