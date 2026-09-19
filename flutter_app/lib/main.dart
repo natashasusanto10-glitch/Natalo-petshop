@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'dart:io' show Platform;
 
 import 'package:firebase_core/firebase_core.dart';
@@ -69,6 +71,7 @@ import 'utils/read_only_mode.dart';
 import 'screens/products_screen.dart';
 import 'screens/transactions_screen.dart';
 import 'screens/wishlist_screen.dart';
+import 'services/api_client.dart';
 import 'services/analytics_observer.dart';
 import 'services/app_analytics.dart';
 import 'services/app_crashlytics.dart';
@@ -224,6 +227,14 @@ Future<void> main() async {
       pushNotificationService.registerWithServer();
     }
   });
+  // Global 401 handler — bearer JWT expired/invalid → bersihkan sesi lokal
+  // + arahkan ke login SEKALI (idempotent di handleSessionExpired). Tanpa
+  // wiring ini user "hantu" tetap terlihat login dan tiap halaman cuma
+  // menampilkan error banner "Sesi berakhir" tanpa jalur pemulihan sampai
+  // app direstart.
+  apiClient.onUnauthorized = () {
+    unawaited(_handleSessionExpiredGlobally());
+  };
   // Initialize Analytics — track funnel events di release build, no-op
   // di debug supaya dashboard tidak polluted dengan dev data.
   AppAnalytics.initialize();
@@ -234,6 +245,24 @@ Future<void> main() async {
   // feed player auto-switch URL quality (WiFi HLS, mobile MP4 480/720p).
   videoQualityService.initialize();
   runApp(const NataloPetshopApp());
+}
+
+/// Terima callback 401 global dari apiClient (bearer JWT expired/invalid):
+/// bersihkan sesi lokal, tampilkan penjelasan, lalu arahkan ke login
+/// (replace seluruh stack). Idempotent — handleSessionExpired() hanya
+/// membersihkan sekali, dan guest yang kebetulan kena 401 di endpoint
+/// tertentu tidak ikut dilempar ke login.
+Future<void> _handleSessionExpiredGlobally() async {
+  final loggedOut = await memberStore.handleSessionExpired();
+  if (!loggedOut) return;
+  final context = rootNavigatorKey.currentContext;
+  if (context != null && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sesi berakhir. Silakan login ulang.')),
+    );
+  }
+  rootNavigatorKey.currentState
+      ?.pushNamedAndRemoveUntil('/member/login', (route) => false);
 }
 
 class NataloPetshopApp extends StatelessWidget {

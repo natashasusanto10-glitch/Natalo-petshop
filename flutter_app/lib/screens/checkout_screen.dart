@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../utils/shop_navigation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/natalo_store_config.dart';
 import '../models/cart_item.dart';
 import '../models/member_profile.dart';
 import '../models/shipping_rate.dart';
@@ -849,6 +850,47 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     await _syncCheckoutPricing(autoApply: !_autoVoucherSuppressed);
   }
 
+  /// Dialog kalau akun member tidak punya nomor HP terdaftar (akun legacy —
+  /// nomor HP dikunci dari UI & server karena jadi anchor identitas anti
+  /// voucher-abuse, jadi tidak bisa diisi self-serve). Checkout butuh nomor
+  /// agar kurir/admin bisa menghubungi pembeli — arahkan ke CS (WhatsApp)
+  /// supaya admin bisa melengkapi data server-side.
+  Future<void> _showMissingPhoneDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Nomor HP Belum Terdaftar',
+          style: TextStyle(fontWeight: NataloWeight.strong),
+        ),
+        content: const Text(
+          'Akun kamu belum punya nomor HP terdaftar, padahal kurir/admin '
+          'butuh nomor ini untuk menghubungi kamu terkait pesanan.\n\n'
+          'Hubungi CS Natalo agar admin bisa melengkapi data akunmu, '
+          'lalu coba checkout lagi.',
+          style: TextStyle(height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Nanti Saja'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              unawaited(launchUrl(
+                NataloStoreConfig.whatsappUri(),
+                mode: LaunchMode.externalApplication,
+              ));
+            },
+            child: const Text('Hubungi CS'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _placeOrder() async {
     // BUGFIX(audit): guard re-entry. Tombol "Buat Pesanan" ada di DUA tempat
     // (bottom bar + final payment panel) & disable-nya baru efektif setelah
@@ -858,6 +900,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() => _submitting = true);
     try {
       final profile = memberStore.profile;
+      final memberPhone = profile?.phone?.trim() ?? '';
+      // WAJIB nomor HP beneran terdaftar — dulu ada fallback hardcoded ke
+      // nomor toko sehingga order bisa tercatat dengan kontak yang tidak
+      // bisa dihubungi. Register (web & app) mewajibkan phone, jadi kasus
+      // ini hanya akun legacy: hentikan checkout dengan penjelasan, bukan
+      // kontak palsu.
+      if (memberPhone.isEmpty) {
+        await _showMissingPhoneDialog();
+        if (!mounted) return;
+        setState(() => _submitting = false);
+        return;
+      }
       final address = _selectedAddress;
       if (address == null) {
         throw Exception('Alamat pengiriman belum tersedia.');
@@ -947,8 +1001,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         // Use override items kalau Buy Now flow, else cartStore.items.
         items: _checkoutItems,
         customerName: profile?.name ?? 'Member Natalo',
-        customerPhone: profile?.phone ?? '081330003880',
-        customerEmail: profile?.email ?? 'member@natalopetshop.com',
+        customerPhone: memberPhone,
+        customerEmail: profile?.email ?? '',
         address: address,
         shippingRate: _selectedRate,
         paymentProvider: _paymentProvider,

@@ -26,6 +26,7 @@ class MemberStore extends ChangeNotifier {
   String? _sessionToken;
   bool _initialized = false;
   bool _initializing = false;
+  bool _handlingSessionExpiry = false;
   int _viewerGeneration = 0;
   List<MemberAddress> _addresses = const [];
   List<OrderSummary> _orders = const [];
@@ -217,23 +218,51 @@ class MemberStore extends ChangeNotifier {
     } catch (_) {
       // Abaikan — logout lokal wajib tetap jalan.
     } finally {
-      _viewerGeneration++;
-      _profile = null;
-      _sessionToken = null;
-      _addresses = const [];
-      _orders = const [];
-      cartStore.resetLoginMergeGuard();
-      clearFollowOverrides();
-      followService.clearSessionState();
-      feedCommentSyncCoordinator.clear();
-      feedCommentSessionStore.clear();
-      notifyListeners();
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove(_profileKey);
-        await prefs.remove(_tokenKey);
-      } catch (_) {}
+      await _clearLocalSession();
     }
+  }
+
+  /// Bersihkan seluruh state login lokal — profil, token, cache turunan
+  /// (alamat, order, follow, feed comment), dan data disk — TANPA memanggil
+  /// server. Dipakai logout() normal dan handleSessionExpired().
+  Future<void> _clearLocalSession() async {
+    _viewerGeneration++;
+    _profile = null;
+    _sessionToken = null;
+    _addresses = const [];
+    _orders = const [];
+    cartStore.resetLoginMergeGuard();
+    clearFollowOverrides();
+    followService.clearSessionState();
+    feedCommentSyncCoordinator.clear();
+    feedCommentSessionStore.clear();
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_profileKey);
+      await prefs.remove(_tokenKey);
+    } catch (_) {}
+  }
+
+  /// Dipanggil apiClient.onUnauthorized saat server balas 401 — bearer JWT
+  /// sudah tidak valid (expired / user dihapus). Berbeda dari logout():
+  /// TIDAK memanggil server (tidak ada token yang perlu di-revoke).
+  ///
+  /// Idempotent: N request paralel yang sama-sama balas 401 hanya memicu
+  /// satu cleanup — flag menutup window sampai cleanup selesai, dan sesi
+  /// yang memang sudah kosong (guest) langsung di-skip. Return true kalau
+  /// sesi baru saja dibersihkan — caller pakai ini untuk memutuskan
+  /// redirect ke login tepat satu kali.
+  Future<bool> handleSessionExpired() async {
+    if (_handlingSessionExpiry) return false;
+    if (_profile == null && _sessionToken == null) return false;
+    _handlingSessionExpiry = true;
+    try {
+      await _clearLocalSession();
+    } finally {
+      _handlingSessionExpiry = false;
+    }
+    return true;
   }
 }
 
