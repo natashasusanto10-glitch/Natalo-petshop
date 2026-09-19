@@ -15,6 +15,7 @@
  * sama tidak lagi cocok dengan `expiredFlashSaleWhere()`.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import { expiredFlashSaleWhere } from "@/lib/product/flash-sale-expiry";
 
@@ -24,10 +25,8 @@ export const maxDuration = 60;
 export async function GET(request: NextRequest) {
   // Vercel meng-inject header Authorization: Bearer $CRON_SECRET pada
   // pemanggilan cron — pola sama dengan cron route lain di repo ini.
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   const where = expiredFlashSaleWhere();
 

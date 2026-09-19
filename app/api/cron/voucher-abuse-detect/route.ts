@@ -17,17 +17,15 @@
  * Schedule: daily @ 03:00 WIB (lihat vercel.json crons).
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { runAllAbuseDetection } from "@/lib/abuse-detection";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   const startedAt = Date.now();
   try {

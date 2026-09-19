@@ -33,6 +33,7 @@
  *   - Per-order try/catch supaya 1 failure tidak block sisa batch
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import { transitionOrderStatus } from "@/lib/order-transitions";
 import { sendOrderStatusEmail } from "@/lib/email-order";
@@ -55,11 +56,8 @@ const BATCH_LIMIT = 500;
 export async function GET(request: NextRequest) {
   // Vercel auto-inject CRON_SECRET. Public route tapi cuma Vercel infra
   // yang bisa set header ini.
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   const daysEnv = process.env.AUTO_CONFIRM_DAYS;
   const days = daysEnv ? parseInt(daysEnv, 10) : DEFAULT_AUTO_CONFIRM_DAYS;

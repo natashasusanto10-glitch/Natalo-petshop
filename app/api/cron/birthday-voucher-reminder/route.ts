@@ -19,6 +19,7 @@
  * Schedule: "30 12 * * *" UTC = 19:30 WIB (after birthday-reminder cron).
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser } from "@/lib/push";
 import { sendFcmToUser } from "@/lib/fcm";
@@ -48,11 +49,8 @@ function formatExpiry(date: Date): string {
 }
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   const now = Date.now();
   const lower = new Date(now - (REMINDER_DAY_OFFSET + 1) * 24 * 60 * 60 * 1000);

@@ -9,6 +9,7 @@
  * sendProductDiscountPromoPush (updateMany where promoNotifiedAt null).
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import {
   sendVoucherPromoPush,
@@ -18,13 +19,8 @@ import {
 const LIMIT = 20;
 
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = request.headers.get("authorization");
-    if (auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   const now = new Date();
 

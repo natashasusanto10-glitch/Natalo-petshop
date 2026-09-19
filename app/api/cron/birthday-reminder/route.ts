@@ -14,6 +14,7 @@
  * relax di rumah, lebih engagement-friendly daripada pagi).
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import { sendPushToUser } from "@/lib/push";
 import { sendFcmToUser } from "@/lib/fcm";
@@ -26,11 +27,8 @@ export const maxDuration = 60;
 const BATCH_LIMIT = 500;
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   const now = new Date();
   const candidates = (await findTomorrowBirthdayUsers(now)).slice(0, BATCH_LIMIT);

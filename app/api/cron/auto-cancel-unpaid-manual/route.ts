@@ -32,6 +32,7 @@
  * Safety: CRON_SECRET header, batch limit 200, per-order try/catch.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import { recordOrderStatusEvent } from "@/lib/order-transitions";
 import { creditWallet } from "@/lib/refund-wallet";
@@ -44,11 +45,8 @@ const DEFAULT_AUTO_CANCEL_HOURS = 24;
 const BATCH_LIMIT = 200;
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   const hoursEnv = process.env.AUTO_CANCEL_MANUAL_HOURS;
   const hours = hoursEnv ? parseInt(hoursEnv, 10) : DEFAULT_AUTO_CANCEL_HOURS;

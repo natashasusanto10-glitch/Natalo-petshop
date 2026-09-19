@@ -29,6 +29,7 @@
  * - Auth: Vercel auto-injects CRON_SECRET header — verify di handler.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import { getCartStockSnapshots } from "@/lib/cart-stock-server";
 import {
@@ -47,11 +48,8 @@ export const maxDuration = 60;
 export async function GET(request: NextRequest) {
   // Verify Vercel cron header — public route, but only Vercel infra
   // can set this header. Production safety.
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   const now = Date.now();
   const oldestEligible = new Date(now - ABANDONED_CART_MAX_AGE_MS);

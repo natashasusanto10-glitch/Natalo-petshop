@@ -20,6 +20,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { utapi } from "@/lib/uploadthing";
 import { prisma } from "@/lib/prisma";
 import { extractUploadThingKey } from "@/lib/feed/cleanup";
@@ -31,17 +32,9 @@ export const maxDuration = 60;
 const FEED_FILE_PREFIXES = ["feed-video-", "feed-thumb-"];
 const PAGE_SIZE = 500;
 
-function isAuthorized(request: NextRequest): boolean {
-  const expected = process.env.CRON_SECRET;
-  if (!expected) return false;
-  const got = request.headers.get("authorization") ?? "";
-  return got === `Bearer ${expected}`;
-}
-
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   // 1. UploadThing sweep (legacy posts pre-Bunny migration).
   const referencedKeys = await collectReferencedKeys();

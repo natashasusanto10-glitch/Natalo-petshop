@@ -25,6 +25,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import {
@@ -45,17 +46,9 @@ const RECONCILE_MIN_AGE_MINUTES = 5;
 // 60 menit = safe buffer untuk video panjang + retry attempts Bunny.
 const STUCK_FAIL_THRESHOLD_MINUTES = 60;
 
-function isAuthorized(request: NextRequest): boolean {
-  const expected = process.env.CRON_SECRET;
-  if (!expected) return false;
-  const got = request.headers.get("authorization") ?? "";
-  return got === `Bearer ${expected}`;
-}
-
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   const cutoff = new Date(
     Date.now() - RECONCILE_MIN_AGE_MINUTES * 60 * 1000,

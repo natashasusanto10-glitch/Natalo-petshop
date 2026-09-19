@@ -21,6 +21,7 @@
  * jadi tidak ada logic baru: cuma menyalakan jadwal otomatisnya.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import { cleanupWhere, compensateCreatedProduct } from "@/lib/product/admin-product-form";
 
@@ -31,10 +32,8 @@ export async function GET(request: NextRequest) {
   // Vercel auto-injects header Authorization: Bearer $CRON_SECRET pada
   // cron invocation — pola sama dengan cron route lain di repo ini
   // (lihat app/api/cron/abandoned-cart/route.ts).
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   const stale = await prisma.product.findMany({ where: cleanupWhere(), select: { id: true, name: true } });
   let cleaned = 0;

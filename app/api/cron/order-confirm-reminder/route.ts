@@ -25,6 +25,7 @@
  * CRON_SECRET auth. Batch limit 500.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import { sendConfirmReminderPush } from "@/lib/push";
 
@@ -35,11 +36,8 @@ const REMINDER_DAY_OFFSET = 4; // H+4 dari shippedAt = H-3 dari auto-confirm
 const BATCH_LIMIT = 500;
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   // Window: orders yang shippedAt antara 4 dan 5 hari lalu (1 hari buffer
   // supaya kalau cron miss/delay 1 hari, masih ke-trigger). Exclude yang

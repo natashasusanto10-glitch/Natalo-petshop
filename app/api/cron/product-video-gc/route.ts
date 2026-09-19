@@ -5,21 +5,15 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { sweepProductVideoOrphans } from "@/lib/product/product-video-gc";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function isAuthorized(request: NextRequest): boolean {
-  const expected = process.env.CRON_SECRET;
-  if (!expected) return false;
-  return (request.headers.get("authorization") ?? "") === `Bearer ${expected}`;
-}
-
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
   const summary = await sweepProductVideoOrphans({ dryRun: false });
   return NextResponse.json({ ok: true, product: summary });
 }

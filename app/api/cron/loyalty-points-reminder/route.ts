@@ -17,6 +17,7 @@
  * Safety: CRON_SECRET, batch limit, per-user try/catch.
  */
 import { NextRequest, NextResponse } from "next/server";
+import { assertCronAuth } from "@/lib/cron-auth";
 import { prisma } from "@/lib/prisma";
 import { sendFcmToUser } from "@/lib/fcm";
 import { sendPushToUser, type PushPayload } from "@/lib/push";
@@ -41,11 +42,8 @@ function bestReward(points: number): number {
 }
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = assertCronAuth(request);
+  if (unauthorized) return unauthorized;
 
   // 1. Sum poin per user. CustomerPoint = ledger (positif earn, negatif
   //    claim) → groupBy sum = saldo poin sekarang.
