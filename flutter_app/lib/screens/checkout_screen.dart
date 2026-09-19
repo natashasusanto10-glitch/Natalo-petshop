@@ -991,7 +991,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ],
             ),
           );
-          if (accept != true || !mounted) {
+          if (!mounted) return;
+          if (accept != true) {
             setState(() => _submitting = false);
             return;
           }

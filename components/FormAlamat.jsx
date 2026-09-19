@@ -29,7 +29,7 @@ const inputClass =
   "peer block w-full rounded-2xl border bg-white px-4 pb-2.5 pt-5 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-transparent focus:ring-4 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400";
 
 function safeInternalPath(value, fallback) {
-  return value && value.startsWith("/") && !value.startsWith("//") ? value : fallback;
+  return value && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\") ? value : fallback;
 }
 
 function hasUsablePinpoint(lat, lng) {

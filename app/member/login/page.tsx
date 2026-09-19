@@ -8,7 +8,9 @@ import { PasswordInput } from "@/components/PasswordInput";
 import { dispatchAuthUpdated, mergeFromServer } from "@/lib/cart";
 
 function safeRedirect(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+  // Backslash ditolak: parser URL (WHATWG) memperlakukan `\` seperti `/`,
+  // jadi tanpa cek ini `/\evil.com` lolos sebagai protocol-relative redirect.
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return "/";
   if (
     value.startsWith("/api") ||
     value.startsWith("/admin") ||

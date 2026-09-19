@@ -60,7 +60,7 @@ function canUseDOM() {
 }
 
 function isInternalHref(href: string | null): href is string {
-  return Boolean(href && href.startsWith("/") && !href.startsWith("//"));
+  return Boolean(href && href.startsWith("/") && !href.startsWith("//") && !href.includes("\\"));
 }
 
 function normalizePathname(pathname: string): string {

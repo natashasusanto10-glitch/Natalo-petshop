@@ -754,6 +754,9 @@ class _CartScreenState extends State<CartScreen>
         loading: _loadingVouchers,
       ),
     );
+    // Guard mounted — layar bisa ter-unmount saat sheet terbuka (back gesture),
+    // setState di bawah tanpa cek ini melempar "setState() called after dispose".
+    if (!mounted) return;
     if (picked == null) return;
 
     AppHaptics.success();

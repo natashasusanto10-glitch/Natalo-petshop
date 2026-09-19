@@ -129,7 +129,7 @@ const DEFAULT_CHECKOUT_RETURN_TARGET: CheckoutReturnTarget = {
 function sanitizeCheckoutReturnPath(rawReturnTo: string | null) {
   if (!rawReturnTo) return null;
   const value = rawReturnTo.trim();
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
   if (value.startsWith("/checkout")) return null;
   return value;
 }

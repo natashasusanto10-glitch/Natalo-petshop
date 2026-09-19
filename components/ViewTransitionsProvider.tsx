@@ -53,7 +53,7 @@ export function ViewTransitionsProvider() {
       if (target.getAttribute("rel")?.includes("external")) return null;
       const href = target.getAttribute("href");
       if (!href) return null;
-      if (!href.startsWith("/") || href.startsWith("//")) return null;
+      if (!href.startsWith("/") || href.startsWith("//") || href.includes("\\")) return null;
       if (href.startsWith("/#")) return null;
       return href;
     }

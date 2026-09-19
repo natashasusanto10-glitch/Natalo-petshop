@@ -192,7 +192,10 @@ export default async function ProductDetailPage({
       <PageStatusBar iconColor="dark" themeColor="#ffffff" />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        // Escape `<` → `\u003c`: JSON.stringify tidak meng-escape, jadi nama/
+        // deskripsi produk yang mengandung `</script>` bisa keluar dari
+        // konteks script (stored XSS via admin input).
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
 
       {/* Ajakan buka app — hal pertama yang terlihat di layar kecil, di

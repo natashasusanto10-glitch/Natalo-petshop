@@ -12,7 +12,7 @@ export default async function EditAddressPage({ params, searchParams }) {
   const sp = (await searchParams) ?? {};
   const rawReturn = typeof sp.return === "string" ? sp.return : "";
   const returnUrl =
-    rawReturn.startsWith("/") && !rawReturn.startsWith("//") ? rawReturn : "/akun/alamat";
+    rawReturn.startsWith("/") && !rawReturn.startsWith("//") && !rawReturn.includes("\\") ? rawReturn : "/akun/alamat";
   const source = sp.source === "checkout" ? "checkout" : "profile";
   const backLabel = source === "checkout" ? "Kembali pilih alamat" : "Kembali ke alamat";
 

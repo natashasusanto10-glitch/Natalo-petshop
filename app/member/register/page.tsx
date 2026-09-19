@@ -7,7 +7,7 @@ import { OperatingHoursCard } from "@/components/OperatingHours";
 import { PasswordInput } from "@/components/PasswordInput";
 
 function safeRedirect(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return "/";
   if (
     value.startsWith("/api") ||
     value.startsWith("/admin") ||

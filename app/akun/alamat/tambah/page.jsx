@@ -4,7 +4,7 @@ import FormAlamat from "@/components/FormAlamat";
 import { StickyBackTitle } from "@/components/StickyBackTitle";
 
 function safeInternalPath(value, fallback) {
-  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//")
+  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")
     ? value
     : fallback;
 }

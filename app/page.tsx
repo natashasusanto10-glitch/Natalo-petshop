@@ -823,7 +823,11 @@ export default async function HomePage() {
       <script
         type="application/ld+json"
         // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{
+          // Escape `<` → `\u003c`: JSON.stringify tidak meng-escape, jadi
+          // data yang mengandung `</script>` bisa keluar dari konteks script.
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+        }}
       />
       {/* TrustMarquee hanya untuk mobile — di desktop bagian atas sengaja dibuat bersih (langsung header → hero), pesan gratis-ongkir/original/WA tersedia di footer. Jangan un-hide di desktop. */}
       <div className="md:hidden">
