@@ -19,6 +19,7 @@ import { recordOrderStatusEvent } from "@/lib/order-transitions";
 import { debitWallet, getOrCreateWallet } from "@/lib/refund-wallet";
 import { withSerializationRetry, isSerializationFailure } from "@/lib/db-retry";
 import { SELF_PICKUP_METHOD, SELF_PICKUP_STORE } from "@/lib/self-pickup";
+import { resolveServerShippingFee } from "@/lib/shipping-rates";
 // Catatan: notifikasi order via WhatsApp sudah dihapus (per keputusan
 // product owner). Customer dapat info order via email + push notification.
 import {
@@ -274,7 +275,38 @@ export async function POST(request: Request) {
     const isSelfPickup =
       input.orderType === SELF_PICKUP_METHOD ||
       input.shippingMethod === SELF_PICKUP_METHOD;
-    const originalShippingCost = isSelfPickup ? 0 : input.shippingCost;
+    // SECURITY: ongkir final SELALU di-resolve server dari kurir + tujuan +
+    // berat item (re-quote Biteship / tarif flat dummy). input.shippingCost
+    // diabaikan — sebelumnya dipakai mentah sehingga siapa pun (guest pun
+    // bisa) bisa POST order delivery dengan shippingCost 0 dan total jebol;
+    // verifikasi Midtrans gross_amount === order.total tetap lolos karena
+    // totalnya sendiri sudah tercemar. Fail-closed: Biteship down / kurir
+    // tidak dikenal → order ditolak, BUKAN lanjut dengan ongkir tak
+    // terverifikasi.
+    let originalShippingCost = 0;
+    if (!isSelfPickup) {
+      const resolvedShipping = await resolveServerShippingFee({
+        courierCode: input.courierCode,
+        courierService: input.courierService,
+        destinationAreaId: input.shippingAreaId,
+        destinationPostalCode: input.shippingPostalCode ?? null,
+        destinationLatitude: input.shippingLatitude ?? null,
+        destinationLongitude: input.shippingLongitude ?? null,
+        items: checkoutItems.map((item) => ({
+          name: item.name,
+          price: item.price,
+          weightGram: item.weightGram,
+          quantity: item.quantity,
+        })),
+      });
+      if (!resolvedShipping.ok) {
+        return NextResponse.json(
+          { message: resolvedShipping.message },
+          { status: resolvedShipping.reason === "unavailable" ? 503 : 400 },
+        );
+      }
+      originalShippingCost = resolvedShipping.price;
+    }
     const productById = new Map(products.map((product) => [product.id, product]));
 
     const cartProductInputs = checkoutItems.map((item) => {

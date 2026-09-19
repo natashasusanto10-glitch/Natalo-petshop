@@ -28,6 +28,10 @@ export const createOrderSchema = z.object({
   shippingDistrictName: z.string().optional(),
   courierCode: z.string().optional(),
   courierService: z.string().optional(),
+  // DEPRECATED (security): dulu dipakai sebagai ongkir final → siapa pun
+  // bisa POST order dengan shippingCost 0. Sekarang ongkir selalu di-resolve
+  // server via resolveServerShippingFee() (lib/shipping-rates.ts) — field
+  // ini masih diterima hanya demi kompatibilitas client lama, diabaikan.
   shippingCost: z.number().int().nonnegative().default(0),
   // Legacy customer voucher field.
   voucherCode: z.string().optional(),

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cartItemSchema } from "@/lib/validation";
 import { buildCheckoutItemsFromInventory } from "@/lib/checkout-items";
+import { resolveServerShippingFee } from "@/lib/shipping-rates";
 import {
   calcVoucherScopedDiscount,
   getVoucherDisabledReason,
@@ -217,7 +218,49 @@ export async function POST(request: NextRequest) {
   }
 
   const input = parsed.data;
-  const shippingFee = input.shipping_fee ?? input.shippingCost ?? 0;
+
+  // SECURITY: ongkir preview TIDAK pernah dipakai mentah dari client.
+  // Kalau client mengirim info kurir + tujuan (kedua client sudah selalu
+  // mengirim via shippingMethod/address), fee di-resolve server dari
+  // Biteship/tarif flat yang sama dengan yang dipakai create order —
+  // jadi dialog "Total Berubah" membandingkan angka yang bisa dipertang-
+  // gungjawabkan. Angka client (shipping_fee/shippingCost) hanya jadi
+  // fallback preview untuk body legacy tanpa info kurir; create order
+  // (/api/orders) tetap re-quote fail-closed, jadi tidak ada uang yang
+  // bergerak berdasarkan angka client.
+  const recalcCourierCode = input.shippingMethod?.courierCode ?? null;
+  const recalcCourierService = input.shippingMethod?.courierService ?? null;
+  const recalcHasCourierInfo =
+    Boolean(recalcCourierCode?.trim()) && Boolean(recalcCourierService?.trim());
+  const recalcSelfPickup =
+    !recalcCourierCode?.trim() ||
+    recalcCourierCode.trim().toLowerCase() === "self_pickup";
+  let shippingFee = input.shipping_fee ?? input.shippingCost ?? 0;
+  if (recalcSelfPickup) {
+    shippingFee = 0;
+  } else if (recalcHasCourierInfo && input.items.length > 0) {
+    const resolvedShipping = await resolveServerShippingFee({
+      courierCode: recalcCourierCode,
+      courierService: recalcCourierService,
+      destinationAreaId: input.address?.areaId ?? null,
+      destinationPostalCode: input.address?.postalCode ?? null,
+      destinationLatitude: input.address?.latitude ?? null,
+      destinationLongitude: input.address?.longitude ?? null,
+      items: input.items.map((item) => ({
+        name: item.name,
+        price: item.price,
+        weightGram: item.weightGram,
+        quantity: item.quantity,
+      })),
+    });
+    if (!resolvedShipping.ok) {
+      return NextResponse.json(
+        { message: resolvedShipping.message },
+        { status: resolvedShipping.reason === "unavailable" ? 503 : 400 },
+      );
+    }
+    shippingFee = resolvedShipping.price;
+  }
 
   const normalizeCode = (value?: string | null) => (value ?? "").trim().toUpperCase();
   // Legacy `voucherCode` / `customerVoucherCode` tetap diarahkan ke slot
