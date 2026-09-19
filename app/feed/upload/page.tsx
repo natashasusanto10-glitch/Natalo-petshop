@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default async function FeedUploadPage() {
   const session = await getSession();
   if (!session) {
-    redirect("/member/login?returnUrl=/feed/upload");
+    redirect("/member/login?redirect=/feed/upload");
   }
   if (session.role === "ADMIN") {
     redirect("/feed");
