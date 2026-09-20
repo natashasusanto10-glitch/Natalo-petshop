@@ -10,15 +10,21 @@ import { useEffect } from "react";
  * sekali saja, observer langsung dilepas (progressive disclosure hemat
  * memori). Stagger antar kartu grid ditangani CSS nth-child di globals.
  *
- * prefers-reduced-motion → semua elemen langsung visible tanpa animasi.
+ * PENTING: konten yang muncul BELAKANGAN — batch infinite scroll section
+ * Jelajahi menambah HomeProductCard (ber-class apple-reveal) setelah mount —
+ * di-observe lewat MutationObserver. Tanpa ini kartu baru tersembunyi
+ * selamanya (opacity 0, tak pernah dapat is-visible) → halaman tampak
+ * blank saat di-scroll (bug production 20 Sep 2026).
+ *
+ * prefers-reduced-motion / browser tanpa IntersectionObserver → semua
+ * elemen langsung visible tanpa animasi.
  */
 export function AppleReveal() {
   useEffect(() => {
-    const elements = Array.from(document.querySelectorAll<HTMLElement>(".apple-reveal"));
-    if (elements.length === 0) return undefined;
-
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      elements.forEach((el) => el.classList.add("is-visible"));
+    const revealNow = (el: Element) => el.classList.add("is-visible");
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || typeof IntersectionObserver === "undefined") {
+      document.querySelectorAll(".apple-reveal").forEach(revealNow);
       return undefined;
     }
 
@@ -33,8 +39,24 @@ export function AppleReveal() {
       },
       { root: null, rootMargin: "0px", threshold: 0.15 },
     );
-    elements.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+
+    function scan() {
+      // :not(.is-visible) → elemen yang sudah tampil tak disentuh lagi.
+      document
+        .querySelectorAll<HTMLElement>(".apple-reveal:not(.is-visible)")
+        .forEach((el) => observer.observe(el));
+    }
+    scan();
+
+    // scan() hanya observe (tidak menulis DOM) dan attribute change
+    // (is-visible) tidak dikonfigurasi → tidak ada loop mutasi.
+    const mutation = new MutationObserver(() => scan());
+    mutation.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      mutation.disconnect();
+    };
   }, []);
 
   return null;
