@@ -30,6 +30,19 @@ export default function HeroBanner({
   const suppressClickRef = useRef(false);
   const total = activeSlides.length;
 
+  // Rasio kontainer mengikuti rasio asli banner admin (diukur server via
+  // sharp, lihat lib/hero-slides-server.ts) — banner desain mobile ~2:1
+  // untuk karosel app tidak lagi ter-crop kiri-kanan di desktop.
+  // Clamp 1.2–2.2 supaya tinggi tetap wajar; fallback 16/9. Lebar desktop
+  // ikut dicap supaya tinggi maksimal ~560px (banner tinggi tidak memakan
+  // seluruh viewport pertama).
+  const firstAspect = activeSlides.find(
+    (s): s is Extract<HeroSlide, { type: "image" }> =>
+      s.type === "image" && typeof s.aspect === "number",
+  )?.aspect;
+  const ratio = Math.min(2.2, Math.max(1.2, firstAspect ?? 16 / 9));
+  const heroMaxW = Math.min(1024, Math.round(560 * ratio));
+
   useEffect(() => {
     if (current >= total) setCurrent(0);
   }, [current, total]);
@@ -98,11 +111,10 @@ export default function HeroBanner({
   }
 
   return (
-    // Desktop: batasi lebar hero (banner sumber 16:9). Tanpa batas, di layar
-    // lebar 16:9 bikin banner setinggi >1000px sampai produk tidak kelihatan
-    // di viewport pertama. Cap ~1024px → tinggi ~576px, tetap proporsional
-    // tanpa memotong gambar (aspect tetap 16:9). Mobile tidak berubah.
-    <div className="px-4 pt-3 md:mx-auto md:max-w-5xl">
+    <div
+      className="px-4 pt-3 md:mx-auto md:max-w-[var(--hero-max-w,64rem)]"
+      style={{ "--hero-max-w": `${heroMaxW}px` } as React.CSSProperties}
+    >
       <div
         ref={containerRef}
         onClickCapture={handleClickCapture}
@@ -112,7 +124,8 @@ export default function HeroBanner({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={finishPointerDrag}
-        className="hero-banner relative aspect-[16/9] w-full touch-pan-y overflow-hidden rounded-[20px] shadow-sm"
+        style={{ aspectRatio: String(ratio) }}
+        className="hero-banner relative w-full touch-pan-y overflow-hidden rounded-[20px] shadow-sm"
       >
         <div
           className={`flex h-full ${isDragging ? "" : "transition-transform duration-700 ease-out"}`}

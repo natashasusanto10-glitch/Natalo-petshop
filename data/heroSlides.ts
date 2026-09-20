@@ -27,6 +27,14 @@ export type HeroSlide =
       image: string;
       imageAlt: string;
       href?: string;
+      /**
+       * Rasio asli gambar (width/height) — diukur server-side dari banner
+       * admin (lib/hero-slides-server.ts, sharp + cache in-memory).
+       * HeroBanner memakai ini sebagai aspect-ratio kontainer supaya banner
+       * rasio mobile (~2:1) tidak ter-crop kiri-kanan di desktop. Slide
+       * statis fallback tanpa `aspect` → HeroBanner pakai fallback 16/9.
+       */
+      aspect?: number;
       activeFrom?: string;
       activeUntil?: string;
       priority?: boolean;
