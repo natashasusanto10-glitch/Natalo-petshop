@@ -206,7 +206,7 @@ export function SearchOverlay({ open, onClose }: Props) {
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Cari produk, brand, atau kategori..."
+            placeholder="Cari makanan kucing, anjing, atau aquarium..."
             autoComplete="off"
             spellCheck={false}
             type="search"

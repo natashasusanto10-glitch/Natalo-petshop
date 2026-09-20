@@ -46,7 +46,7 @@ export function HomeSearchBar({
             <path d="m20 20-3.5-3.5" />
           </svg>
           <span className="flex-1 truncate text-sm font-semibold text-slate-400">
-            Cari produk, brand, atau kategori...
+            Cari makanan kucing, anjing, atau aquarium...
           </span>
         </button>
       </div>

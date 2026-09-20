@@ -851,7 +851,49 @@ body.top-drawer-open .nat-whatsapp-float {
     width: auto;
     flex-wrap: wrap;
   }
+  .nat-announcement-track {
+    animation: none;
+    width: auto;
+  }
 }
+
+/* ── Apple-style organic reveal (fase final) ──
+   Elemen start tersembunyi (class dirender server → tanpa flash), lalu
+   AppleReveal.tsx menambah .is-visible saat 15% elemen masuk viewport.
+   800ms ease-out-quart, hanya opacity/transform (GPU 60 FPS). */
+.apple-reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  will-change: opacity, transform;
+  transition:
+    opacity 0.8s cubic-bezier(0.25, 1, 0.5, 1),
+    transform 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.apple-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Stagger berjenjang kartu dalam grid produk (kartu ke-5+ tanpa delay —
+   mereka reveal individual saat di-scroll). */
+.product-grid > .apple-reveal:nth-child(1) { transition-delay: 0.1s; }
+.product-grid > .apple-reveal:nth-child(2) { transition-delay: 0.2s; }
+.product-grid > .apple-reveal:nth-child(3) { transition-delay: 0.3s; }
+.product-grid > .apple-reveal:nth-child(4) { transition-delay: 0.4s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .apple-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Marquee announcement bar mobile — track digandakan 2x + geser -50%. */
+.nat-announcement-track {
+  animation: nat-marquee linear infinite;
+}
+
 
 /* ── Content fade-in saat real data replace skeleton ──
    Apply via className="nat-content-fade-in" pada container yang muncul

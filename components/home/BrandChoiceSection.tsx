@@ -90,7 +90,7 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
   return (
     <section className="mt-8" aria-labelledby="brand-choice-title">
       <div className="flex items-center justify-between gap-3 px-4">
-        <h2 id="brand-choice-title" className="text-[20px] font-black tracking-tight text-slate-900">
+        <h2 id="brand-choice-title" className="apple-reveal text-[20px] font-black tracking-tight text-slate-900">
           Brand Favorit
         </h2>
         <Link

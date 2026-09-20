@@ -23,6 +23,9 @@ export function HomeProductCard({
       showCta={false}
       showRating
       rankBadge={rankBadge}
+      // apple-reveal — fade+geser naik saat masuk viewport (AppleReveal
+      // observer di homepage); stagger via .product-grid nth-child di CSS.
+      className="apple-reveal"
     />
   );
 }

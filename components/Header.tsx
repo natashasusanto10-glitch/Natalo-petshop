@@ -8,6 +8,8 @@ import { CartCount } from "./CartCount";
 import { NotificationBell } from "./NotificationBell";
 import { HomeSearchBar } from "@/components/home/HomeSearchBar";
 import { DesktopCategoryNav } from "@/components/header/DesktopCategoryNav";
+import { MobileMenu } from "@/components/header/MobileMenu";
+import { AnnouncementBar } from "@/components/AnnouncementBar";
 import { bootstrapCartSync, switchToGuestCart } from "@/lib/cart";
 import { prefetchCategories } from "@/lib/client-performance";
 import { shareContent } from "@/lib/share";
@@ -229,7 +231,13 @@ export function Header() {
   }
 
   return (
-    <header
+    <>
+      {/* Announcement bar global — DI LUAR header sticky supaya ikut scroll
+          pergi; hanya navbar yang menempel di top: 0. Di product detail
+          header fixed + offset halaman dihitung manual → bar tidak dipasang
+          di sana agar tidak merusak perhitungan. */}
+      {!isProductDetail && <AnnouncementBar />}
+      <header
       className={
         isProductDetail
           ? "product-detail-header nat-site-header bg-white md:sticky md:z-50 md:shadow-sm"
@@ -313,21 +321,19 @@ export function Header() {
         </div>
       )}
       <div className={isProductDetail ? "hidden md:block" : ""}>
-        <div
-          className={
-            isHome
-              ? "mobile-header-row mx-auto max-w-[var(--nat-container)] gap-1.5 xs:gap-2"
-              : "nat-header-inner nat-safe-x mx-auto flex max-w-[var(--nat-container)] items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3"
-          }
+      <div
+        className="nat-header-inner nat-safe-x mx-auto flex max-w-[var(--nat-container)] items-center justify-between gap-1.5 py-1.5 xs:gap-2 md:py-3 max-md:grid max-md:grid-cols-[auto_1fr_auto]"
+      >
+        {/* Hamburger menu — mobile saja (MobileMenu render tombol + drawer).
+            Desktop masih pakai DesktopCategoryNav di bawah. */}
+        <MobileMenu />
+
+        {/* Logo — di tengah baris mobile (grid kolom tengah), kiri di desktop. */}
+        <Link
+          href="/"
+          aria-label={brand}
+          className="flex min-w-0 shrink-0 items-center max-md:justify-self-center"
         >
-          {/* Back button — hanya tampil di mobile untuk halaman non-main-tab.
-            Memberikan fallback navigasi yang jelas selain swipe gesture iOS. */}
-          {/* Logo */}
-          <Link
-            href="/"
-            aria-label={brand}
-            className="flex min-w-0 shrink-0 items-center"
-          >
             <Image
               src="/logo.png"
               alt={brand}
@@ -397,9 +403,12 @@ export function Header() {
             )}
           </div>
         </div>
-        {isHome && <HomeSearchBar />}
+        {/* Baris pencarian mobile — SEMUA halaman dengan header utama (bukan
+            cuma home). Membuka SearchOverlay (suggestions + history). */}
+        <HomeSearchBar />
       </div>
       {!isProductDetail && <DesktopCategoryNav />}
     </header>
+    </>
   );
 }

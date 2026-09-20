@@ -17,15 +17,13 @@ import { HomeExploreProducts } from "@/components/home/HomeExploreProducts";
 import { HomeProductCard } from "@/components/home/HomeProductCard";
 import HeroBanner from "@/components/home/HeroBanner";
 import { loadHeroSlides } from "@/lib/hero-slides-server";
-import TrustMarquee from "@/components/home/TrustMarquee";
-import type { TrustItem } from "@/data/trustItems";
 import { ExternalLink } from "@/components/ExternalLink";
 import { AppStoreCTACard } from "@/components/AppStoreBadge";
 import { mapDbBrandsToCatalogItems } from "@/lib/brand-catalog";
 import { PageContainer } from "@/components/ui/PageContainer";
 import { ResponsiveGrid } from "@/components/ui/ResponsiveGrid";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { RevealOnView } from "@/components/RevealOnView";
+import { AppleReveal } from "@/components/AppleReveal";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -655,43 +653,6 @@ async function getBestSellerProducts(limit = 6): Promise<StoreProduct[]> {
 }
 
 export default async function HomePage() {
-  const wa =
-    process.env.NEXT_PUBLIC_WA_NUMBER ||
-    process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ||
-    "";
-  const waUrl = `https://wa.me/${wa.replace("+", "")}?text=${encodeURIComponent("Halo Natalo Petshop, saya mau tanya...")}`;
-  const trustItems: TrustItem[] = [
-    {
-      icon: "truck",
-      iconClass: "text-natalo-700",
-      text: "Gratis Ongkir Area Medan",
-    },
-    {
-      icon: "shield",
-      iconClass: "text-emerald-600",
-      text: "Produk Original 100%",
-    },
-    {
-      icon: "chat",
-      iconClass: "text-natalo-700",
-      text: "Konsultasi via WhatsApp",
-      href: waUrl,
-      external: true,
-      showLinkIcon: true,
-    },
-    {
-      icon: "paw",
-      iconClass: "text-natalo-700",
-      text: "Petshop Medan Terpercaya",
-      href: "/tentang-kami",
-    },
-    {
-      icon: "gift",
-      iconClass: "text-amber-500",
-      text: "Banyak Promo Setiap Hari",
-    },
-  ];
-
   const [
     flashSaleRows,
     popularCategories,
@@ -830,10 +791,11 @@ export default async function HomePage() {
           __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
         }}
       />
-      {/* TrustMarquee hanya untuk mobile — di desktop bagian atas sengaja dibuat bersih (langsung header → hero), pesan gratis-ongkir/original/WA tersedia di footer. Jangan un-hide di desktop. */}
-      <div className="md:hidden">
-        <TrustMarquee items={trustItems} />
-      </div>
+      {/* Pemicu animasi apple-reveal — mount sekali, observasi semua elemen
+          .apple-reveal di halaman ini. (TrustMarquee homepage-only dihapus:
+          info gratis-ongkir/original/promo kini jadi AnnouncementBar global
+          di Header, tidak duplikat.) */}
+      <AppleReveal />
 
       {/* ── 2. BANNER CAROUSEL UTAMA ── */}
       {/* Slides dari tabel HomeBanner (dikelola admin, sumber yang SAMA
@@ -889,9 +851,8 @@ export default async function HomePage() {
 
       {/* ── 5. FLASH SALE ── */}
       {flashSaleProducts.length > 0 && (
-        <RevealOnView>
         <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
-          <div className="flex items-center justify-between gap-2">
+          <div className="apple-reveal flex items-center justify-between gap-2">
             <div>
               <h2 className="text-lg font-black text-zinc-900">⚡ Flash Sale</h2>
               <p className="mt-0.5 text-xs text-zinc-500">Diskon spesial dari admin Natalo</p>
@@ -902,7 +863,7 @@ export default async function HomePage() {
               </Link>
             )}
           </div>
-          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 5, xl: 6 }} className="mt-3">
+          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 5, xl: 6 }} className="mt-3 product-grid">
             {flashSaleProducts.map((p) => {
               const finalPrice = p.discountPrice!;
               const off = discountPercent(p.price, p.discountPrice);
@@ -910,7 +871,7 @@ export default async function HomePage() {
                 <Link
                   key={p.id}
                   href={`/products/${p.slug}`}
-                  className="min-w-0 overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
+                  className="apple-reveal min-w-0 overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
                 >
                   <div className="relative aspect-square w-full bg-white p-2">
                     {p.imageUrl ? (
@@ -949,7 +910,6 @@ export default async function HomePage() {
             })}
           </ResponsiveGrid>
         </PageContainer>
-        </RevealOnView>
       )}
 
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
@@ -957,11 +917,12 @@ export default async function HomePage() {
       </PageContainer>
 
       {/* ── 11. PRODUK TERLARIS ── */}
-      <RevealOnView>
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
-        <SectionHeader title="🏆 Produk Terlaris" href="/products?popular=best-seller" ctaLabel="Lihat semua" />
+        <div className="apple-reveal">
+          <SectionHeader title="🏆 Produk Terlaris" href="/products?popular=best-seller" ctaLabel="Lihat semua" />
+        </div>
         <div className="md:hidden">
-        <div className="mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="apple-reveal mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {bestSellers.map((p, i) => {
             const finalPrice = p.memberPrice ?? p.discountPrice ?? p.price;
             const hasMarkdown =
@@ -1030,24 +991,35 @@ export default async function HomePage() {
         </div>
 
         <div className="mt-3 hidden md:block">
-          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 6 }}>
+          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 6 }} className="product-grid">
             {bestSellers.map((p, i) => (
               <HomeProductCard key={p.id} product={p} rankBadge={i + 1} />
             ))}
           </ResponsiveGrid>
         </div>
       </PageContainer>
-      </RevealOnView>
 
-      <RevealOnView>
       <BrandChoiceSection brands={featuredBrands} />
-      </RevealOnView>
 
       {homeCategories.length > 0 && (
-        <RevealOnView>
         <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
-          <h2 className="text-base font-black text-zinc-900 sm:text-lg">Kategori Populer</h2>
-          <div className="mt-2 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-3 md:gap-4 md:overflow-visible lg:grid-cols-6">
+          <h2 className="apple-reveal text-base font-black text-zinc-900 sm:text-lg">Kategori Populer</h2>
+          {/* Mobile: pil horizontal satu baris — hemat ruang layar, momentum
+              scroll, scrollbar disembunyikan, mudah diketuk jempol.
+              Desktop: tetap grid tile besar dengan gambar. */}
+          <div className="mt-3 flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:hidden">
+            {homeCategories.map((cat) => (
+              <Link
+                key={cat.slug}
+                href={`/products?kategori=${cat.slug}`}
+                className="flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-zinc-800 transition hover:border-zinc-900 hover:bg-zinc-900 hover:text-white active:scale-95"
+              >
+                <HomeIcon name={categoryIconFor(cat.name)} className="h-4 w-4" />
+                {cat.name}
+              </Link>
+            ))}
+          </div>
+          <div className="mt-2 hidden gap-2.5 md:grid md:grid-cols-3 md:gap-4 lg:grid-cols-6">
             {homeCategories.map((cat) => (
               <Link
                 key={cat.slug}
@@ -1082,12 +1054,10 @@ export default async function HomePage() {
             ))}
           </div>
         </PageContainer>
-        </RevealOnView>
       )}
 
-      <RevealOnView>
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
-        <div>
+        <div className="apple-reveal">
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">
             Rekomendasi Untuk Kamu
           </h2>
@@ -1097,7 +1067,7 @@ export default async function HomePage() {
         </div>
 
         {recommendedProducts.length > 0 ? (
-          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 4, xl: 5, xxl: 6 }} className="mt-3">
+          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 4, xl: 5, xxl: 6 }} className="mt-3 product-grid">
             {recommendedProducts.map((product, index) => (
               <HomeProductCard
                 key={product.id}
@@ -1115,11 +1085,9 @@ export default async function HomePage() {
           </div>
         )}
       </PageContainer>
-      </RevealOnView>
 
-      <RevealOnView>
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
-        <div>
+        <div className="apple-reveal">
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">
             Jelajahi Produk Natalo
           </h2>
@@ -1137,7 +1105,6 @@ export default async function HomePage() {
           />
         </div>
       </PageContainer>
-      </RevealOnView>
 
     </div>
   );

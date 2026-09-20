@@ -41,6 +41,20 @@ function PawIcon() {
   );
 }
 
+function MapPinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4" aria-hidden="true">
+      <path d="M12 21s-7-5.5-7-11a7 7 0 1 1 14 0c0 5.5-7 11-7 11Z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  );
+}
+
+const STORE_ADDRESS = "JLN MT Haryono No 103 B C D, Medan";
+const MAPS_HREF = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+  `${STORE_ADDRESS} Natalo Petshop`,
+)}`;
+
 export function Footer() {
   const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
   const wa = process.env.NEXT_PUBLIC_WA_NUMBER || process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "";
@@ -127,6 +141,30 @@ export function Footer() {
             </ul>
             <OperatingHours className="mt-3 space-y-1 text-xs text-zinc-500" />
           </div>
+        </div>
+
+        {/* Quick actions — pintasan lokasi toko (Google Maps) + chat admin.
+            Tombol besar mudah diketuk di mobile, sejajar di sm+. */}
+        <div className="mt-7 border-t border-zinc-200 pt-5">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <ExternalLink
+              href={MAPS_HREF}
+              className="flex flex-1 items-center justify-center gap-2 rounded-full border border-natalo-200 bg-white px-5 py-3 text-sm font-black text-natalo-700 transition hover:border-natalo-500 hover:bg-natalo-50"
+            >
+              <MapPinIcon />
+              Lihat Lokasi Toko
+            </ExternalLink>
+            {wa && (
+              <ExternalLink
+                href={waHref}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#25D366] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#1fb857]"
+              >
+                <WhatsAppIcon />
+                Chat Admin Natalo
+              </ExternalLink>
+            )}
+          </div>
+          <p className="mt-2.5 text-center text-xs text-zinc-500">{STORE_ADDRESS}</p>
         </div>
 
         <div className="mt-7 flex flex-col gap-2 border-t border-zinc-200 pt-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
