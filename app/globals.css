@@ -788,6 +788,71 @@ body.top-drawer-open .nat-whatsapp-float {
   }
 }
 
+/* ── Mikro-animasi bersama (revamp UI 2026-09) ──
+   Semua durasi mikro-interaksi 150-300ms, easing ease-out-quart, dan
+   hanya menganimasikan properti yang GPU-composited (transform/opacity)
+   supaya tetap 60 FPS. */
+
+/* Pop badge keranjang saat count bertambah (dipakai CartCount.tsx). */
+@keyframes nat-badge-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.nat-badge-pop {
+  animation: nat-badge-pop 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Slide-down halus untuk dropdown/menu yang di-mount saat dibuka
+   (dipakai DesktopCategoryNav). */
+@keyframes nat-menu-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.nat-menu-pop {
+  transform-origin: top;
+  animation: nat-menu-pop 0.18s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Marquee brand desktop — track digandakan 2x, geser -50% = loop mulus. */
+@keyframes nat-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.nat-brand-marquee {
+  animation: nat-marquee linear infinite;
+}
+
+/* Penghormatan prefers-reduced-motion: semua animasi dekoratif dimatikan.
+   Marquee jatuh ke baris statis yang wrap, bukan terpotong overflow. */
+@media (prefers-reduced-motion: reduce) {
+  .nat-badge-pop,
+  .nat-menu-pop {
+    animation: none;
+  }
+  .nat-brand-marquee {
+    animation: none;
+    width: auto;
+    flex-wrap: wrap;
+  }
+}
+
 /* ── Content fade-in saat real data replace skeleton ──
    Apply via className="nat-content-fade-in" pada container yang muncul
    setelah loading state. 180ms ease-out — cukup smooth tanpa lag.

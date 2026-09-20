@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PetCartIcon } from "@/components/PetCartIcon";
 import { loadCart } from "@/lib/cart";
@@ -11,10 +11,18 @@ type CartCountProps = {
 
 export function CartCount({ compact = false }: CartCountProps) {
   const [count, setCount] = useState(0);
+  // Pop animation: tiap kali count NAIK, key diganti → badge re-mount dan
+  // animasi nat-badge-pop (scale 1→1.35→1, 300ms) diputar sekali. Turun
+  // (hapus item) tidak di-pop — yang di-rayakan adalah aksi menambah.
+  const [popKey, setPopKey] = useState(0);
+  const prevCountRef = useRef(0);
 
   function sync() {
     const items = loadCart();
-    setCount(items.reduce((s, i) => s + i.quantity, 0));
+    const total = items.reduce((s, i) => s + i.quantity, 0);
+    setCount(total);
+    if (total > prevCountRef.current) setPopKey((k) => k + 1);
+    prevCountRef.current = total;
   }
 
   useEffect(() => {
@@ -51,11 +59,12 @@ export function CartCount({ compact = false }: CartCountProps) {
       {!compact && <span className="hidden xs:inline">Keranjang</span>}
       {count > 0 && (
         <span
-          className={
+          key={popKey}
+          className={`nat-badge-pop ${
             compact
               ? "absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white ring-2 ring-white"
               : "absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-natalo-600 text-[10px] font-bold text-white"
-          }
+          }`}
         >
           {count > 99 ? "99+" : count}
         </span>

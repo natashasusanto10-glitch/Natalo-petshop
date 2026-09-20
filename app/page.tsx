@@ -25,6 +25,7 @@ import { mapDbBrandsToCatalogItems } from "@/lib/brand-catalog";
 import { PageContainer } from "@/components/ui/PageContainer";
 import { ResponsiveGrid } from "@/components/ui/ResponsiveGrid";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { RevealOnView } from "@/components/RevealOnView";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -540,7 +541,7 @@ function discountPercent(price: number, discountPrice: number | null) {
  * (nilai turunan, tak bisa di-ORDER BY di SQL), jadi pool kandidat harus lebih
  * besar dari `limit`. 200 memberi ruang lega dibanding 7 kartu yang dipakai.
  */
-const FLASH_SALE_CANDIDATE_CAP = 200;
+const FLASH_SALE_CANDIDATE_CAP = 48;
 
 /** Hanya kolom yang benar-benar dirender kartu Flash Sale + kolom pengurutan. */
 type FlashSaleCard = Pick<
@@ -717,7 +718,7 @@ export default async function HomePage() {
       })
       .catch(() => []),
     getProducts({
-      take: 40,
+      take: 24,
       hasPriceOnly: true,
       inStockOnly: true,
       withImageOnly: true,
@@ -743,7 +744,7 @@ export default async function HomePage() {
     withImageOnly: true,
   };
   const [initialExploreProducts, exploreTotal] = await Promise.all([
-    getProducts({ ...exploreOptions, take: 14 }),
+    getProducts({ ...exploreOptions, take: 12 }),
     getProductsCount(exploreOptions),
   ]);
   const initialExploreCursor =
@@ -888,6 +889,7 @@ export default async function HomePage() {
 
       {/* ── 5. FLASH SALE ── */}
       {flashSaleProducts.length > 0 && (
+        <RevealOnView>
         <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -947,6 +949,7 @@ export default async function HomePage() {
             })}
           </ResponsiveGrid>
         </PageContainer>
+        </RevealOnView>
       )}
 
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
@@ -954,6 +957,7 @@ export default async function HomePage() {
       </PageContainer>
 
       {/* ── 11. PRODUK TERLARIS ── */}
+      <RevealOnView>
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
         <SectionHeader title="🏆 Produk Terlaris" href="/products?popular=best-seller" ctaLabel="Lihat semua" />
         <div className="md:hidden">
@@ -1033,10 +1037,14 @@ export default async function HomePage() {
           </ResponsiveGrid>
         </div>
       </PageContainer>
+      </RevealOnView>
 
+      <RevealOnView>
       <BrandChoiceSection brands={featuredBrands} />
+      </RevealOnView>
 
       {homeCategories.length > 0 && (
+        <RevealOnView>
         <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">Kategori Populer</h2>
           <div className="mt-2 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-3 md:gap-4 md:overflow-visible lg:grid-cols-6">
@@ -1074,8 +1082,10 @@ export default async function HomePage() {
             ))}
           </div>
         </PageContainer>
+        </RevealOnView>
       )}
 
+      <RevealOnView>
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
         <div>
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">
@@ -1105,7 +1115,9 @@ export default async function HomePage() {
           </div>
         )}
       </PageContainer>
+      </RevealOnView>
 
+      <RevealOnView>
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
         <div>
           <h2 className="text-base font-black text-zinc-900 sm:text-lg">
@@ -1125,6 +1137,7 @@ export default async function HomePage() {
           />
         </div>
       </PageContainer>
+      </RevealOnView>
 
     </div>
   );

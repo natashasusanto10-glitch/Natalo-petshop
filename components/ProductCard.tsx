@@ -6,6 +6,7 @@ import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { rankBadgeClass } from "@/lib/rank-badge";
 import { productVideoMp4 } from "@/lib/product/product-video-url";
 import { ProductCardCta } from "./ProductCardCta";
+import { ProductQuickAdd } from "./ProductQuickAdd";
 import { ProductCardVideo } from "./product/ProductCardVideo";
 
 // Exported for unit testing + reuse. Guard price=0 → hindari Infinity%.
@@ -140,7 +141,7 @@ export function ProductCard({
   }
 
   return (
-    <div className="group relative flex min-w-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[#e8eef7] bg-white p-2.5 shadow-[var(--shadow-card)] transition active:scale-[0.99] active:opacity-90 sm:p-3 sm:hover:-translate-y-0.5 sm:hover:shadow-[var(--shadow-card-hover)]">
+    <div className="group relative flex min-w-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[#e8eef7] bg-white p-2.5 shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] [will-change:transform] active:scale-[0.99] active:opacity-90 sm:p-3 sm:hover:-translate-y-1.5 sm:hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)]">
       <Link href={`/products/${product.slug}`} className="flex flex-1 flex-col">
         {/* Image area */}
         <div
@@ -164,7 +165,7 @@ export function ProductCard({
               placeholder="blur"
               blurDataURL={IMAGE_BLUR_GRAY}
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              className="relative z-[1] object-contain p-2 transition duration-200 group-hover:scale-[1.03]"
+              className="relative z-[1] object-contain p-2 transition-transform duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] group-hover:scale-[1.04]"
             />
           ) : (
             <div className="relative z-[1] flex h-full items-center justify-center text-5xl text-gray-300">🐾</div>
@@ -223,6 +224,28 @@ export function ProductCard({
           )}
         </div>
       </Link>
+
+      {/* Quick-add overlay (desktop hover saja — Tailwind v4 membungkus
+          group-hover dgn @media(hover:hover), mobile bersih). Container-
+          nya setumpuk persis dengan area gambar (padding kartu 12px);
+          tombol HARUS di luar Link supaya tidak nested-interactive. Cuma
+          dirender untuk kartu tanpa CTA inline (homepage/katalog) biar
+          tidak dobel tombol. */}
+      {!showCta && (
+        <div className="pointer-events-none absolute inset-x-3 top-3 z-20 hidden aspect-square sm:block">
+          <ProductQuickAdd
+            className="pointer-events-auto absolute bottom-3 right-3 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100"
+            productId={product.id}
+            slug={product.slug}
+            name={product.name}
+            price={displayPrice}
+            imageUrl={product.imageUrl}
+            weightGram={product.weightGram}
+            stock={product.stock}
+            hasVariants={product.hasVariants}
+          />
+        </div>
+      )}
 
       {/* CTA kecil — outside Link untuk hindari nested-interactive. */}
       {showCta && (

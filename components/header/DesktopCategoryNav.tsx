@@ -69,7 +69,7 @@ export function DesktopCategoryNav() {
             <span aria-hidden>☰</span> Kategori
           </button>
           {open && cats.length > 0 && (
-            <div className="absolute left-0 top-full z-50 mt-1 grid w-[520px] grid-cols-2 gap-1 rounded-[var(--radius-lg)] border border-zinc-100 bg-white p-3 shadow-[var(--shadow-pop)]">
+            <div className="nat-menu-pop absolute left-0 top-full z-50 mt-1 grid w-[520px] grid-cols-2 gap-1 rounded-[var(--radius-lg)] border border-zinc-100 bg-white p-3 shadow-[var(--shadow-pop)]">
               {cats.slice(0, 12).map((c) => (
                 <Link
                   key={c.id}

@@ -101,6 +101,7 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
         </Link>
       </div>
 
+      {/* Mobile: snap scroller dengan auto-slide (perilaku lama). */}
       <div
         ref={scrollerRef}
         onPointerDown={pauseAutoSlide}
@@ -111,14 +112,14 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
           const page = Math.round(scroller.scrollLeft / Math.max(1, scroller.clientWidth));
           currentPageRef.current = Math.min(pageCount - 1, Math.max(0, page));
         }}
-        className="scrollbar-hide mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto scroll-smooth px-4 pb-2 md:grid md:grid-cols-4 md:gap-4 md:overflow-visible lg:grid-cols-6 md:[&>*:nth-child(n+13)]:hidden"
+        className="scrollbar-hide mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto scroll-smooth px-4 pb-2 md:hidden"
       >
         {brands.map((brand) => (
           <Link
             key={brand.id}
             href={brandProductHref(brand)}
             aria-label={`Lihat produk brand ${brand.name}`}
-            className="flex h-[116px] min-w-0 shrink-0 basis-[calc((100%_-_1.25rem)/3)] snap-start flex-col items-center justify-center rounded-2xl border border-[#eef3fb] bg-white px-3 py-3 shadow-sm transition active:scale-[0.97] active:opacity-90 md:basis-auto md:w-auto"
+            className="flex h-[116px] min-w-0 shrink-0 basis-[calc((100%_-_1.25rem)/3)] snap-start flex-col items-center justify-center rounded-2xl border border-[#eef3fb] bg-white px-3 py-3 shadow-sm transition active:scale-[0.97] active:opacity-90"
           >
             <div className="flex h-[54px] w-full items-center justify-center">
               <BrandLogo brand={brand} />
@@ -128,6 +129,46 @@ export function BrandChoiceSection({ brands }: BrandChoiceSectionProps) {
             </span>
           </Link>
         ))}
+      </div>
+
+      {/* Desktop: marquee horizontal berkelanjutan (bukan grid statis yang
+          menumpuk baris). Track digandakan 2x → geser -50% = loop mulus.
+          Pause saat hover; reduced-motion → baris statis wrap (lihat
+          .nat-brand-marquee di globals.css). */}
+      <div
+        className="group/marquee relative mt-3 hidden overflow-hidden md:block"
+        style={{
+          maskImage:
+            "linear-gradient(to right, transparent, black 6%, black 94%, transparent)",
+          WebkitMaskImage:
+            "linear-gradient(to right, transparent, black 6%, black 94%, transparent)",
+        }}
+      >
+        <div
+          className="nat-brand-marquee flex w-max group-hover/marquee:[animation-play-state:paused]"
+          style={{ animationDuration: `${Math.max(20, brands.length * 2.6)}s` }}
+        >
+          {[0, 1].map((copy) => (
+            <div key={copy} className="flex gap-4 pr-4" aria-hidden={copy === 1}>
+              {brands.map((brand) => (
+                <Link
+                  key={brand.id}
+                  href={brandProductHref(brand)}
+                  aria-label={`Lihat produk brand ${brand.name}`}
+                  tabIndex={copy === 1 ? -1 : undefined}
+                  className="flex h-[116px] w-[168px] shrink-0 flex-col items-center justify-center rounded-2xl border border-[#eef3fb] bg-white px-3 py-3 shadow-sm transition-transform duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] hover:-translate-y-1 hover:shadow-md active:scale-[0.97]"
+                >
+                  <div className="flex h-[54px] w-full items-center justify-center">
+                    <BrandLogo brand={brand} />
+                  </div>
+                  <span className="mt-3 line-clamp-1 max-w-full text-center text-[13px] font-bold leading-tight text-slate-700">
+                    {brand.name}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

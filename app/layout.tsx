@@ -12,7 +12,6 @@ import IOSSwipeBack from "@/components/IOSSwipeBack";
 import { StoreOnly } from "@/components/StoreOnly";
 import { BottomNavigation } from "@/components/BottomNavigation";
 import { ToastProvider } from "@/components/Toast";
-import { AppSplashOverlay } from "@/components/AppSplashOverlay";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import { PageStatusBar } from "@/components/PageStatusBar";
 import { KeyboardManager } from "@/components/KeyboardManager";
@@ -144,7 +143,6 @@ export default function RootLayout({
         <IOSSwipeBack />
         <ViewTransitionsProvider />
         <StoreOnly>
-          <AppSplashOverlay />
           <PullToRefresh />
           <KeyboardManager />
           <NetworkStatusBanner />
