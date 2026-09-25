@@ -7,6 +7,8 @@ import { OperatingHoursCard } from "@/components/OperatingHours";
 import { PasswordInput } from "@/components/PasswordInput";
 
 function safeRedirect(value: string | null) {
+  // Backslash ditolak: parser URL (WHATWG) memperlakukan `\` seperti `/`,
+  // jadi tanpa cek ini `/\evil.com` lolos sebagai protocol-relative redirect.
   if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return "/";
   if (
     value.startsWith("/api") ||
@@ -49,6 +51,26 @@ export default function MemberRegisterPage() {
     return () => window.clearTimeout(id);
   }, [resendCooldown]);
 
+  // Focus management: setelah error, fokus pindah ke field invalid pertama.
+  function focusFirstInvalid(sent: boolean) {
+    const id = !name
+      ? "reg-name"
+      : !email
+        ? "reg-email"
+        : !phone
+          ? "reg-phone"
+          : !password
+            ? "reg-password"
+            : !confirmPassword
+              ? "reg-confirm"
+              : sent
+                ? "reg-otp"
+                : "reg-name";
+    document.getElementById(id)?.focus();
+  }
+
+  const confirmMismatch = !!confirmPassword && confirmPassword !== password;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -56,11 +78,13 @@ export default function MemberRegisterPage() {
 
     if (password !== confirmPassword) {
       setError("Konfirmasi password tidak sama.");
+      focusFirstInvalid(otpSent);
       return;
     }
 
     if (otpSent && otp.replace(/\D/g, "").length !== 6) {
       setError("Masukkan kode OTP 6 digit.");
+      focusFirstInvalid(true);
       return;
     }
 
@@ -84,6 +108,7 @@ export default function MemberRegisterPage() {
 
     if (!res.ok) {
       setError(data.error || "Pendaftaran gagal");
+      focusFirstInvalid(otpSent);
       return;
     }
 
@@ -119,174 +144,222 @@ export default function MemberRegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-start justify-center bg-gray-50 px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[26px] bg-white p-2 shadow-sm ring-1 ring-blue-100">
+    <div className="auth-aurora min-h-[calc(100svh-64px)] px-4 pb-10 pt-8 md:py-12">
+      <div className="mx-auto w-full max-w-sm">
+        <section className="auth-rise text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[20px] bg-white shadow-[0_10px_24px_-8px_rgba(20,62,126,0.22)] ring-1 ring-natalo-700/10">
             <Image
               src="/icons/icon-192x192.png"
               alt="NL Petshop"
-              width={64}
-              height={64}
+              width={44}
+              height={44}
               priority
-              className="h-16 w-16 rounded-2xl"
+              className="h-11 w-11 rounded-[12px]"
             />
           </div>
-          <h1 className="mt-4 text-2xl font-black tracking-tight text-gray-950">
-            Daftar Member Natalo
+          <h1 className="mt-5 text-[26px] font-black leading-tight tracking-tight text-gray-950">
+            Mulai Langkahmu!
           </h1>
-          <p className="mt-1 text-sm text-gray-500">Gratis! Dapatkan harga khusus dan benefit member.</p>
-        </div>
+          <p className="mx-auto mt-2 max-w-xs text-[15px] leading-relaxed text-gray-500">
+            Daftar sekarang dan nikmati voucher promo khusus member baru.
+          </p>
+        </section>
 
-        <form onSubmit={handleSubmit} className="space-y-4 rounded-3xl bg-white p-8 shadow-sm">
+        {notice && (
+          <p
+            role="status"
+            className="auth-rise mt-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700"
+          >
+            {notice}
+          </p>
+        )}
+
+        <form
+          onSubmit={handleSubmit}
+          className="auth-rise auth-rise-d1 mt-7 flex flex-col gap-4"
+        >
           <div>
-            <label className="block text-sm font-medium text-gray-700">Nama lengkap</label>
+            <label htmlFor="reg-name" className="mb-1.5 block text-[13px] font-bold text-gray-700">
+              Nama lengkap
+            </label>
             <input
+              id="reg-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
               disabled={otpSent}
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              autoComplete="name"
+              className="auth-input"
               placeholder="Contoh: Andi Setiawan"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Email</label>
+            <label htmlFor="reg-email" className="mb-1.5 block text-[13px] font-bold text-gray-700">
+              Email
+            </label>
             <input
+              id="reg-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={otpSent}
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              autoComplete="email"
+              className="auth-input"
               placeholder="Contoh: nama@email.com"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">No. handphone</label>
+            <label htmlFor="reg-phone" className="mb-1.5 block text-[13px] font-bold text-gray-700">
+              No. handphone
+            </label>
             <input
+              id="reg-phone"
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               required
               disabled={otpSent}
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              autoComplete="tel"
+              className="auth-input"
               placeholder="Contoh: 08123456789"
             />
           </div>
 
-          <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-blue-800">
-            <p className="font-semibold">Kode OTP dikirim ke email <span className="underline">dan</span> WhatsApp kamu.</p>
-            <p className="mt-1 text-blue-700/80">
-              Email biasanya masuk dalam beberapa detik. WhatsApp bisa butuh
-              30–60 detik. Cukup masukkan satu kode yang sama.
-            </p>
-          </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700">Password</label>
+            <label
+              htmlFor="reg-password"
+              className="mb-1.5 block text-[13px] font-bold text-gray-700"
+            >
+              Password
+            </label>
             <PasswordInput
+              id="reg-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={8}
               disabled={otpSent}
-              className="mt-1 block w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-              placeholder="Masukkan password (min. 8 karakter)"
+              autoComplete="new-password"
+              className="auth-input"
+              placeholder="Buat password"
             />
+            <p className="mt-1.5 text-xs text-gray-500">Minimal 8 karakter.</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Konfirmasi password</label>
+            <label
+              htmlFor="reg-confirm"
+              className="mb-1.5 block text-[13px] font-bold text-gray-700"
+            >
+              Konfirmasi password
+            </label>
             <PasswordInput
+              id="reg-confirm"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               minLength={8}
               disabled={otpSent}
-              className={`mt-1 block w-full rounded-xl border px-4 py-3 text-sm outline-none transition focus:ring-2 ${
-                confirmPassword && confirmPassword !== password
-                  ? "border-red-300 focus:border-red-400 focus:ring-red-100"
-                  : "border-gray-200 focus:border-blue-400 focus:ring-blue-100"
-              }`}
+              autoComplete="new-password"
+              className={`auth-input ${confirmMismatch ? "auth-input--invalid" : ""}`}
               placeholder="Ulangi password yang sama"
             />
-            {confirmPassword && confirmPassword !== password && (
-              <p className="mt-1 text-xs text-red-500">Password tidak cocok</p>
+            {confirmMismatch && (
+              <p className="mt-1.5 text-xs font-semibold text-red-500">Password tidak cocok</p>
             )}
           </div>
 
+          {error && (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
+            >
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || confirmMismatch}
+            className="auth-cta mt-1 w-full"
+          >
+            {loading ? (
+              <>
+                <span className="auth-spinner" aria-hidden />
+                Memproses…
+              </>
+            ) : otpSent ? (
+              "Verifikasi & Daftar"
+            ) : (
+              "Kirim kode OTP"
+            )}
+          </button>
+
+          <p className="rounded-xl border border-[#e2e9f4] bg-[#f1f5fb] px-3 py-2.5 text-xs leading-relaxed text-slate-600">
+            Kode OTP dikirim ke email &amp; WhatsApp kamu. WhatsApp bisa butuh
+            30–60 detik — cukup masukkan satu kode yang sama.
+          </p>
+
           {otpSent && (
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-              <label className="block text-sm font-bold text-gray-900">Kode OTP</label>
+            <div className="rounded-2xl border border-[#dbe7f7] bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+              <label
+                htmlFor="reg-otp"
+                className="block text-[13px] font-bold text-gray-700"
+              >
+                Kode OTP
+              </label>
               <input
+                id="reg-otp"
                 type="text"
                 inputMode="numeric"
                 maxLength={6}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 required
-                className="mt-2 block w-full rounded-xl border border-blue-200 bg-white px-4 py-3 text-center text-lg font-black tracking-[0.35em] outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                className="auth-input mt-2 text-center text-lg font-black tracking-[0.35em]"
                 placeholder="000000"
               />
-              <p className="mt-2 text-xs text-gray-600">
+              <p className="mt-2 text-xs leading-relaxed text-gray-500">
                 Kode berlaku 10 menit. WhatsApp bisa butuh{" "}
                 <span className="font-semibold">30–60 detik</span> — kalau cepat, cek inbox email
                 kamu dulu. Gunakan salah satu kode yang masuk.
               </p>
-              <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold">
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold">
                 <button
                   type="button"
                   onClick={handleResendOtp}
                   disabled={resendCooldown > 0}
-                  className="text-blue-700 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+                  className="text-natalo-700 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
                 >
                   {resendCooldown > 0
                     ? `Kirim ulang OTP (${resendCooldown}s)`
                     : "Kirim ulang OTP"}
                 </button>
-                <button type="button" onClick={unlockEdit} className="text-gray-600 hover:underline">
+                <button
+                  type="button"
+                  onClick={unlockEdit}
+                  className="text-gray-500 hover:text-gray-700 hover:underline"
+                >
                   Ubah data
                 </button>
               </div>
             </div>
           )}
-
-          {notice && (
-            <p className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">{notice}</p>
-          )}
-
-          {error && (
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading || (!!confirmPassword && confirmPassword !== password)}
-            className="w-full rounded-full bg-blue-500 py-3 text-sm font-bold text-white transition hover:bg-blue-600 disabled:opacity-50"
-          >
-            {loading ? "Memproses..." : otpSent ? "Verifikasi & Daftar" : "Kirim OTP"}
-          </button>
-
-          <div className="rounded-xl border border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-700">
-            <p className="text-center font-semibold text-gray-900">
-              Manfaat jadi Member di Natalopetshop.com
-            </p>
-            <ul className="mt-3 list-disc space-y-1 pl-5">
-              <li>Kumpulkan Loyalty poin dari setiap transaksi anda.</li>
-              <li>Belanja di natalopetshop.com lebih murah, cepat, hemat dan mudah.</li>
-            </ul>
-          </div>
         </form>
 
-        <p className="mt-6 text-center text-sm text-gray-500">
+        <p className="auth-rise auth-rise-d2 mt-6 text-center text-xs text-gray-500">
+          Gratis — kumpulkan poin loyalty &amp; harga khusus member.
+        </p>
+
+        <p className="mt-4 text-center text-sm text-gray-500">
           Sudah punya akun?{" "}
           <Link
             href={`/member/login?redirect=${encodeURIComponent(redirectTo)}`}
-            className="font-semibold text-blue-600 hover:underline"
+            className="font-extrabold text-natalo-700 hover:underline"
           >
             Masuk
           </Link>

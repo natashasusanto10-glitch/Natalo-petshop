@@ -15,12 +15,15 @@ import { prefetchCategories } from "@/lib/client-performance";
 import { shareContent } from "@/lib/share";
 import { natToast } from "@/components/Toast";
 
-// Halaman auth (login / daftar / OTP / lupa-reset password) — header dirender
-// dalam variant minimal: back + title saja. Search/bell/profile/login button
-// di-hide untuk fokus pada auth flow.
+// Halaman auth (login / daftar / OTP login / lupa-reset password) — header
+// dirender dalam variant minimal: back button SAJA. Judul h1 kini milik
+// halaman masing-masing ("Selamat Datang Kembali!" dll) — sekaligus
+// memperbaiki hierarki heading yang sebelumnya ganda (header + page).
+// Search/bell/profile/login button di-hide untuk fokus pada auth flow.
 const AUTH_PATHS: Record<string, string> = {
   "/member/login": "Masuk",
   "/member/register": "Daftar Member",
+  "/member/login-otp": "Masuk dengan OTP",
   "/member/forgot-password": "Lupa Password",
   "/member/reset-password": "Reset Password",
 };
@@ -194,8 +197,9 @@ export function Header() {
   )
     return null;
 
-  // Auth pages — render minimal header: back button + title saja. Bottom nav,
-  // bell, profile, login button semua di-hide untuk fokus ke flow auth.
+  // Auth pages — render minimal header: back button saja. Judul h1 ada di
+  // halaman (auth premium restyle). Bottom nav, bell, profile, login button
+  // semua di-hide untuk fokus ke flow auth.
   if (isAuthPage) {
     return (
       <header className="nat-site-header z-50 bg-white shadow-sm md:sticky">
@@ -220,9 +224,6 @@ export function Header() {
               />
             </svg>
           </button>
-          <h1 className="flex-1 truncate text-center text-base font-bold text-gray-900">
-            {authTitle}
-          </h1>
           {/* Spacer simetris untuk visual balance dengan back button di kiri. */}
           <span aria-hidden className="h-10 w-10 shrink-0" />
         </div>

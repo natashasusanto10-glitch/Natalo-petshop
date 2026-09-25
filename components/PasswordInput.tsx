@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 
 type PasswordInputProps = {
+  // Untuk label htmlFor + focus management (focus-first-invalid) di halaman auth.
+  id?: string;
   value?: string;
   onChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
   name?: string;
@@ -15,6 +17,7 @@ type PasswordInputProps = {
 };
 
 export function PasswordInput({
+  id,
   value,
   onChange,
   name,
@@ -53,6 +56,7 @@ export function PasswordInput({
     <div className="relative mt-1">
       <input
         ref={inputRef}
+        id={id}
         type={visible ? "text" : "password"}
         name={name}
         value={value}
@@ -72,7 +76,7 @@ export function PasswordInput({
         // SIMPLE: hanya onClick — paling reliable cross-browser termasuk iOS Safari.
         // Tidak ada onMouseDown/onTouchEnd preventDefault yang bisa memblokir click di iOS.
         onClick={toggle}
-        className="absolute right-1 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 cursor-pointer items-center justify-center text-[#999] transition hover:text-[#1E88E5] active:text-[#1E88E5] disabled:cursor-not-allowed disabled:opacity-40"
+        className="absolute right-1 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 cursor-pointer items-center justify-center text-[#94a3b8] transition hover:text-[#143e7e] active:text-[#143e7e] disabled:cursor-not-allowed disabled:opacity-40"
         style={{
           touchAction: "manipulation",
           WebkitTapHighlightColor: "transparent",

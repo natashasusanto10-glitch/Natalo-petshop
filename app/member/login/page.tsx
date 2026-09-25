@@ -55,6 +55,14 @@ export default function MemberLoginPage() {
     }
   }, []);
 
+  // Focus management: setelah error submit, fokus pindah ke field invalid
+  // pertama (identifier kosong → identifier; selain itu → password) supaya
+  // keyboard & screen reader user langsung berada di titik yang perlu
+  // diperbaiki tanpa Tab manual.
+  function focusFirstInvalid() {
+    document.getElementById(identifier ? "auth-password" : "auth-identifier")?.focus();
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -73,6 +81,7 @@ export default function MemberLoginPage() {
 
     if (!res.ok) {
       setError(friendlyLoginError(data.error || "Login gagal"));
+      focusFirstInvalid();
       return;
     }
 
@@ -84,30 +93,36 @@ export default function MemberLoginPage() {
   }
 
   return (
-    <div className="min-h-[calc(100svh-72px)] bg-gradient-to-b from-blue-50 via-[#FAFAFA] to-white px-4 pb-8 pt-6 md:py-12">
-      <div className="mx-auto w-full max-w-md">
-        <section className="text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[26px] bg-white p-2 shadow-sm ring-1 ring-blue-100">
+    <div className="auth-aurora min-h-[calc(100svh-64px)] px-4 pb-10 pt-8 md:py-12">
+      <div className="mx-auto w-full max-w-sm">
+        <section className="auth-rise text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[20px] bg-white shadow-[0_10px_24px_-8px_rgba(20,62,126,0.22)] ring-1 ring-natalo-700/10">
             <Image
               src="/icons/icon-192x192.png"
               alt="NL Petshop"
-              width={64}
-              height={64}
+              width={44}
+              height={44}
               priority
-              className="h-16 w-16 rounded-2xl"
+              className="h-11 w-11 rounded-[12px]"
             />
           </div>
-          <h1 className="mt-4 text-2xl font-black tracking-tight text-gray-950">
-            Masuk Member Natalo
+          <h1 className="mt-5 text-[26px] font-black leading-tight tracking-tight text-gray-950">
+            Selamat Datang Kembali!
           </h1>
-          <p className="mx-auto mt-2 max-w-xs text-sm font-medium leading-relaxed text-gray-500">
-            Belanja kebutuhan hewan jadi lebih mudah, cepat, dan hemat.
+          <p className="mx-auto mt-2 max-w-xs text-[15px] leading-relaxed text-gray-500">
+            Masuk untuk melanjutkan belanja kebutuhan hewan kesayanganmu.
           </p>
         </section>
 
         {notice && (
-          <div className="mt-6 flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
-            <span aria-hidden className="mt-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-xs text-white">
+          <div
+            role="status"
+            className="auth-rise mt-6 flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800"
+          >
+            <span
+              aria-hidden
+              className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-500 text-xs text-white"
+            >
               ✓
             </span>
             <p className="leading-snug">{notice}</p>
@@ -116,79 +131,110 @@ export default function MemberLoginPage() {
 
         <form
           onSubmit={handleSubmit}
-          className="mt-6 space-y-4 rounded-[28px] border border-blue-50 bg-white p-5 shadow-[0_12px_35px_rgba(30,95,191,0.10)] sm:p-7"
+          className="auth-rise auth-rise-d1 mt-7 flex flex-col gap-4"
         >
-          <div className="rounded-2xl bg-blue-50/70 px-4 py-3">
-            <p className="text-sm font-black text-blue-900">Akun member Natalo</p>
-            <p className="mt-0.5 text-xs font-medium text-blue-700">
-              Masuk untuk lanjut checkout, cek pesanan, dan pakai benefit member.
-            </p>
-          </div>
-
           <div>
-            <label className="block text-sm font-bold text-gray-700">Email / No. HP</label>
+            <label
+              htmlFor="auth-identifier"
+              className="mb-1.5 block text-[13px] font-bold text-gray-700"
+            >
+              Email atau No. Handphone
+            </label>
             <input
+              id="auth-identifier"
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               required
               autoComplete="username"
               inputMode="email"
-              className="mt-1.5 block w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              placeholder="Masukan Email / No Hp"
+              className="auth-input"
+              placeholder="Contoh: 08123456789 / nama@email.com"
             />
           </div>
 
           <div>
-            <div className="flex items-center justify-between gap-3">
-              <label className="block text-sm font-bold text-gray-700">Password</label>
+            <div className="flex items-baseline justify-between gap-3">
+              <label
+                htmlFor="auth-password"
+                className="mb-1.5 block text-[13px] font-bold text-gray-700"
+              >
+                Password
+              </label>
               <Link
                 href="/member/forgot-password"
-                className="text-xs font-bold text-blue-600 transition hover:text-blue-700 hover:underline"
+                className="px-0.5 py-2 text-xs font-bold text-natalo-700 transition hover:text-natalo-800 hover:underline"
               >
                 Lupa password?
               </Link>
             </div>
             <PasswordInput
+              id="auth-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="block w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              className="auth-input"
               placeholder="Masukkan password"
               disabled={loading}
             />
           </div>
 
           {error && (
-            <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+            <div
+              role="alert"
+              className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600"
+            >
               {error}
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex h-12 w-full items-center justify-center rounded-full bg-blue-500 text-sm font-black text-white shadow-[0_8px_18px_rgba(30,95,191,0.25)] transition hover:bg-blue-600 active:opacity-90 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:shadow-none"
-          >
-            {loading ? "Memproses..." : "Masuk"}
+          <button type="submit" disabled={loading} className="auth-cta mt-1 w-full">
+            {loading ? (
+              <>
+                <span className="auth-spinner" aria-hidden />
+                Memproses…
+              </>
+            ) : (
+              "Masuk"
+            )}
           </button>
 
-          <div className="border-t border-gray-100 pt-4 text-center">
-            <p className="text-sm text-gray-500">
-              Belum punya akun?{" "}
-              <Link
-                href={`/member/register?redirect=${encodeURIComponent(redirectTo)}`}
-                className="font-black text-blue-600 hover:underline"
-              >
-                Daftar gratis
-              </Link>
-            </p>
-            <p className="mt-1 text-xs font-medium text-gray-400">
-              Daftar gratis dan mulai kumpulkan benefit member Natalo.
-            </p>
+          <div
+            className="flex items-center gap-3 text-xs font-semibold text-gray-400"
+            role="separator"
+          >
+            <span className="h-px flex-1 bg-gray-200" />
+            atau masuk lebih cepat
+            <span className="h-px flex-1 bg-gray-200" />
           </div>
+
+          <Link
+            href={`/member/login-otp?redirect=${encodeURIComponent(redirectTo)}`}
+            className="auth-cta-secondary w-full"
+          >
+            <svg
+              aria-hidden
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              width={18}
+              height={18}
+            >
+              <path d="M20.52 3.48A12 12 0 0 0 3.5 20.36L2 22l1.69-1.55A12 12 0 1 0 20.52 3.48Zm-8.4 18a10 10 0 0 1-5.1-1.4l-.36-.21-3.06.86.82-3-.24-.38a10 10 0 1 1 7.94 4.13Zm5.5-7.5c-.3-.15-1.78-.88-2-1s-.5-.15-.7.15-.82 1-1 1.2-.36.22-.66.07a8.2 8.2 0 0 1-2.4-1.48 9.05 9.05 0 0 1-1.66-2.07c-.17-.3 0-.46.13-.61s.3-.36.45-.54a2.1 2.1 0 0 0 .3-.5.55.55 0 0 0 0-.53c-.07-.15-.7-1.67-.95-2.28s-.5-.52-.7-.53h-.6a1.16 1.16 0 0 0-.83.39 3.5 3.5 0 0 0-1.1 2.6 6.07 6.07 0 0 0 1.27 3.23 13.92 13.92 0 0 0 5.34 4.7c.74.32 1.32.5 1.78.65a4.3 4.3 0 0 0 2 .12 3.24 3.24 0 0 0 2.13-1.5 2.65 2.65 0 0 0 .19-1.5c-.07-.13-.27-.2-.57-.35Z" />
+            </svg>
+            Masuk dengan OTP WhatsApp
+          </Link>
         </form>
+
+        <p className="auth-rise auth-rise-d2 mt-6 text-center text-sm text-gray-500">
+          Belum punya akun?{" "}
+          <Link
+            href={`/member/register?redirect=${encodeURIComponent(redirectTo)}`}
+            className="font-extrabold text-natalo-700 hover:underline"
+          >
+            Daftar gratis
+          </Link>
+        </p>
       </div>
     </div>
   );
