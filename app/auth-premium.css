@@ -1,0 +1,178 @@
+/* ── Auth premium — login/register/login-otp member ──
+   Bahasa visual: aurora background → permukaan putih → input melayang →
+   CTA gradien. Semua animasi transform/opacity saja (kompositor, 60fps),
+   satu easing global agar ritme gerak seluruh halaman konsisten. */
+:root {
+  --nat-auth-ease: cubic-bezier(0.25, 1, 0.5, 1);
+}
+.auth-aurora {
+  background:
+    radial-gradient(900px 480px at 88% -8%, rgba(20, 62, 126, 0.09), transparent 62%),
+    radial-gradient(720px 420px at -6% 4%, rgba(20, 62, 126, 0.05), transparent 58%),
+    #f6f8fc;
+}
+@keyframes nat-auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+.auth-rise {
+  animation: nat-auth-rise 0.32s var(--nat-auth-ease) backwards;
+}
+.auth-rise-d1 { animation-delay: 40ms; }
+.auth-rise-d2 { animation-delay: 80ms; }
+
+.auth-input {
+  display: block;
+  width: 100%;
+  height: 52px;
+  padding: 0 16px;
+  font-family: inherit;
+  /* 16px — di bawah ini Safari iOS auto-zoom saat fokus. */
+  font-size: 16px;
+  color: #0f172a;
+  background: #fff;
+  border: 1px solid #e3e8f0;
+  border-radius: 14px;
+  outline: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition:
+    border-color 0.15s var(--nat-auth-ease),
+    box-shadow 0.15s var(--nat-auth-ease);
+}
+.auth-input::placeholder {
+  color: #8e9bb0;
+}
+.auth-input:focus {
+  border-color: #93b4e3;
+  box-shadow:
+    0 0 0 4px rgba(20, 62, 126, 0.09),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.auth-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+/* State invalid eksplisit (konfirmasi password tidak cocok) — didefinisikan
+   terpisah agar menang atas shorthand border .auth-input di cascade. */
+.auth-input--invalid,
+.auth-input--invalid:focus {
+  border-color: #f8a9a9;
+  box-shadow:
+    0 0 0 4px rgba(220, 38, 38, 0.06),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+}
+/* Autofill Chrome/Safari — paksa fill putih menyatu dengan permukaan input,
+   kalau tidak kuning autofill bawaan menabrak desain premium. */
+input.auth-input:-webkit-autofill,
+input.auth-input:-webkit-autofill:hover,
+input.auth-input:-webkit-autofill:focus {
+  -webkit-box-shadow:
+    0 0 0 1000px #ffffff inset,
+    0 1px 2px rgba(15, 23, 42, 0.04);
+  -webkit-text-fill-color: #0f172a;
+  caret-color: #0f172a;
+  transition: background-color 9999s ease-out;
+}
+
+.auth-cta {
+  height: 52px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  color: #fff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  background: linear-gradient(180deg, #1d529f 0%, #143e7e 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 10px 22px -6px rgba(20, 62, 126, 0.45),
+    0 2px 6px rgba(20, 62, 126, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition:
+    box-shadow 0.15s var(--nat-auth-ease),
+    transform 0.12s var(--nat-auth-ease),
+    opacity 0.15s var(--nat-auth-ease);
+}
+/* Guard hover: di touch device hover state bisa "nempel" setelah tap. */
+@media (hover: hover) {
+  .auth-cta:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.16),
+      0 14px 28px -6px rgba(20, 62, 126, 0.52),
+      0 3px 8px rgba(20, 62, 126, 0.22);
+  }
+}
+.auth-cta:active {
+  transform: scale(0.98) translateY(0);
+}
+.auth-cta:disabled {
+  cursor: not-allowed;
+  opacity: 0.85;
+  transform: none;
+}
+
+.auth-cta-secondary {
+  height: 50px;
+  border-radius: 14px;
+  cursor: pointer;
+  background: #fff;
+  border: 1.5px solid #dbe1ea;
+  color: #0f172a;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition:
+    border-color 0.15s var(--nat-auth-ease),
+    background 0.15s var(--nat-auth-ease);
+}
+@media (hover: hover) {
+  .auth-cta-secondary:hover {
+    border-color: #25d366;
+    background: #f0fdf4;
+  }
+}
+.auth-cta-secondary svg {
+  color: #25d366;
+  flex-shrink: 0;
+}
+
+.auth-spinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 999px;
+  animation: nat-auth-spin 0.7s linear infinite;
+}
+@keyframes nat-auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-rise {
+    animation: none;
+  }
+  .auth-cta,
+  .auth-cta-secondary,
+  .auth-input {
+    transition: none;
+  }
+}
+
+
