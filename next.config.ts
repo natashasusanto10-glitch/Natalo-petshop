@@ -131,6 +131,23 @@ const nextConfig: NextConfig = {
         key: "Permissions-Policy",
         value: "browsing-topics=(), interest-cohort=(), payment=(self), microphone=(), geolocation=(self), camera=(self)",
       },
+      // CSP Report-Only — TIDAK men-enforce, hanya melaporkan pelanggaran.
+      // Tahap 1 rollout CSP: observasi dulu apa yang terlanggar (DevTools
+      // console) sebelum naik ke CSP enforcement ketat. Catatan kebijakan:
+      //   - script/style 'unsafe-inline': inline bootstrap Next.js + style
+      //     atribut — dihilangkan bertahap setelah nonce diterapkan.
+      //   - img/media https: mencakup CDN eksternal (Bunny, UploadThing,
+      //     Shopee import, dll — lihat images.remotePatterns).
+      //   - worker blob: + media blob: untuk ffmpeg.wasm di /feed.
+      //   - connect wss: untuk koneksi realtime bila dipakai.
+      {
+        key: "Content-Security-Policy-Report-Only",
+        value:
+          "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; " +
+          "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+          "img-src 'self' data: blob: https:; media-src 'self' blob: https:; " +
+          "font-src 'self' data:; connect-src 'self' https: wss:; worker-src 'self' blob:",
+      },
     ];
     const ffmpegHeaders = [
       { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
