@@ -26,8 +26,15 @@
  */
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import * as Sentry from "@sentry/nextjs";
 
 let warnedNoEnv = false;
+
+// Throttle alert Sentry saat checkLimit gagal — kalau Redis down berkepanjangan
+// setiap request akan error, dan tanpa throttle Sentry akan banjir event dari
+// fail-open yang berjalan tanpa sinyal. 1 alert / 5 menit cukup untuk pager.
+const FAILURE_ALERT_INTERVAL_MS = 5 * 60_000;
+let lastFailureAlertMs = 0;
 
 function getRedisClient(): Redis | null {
   const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -157,6 +164,21 @@ export async function checkLimit(
     // Upstash/network error — fail-open (allow request). Lebih baik
     // miss-limit sekali daripada block legitimate user pas Redis down.
     console.error("[rate-limit] check failed, allowing request:", err);
+    // Fail-open tanpa sinyal = brute-force protection bisa mati diam-diam.
+    // Alert ke Sentry (throttle 5 menit) supaya kondisi ini terlihat dan
+    // bisa di-pager, bukan hanya lewat di log.
+    const now = Date.now();
+    if (now - lastFailureAlertMs > FAILURE_ALERT_INTERVAL_MS) {
+      lastFailureAlertMs = now;
+      try {
+        Sentry.captureException(err instanceof Error ? err : new Error(String(err)), {
+          tags: { component: "rate-limit" },
+        });
+      } catch {
+        // Sentry gagal (mis. DSN tidak diset di dev) — jangan sampai
+        // alerting membunuh request path.
+      }
+    }
     return { ok: true };
   }
 }
@@ -164,14 +186,21 @@ export async function checkLimit(
 /**
  * Helper untuk extract client IP dari Next.js request headers.
  * Mirror pattern lama di tiap auth route, sekarang centralized.
+ *
+ * Urutan prioritas: `x-real-ip` DULU, baru `x-forwarded-for`.
+ * Di Vercel `x-real-ip` diset edge dari koneksi TCP sehingga tidak bisa
+ * dipalsukan klien; `x-forwarded-for` bisa membawa nilai impor palsu dari
+ * klien di depan rantai proxy — kalau dipercaya duluan, attacker cukup
+ * rotasi header palsu per request untuk membypass semua limiter (kunci
+ * rate limit dibangun dari IP ini).
  */
 export function getClientIp(headers: Headers): string {
+  const realIp = headers.get("x-real-ip")?.trim();
+  if (realIp) return realIp;
   const forwarded = headers.get("x-forwarded-for");
   if (forwarded) {
     const first = forwarded.split(",")[0]?.trim();
     if (first) return first;
   }
-  const realIp = headers.get("x-real-ip");
-  if (realIp) return realIp;
   return "unknown";
 }
