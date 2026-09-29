@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_motion.dart';
 import '../theme/natalo_colors.dart';
 
 import '../models/product.dart';
@@ -168,19 +169,35 @@ class _AddedToCartSheetState extends State<_AddedToCartSheet> {
                   ),
                 ),
               ),
-              GestureDetector(
-                onTap: () => Navigator.of(context).maybePop(),
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 18,
-                    color: cs.onSurfaceVariant,
+              Semantics(
+                button: true,
+                label: 'Tutup',
+                child: Material(
+                  color: Colors.transparent,
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).maybePop(),
+                    child: SizedBox(
+                      // Hit area 44 — lingkaran visual 28 di dalamnya.
+                      width: 44,
+                      height: 44,
+                      child: Center(
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: cs.surfaceContainerHighest,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 18,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -253,6 +270,7 @@ class _AddedToCartSheetState extends State<_AddedToCartSheet> {
             ),
             const SizedBox(height: 12),
             AnimatedSwitcher(
+              transitionBuilder: appFadeScaleTransition,
               duration: const Duration(milliseconds: 250),
               child: SizedBox(
                 key: ValueKey(_refreshed),
@@ -332,53 +350,59 @@ class _SheetRecommendationCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            GestureDetector(
-              onTap: onOpenDetail,
-              behavior: HitTestBehavior.opaque,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Foto 1:1 cover — isi kotak penuh (dari height 118 + tile
-                  // abu contain), menonjol ala Shopee.
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: AppProductImage(
-                        imageUrl: product.imageUrl,
-                        fit: BoxFit.cover,
+            // Material+InkWell (bukan GestureDetector) supaya tap area
+            // kartu rekomendasi punya pressed feedback.
+            Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(14),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: onOpenDetail,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Foto 1:1 cover — isi kotak penuh (dari height 118 + tile
+                    // abu contain), menonjol ala Shopee.
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: AspectRatio(
+                        aspectRatio: 1,
+                        child: AppProductImage(
+                          imageUrl: product.imageUrl,
+                          fit: BoxFit.cover,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 32,
-                    child: Text(
-                      product.title,
-                      maxLines: 2,
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 32,
+                      child: Text(
+                        product.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      formatRupiah(product.finalPrice),
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: cs.onSurface,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        height: 1.3,
+                      style: const TextStyle(
+                        color: _brandBlue,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    formatRupiah(product.finalPrice),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _brandBlue,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  ProductSavingsBadge(product: product),
-                  ProductRatingSoldMeta(product: product),
-                ],
+                    ProductSavingsBadge(product: product),
+                    ProductRatingSoldMeta(product: product),
+                  ],
+                ),
               ),
             ),
             const Spacer(),

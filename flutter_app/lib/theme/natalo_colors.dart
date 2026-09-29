@@ -148,7 +148,11 @@ class NataloColors {
   // ── Text ──
   static const Color textPrimary = Color(0xFF0F172A);
   static const Color textSecondary = Color(0xFF475569);
-  static const Color textTertiary = Color(0xFF94A3B8);
+
+  /// #64748B = 4.76:1 di atas putih — memenuhi WCAG AA untuk teks kecil.
+  /// Sebelumnya #94A3B8 (2.56:1) — dipakai untuk harga coret & label,
+  /// info penghematan nyata yang gagal terbaca.
+  static const Color textTertiary = Color(0xFF64748B);
 
   /// Alias `textTertiary` untuk legacy reference `NataloColors.textMuted`.
   static const Color textMuted = textTertiary;

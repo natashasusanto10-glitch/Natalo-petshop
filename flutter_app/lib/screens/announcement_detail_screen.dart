@@ -98,6 +98,7 @@ class _AnnouncementHeader extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
+            tooltip: 'Kembali',
             onPressed: onBack,
             icon: Icon(
               Icons.arrow_back_rounded,

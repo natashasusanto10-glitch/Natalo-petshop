@@ -101,7 +101,7 @@ export function AddToCartBottomSheet({ open, item, onClose, onAdded }: Props) {
           type="button"
           onClick={submit}
           disabled={!canSubmit}
-          className="w-full rounded-full bg-natalo-600 py-3 text-sm font-black text-white transition-all duration-100 hover:bg-natalo-700 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
+          className="w-full rounded-full bg-natalo-600 py-3 text-sm font-black text-white transition duration-100 hover:bg-natalo-700 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
         >
           Tambah ke Keranjang
         </button>

@@ -1023,7 +1023,7 @@ export default function CartPage() {
               type="button"
               onClick={checkoutSelected}
               disabled={selectedCount === 0 || stockRefreshing}
-              className="mt-5 flex w-full items-center justify-center rounded-full bg-blue-500 py-4 text-sm font-bold text-white transition-all duration-100 hover:bg-blue-600 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
+              className="mt-5 flex w-full items-center justify-center rounded-full bg-blue-500 py-4 text-sm font-bold text-white transition duration-100 hover:bg-blue-600 active:scale-95 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:active:scale-100"
             >
               {stockRefreshing ? "Cek stok..." : `Checkout (${selectedQuantity})`}
             </button>

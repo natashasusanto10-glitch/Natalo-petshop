@@ -96,7 +96,7 @@ export function BannerCarousel({ banners, intervalMs = 4000 }: Props) {
             key={i}
             onClick={() => setActive(i)}
             aria-label={`Slide ${i + 1}`}
-            className={`h-1.5 rounded-full transition-all ${
+            className={`h-1.5 rounded-full transition-[width,background-color] ${
               i === active ? "w-6 bg-blue-500" : "w-1.5 bg-zinc-300"
             }`}
           />

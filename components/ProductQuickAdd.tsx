@@ -83,7 +83,7 @@ export function ProductQuickAdd({
             ? `Pilih varian ${name}`
             : `Tambah ${name} ke keranjang`
       }
-      className={`flex h-10 w-10 items-center justify-center rounded-full border border-black/5 text-[#1E5FBF] shadow-[0_4px_10px_rgba(15,23,42,0.16)] transition-all duration-150 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] hover:bg-natalo-600 hover:text-white active:scale-90 active:duration-100 ${
+      className={`flex h-10 w-10 items-center justify-center rounded-full border border-black/5 text-[#1E5FBF] shadow-[0_4px_10px_rgba(15,23,42,0.16)] transition duration-150 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] hover:bg-natalo-600 hover:text-white active:scale-90 active:duration-100 ${
         added ? "bg-emerald-600 text-white" : "bg-white"
       } ${className}`}
     >

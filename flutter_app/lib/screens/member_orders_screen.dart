@@ -280,39 +280,48 @@ class _OrderFilterTabs extends StatelessWidget {
               final filter = _OrderFilter.values[index];
               final active = selected == filter;
 
-              return InkWell(
-                onTap: () => onChanged(filter),
-                borderRadius: BorderRadius.circular(AppRadius.md),
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 15),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text(
-                        filter.label,
-                        style: TextStyle(
-                          color: active ? _brandBlue : cs.onSurfaceVariant,
-                          fontSize: NataloTextSize.bodyLg,
-                          // Tab aktif vs nonaktif. Peta dua tingkat biasa
-                          // (w900 DAN w800 sama-sama -> strong) akan MENGHAPUS
-                          // beda ini dan membuat semua tab tampak aktif.
-                          // Nonaktif turun ke body, sesuai aturan token utk tab.
-                          fontWeight:
-                              active ? NataloWeight.strong : NataloWeight.body,
+              return Semantics(
+                button: true,
+                selected: active,
+                label: 'Filter pesanan: ${filter.label}',
+                child: InkWell(
+                  onTap: () => onChanged(filter),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  child: Padding(
+                    // top-only (jangan tambah bottom): Column end-aligned —
+                    // bottom padding mengangkat indikator garis dari tepi.
+                    // Hit height sudah ~50px (15+teks+12+3).
+                    padding: const EdgeInsets.only(top: 15),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          filter.label,
+                          style: TextStyle(
+                            color: active ? _brandBlue : cs.onSurfaceVariant,
+                            fontSize: NataloTextSize.bodyLg,
+                            // Tab aktif vs nonaktif. Peta dua tingkat biasa
+                            // (w900 DAN w800 sama-sama -> strong) akan MENGHAPUS
+                            // beda ini dan membuat semua tab tampak aktif.
+                            // Nonaktif turun ke body, sesuai aturan token utk tab.
+                            fontWeight: active
+                                ? NataloWeight.strong
+                                : NataloWeight.body,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        height: 3,
-                        width: active ? 52 : 0,
-                        decoration: BoxDecoration(
-                          color: _brandBlue,
-                          borderRadius: BorderRadius.circular(AppRadius.full),
+                        const SizedBox(height: 12),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOutCubic,
+                          height: 3,
+                          width: active ? 52 : 0,
+                          decoration: BoxDecoration(
+                            color: _brandBlue,
+                            borderRadius: BorderRadius.circular(AppRadius.full),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -492,7 +501,8 @@ class _OrderCardState extends State<_OrderCard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.xl)),
         icon: Container(
           width: 56,
           height: 56,
@@ -716,7 +726,8 @@ class _OrderCardState extends State<_OrderCard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.xl)),
         icon: Container(
           width: 56,
           height: 56,
@@ -1060,7 +1071,8 @@ class _OrderCardState extends State<_OrderCard> {
                                   ),
                                   decoration: BoxDecoration(
                                     color: NataloColors.primarySoft,
-                                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.sm),
                                     border: Border.all(
                                       color: NataloColors.primaryBorder,
                                     ),
@@ -1877,11 +1889,7 @@ Color _statusColor(String status) {
     'READY_TO_PICKUP' || 'READY_FOR_PICKUP' || 'READY_PICKUP' => _brandBlue,
     'SHIPPED' => NataloColors.shipping,
     'DELIVERED' || 'COMPLETED' => NataloColors.successDark,
-    'CANCELLED' ||
-    'CANCELED' ||
-    'REFUNDED' ||
-    'EXPIRED' =>
-      NataloColors.danger,
+    'CANCELLED' || 'CANCELED' || 'REFUNDED' || 'EXPIRED' => NataloColors.danger,
     _ => NataloColors.grey500,
   };
 }

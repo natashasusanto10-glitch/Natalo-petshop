@@ -416,8 +416,9 @@ class _VoucherCard extends StatelessWidget {
                   // Tombol Pakai: disabled kalau voucher belum bisa dipakai
                   // (mis. belum cukup belanja, belum mulai, dst). Tetap show
                   // supaya user paham aksinya — cuma di-grey-out.
+                  // Height 44 = touch target minimum (aksi utama screen ini).
                   SizedBox(
-                    height: 36,
+                    height: 44,
                     child: ElevatedButton(
                       onPressed: voucher.applicable
                           ? () async {

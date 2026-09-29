@@ -6,6 +6,7 @@ import '../services/api_client.dart';
 import '../services/app_analytics.dart';
 import '../services/app_crashlytics.dart';
 import '../services/auth_service.dart';
+import '../utils/humanize_error.dart';
 import '../utils/shop_navigation.dart';
 import '../services/biometric_service.dart';
 import '../services/push_notification_service.dart';
@@ -34,6 +35,10 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _biometricEnabled = false;
   bool _biometricSupported = false;
+  // Inline validation (samakan dgn register): error per-field, di-clear
+  // saat user mulai mengetik. Sebelumnya submit kosong langsung ke server.
+  String? _identifierError;
+  String? _passwordError;
 
   @override
   void initState() {
@@ -85,6 +90,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login({bool fromBiometric = false}) async {
     if (!fromBiometric) AppHaptics.tap();
+    // Inline validation sebelum kirim — kosong tidak boleh sampai server.
+    if (!fromBiometric) {
+      final identifier = _emailController.text.trim();
+      final password = _passwordController.text;
+      setState(() {
+        _identifierError =
+            identifier.isEmpty ? 'Email / No. HP wajib diisi' : null;
+        _passwordError = password.isEmpty ? 'Password wajib diisi' : null;
+      });
+      if (_identifierError != null || _passwordError != null) {
+        AppHaptics.warning();
+        return;
+      }
+      // Normalisasi trim — controller dipakai untuk cred biometric juga.
+      _emailController.text = identifier;
+    }
     setState(() => _loading = true);
     try {
       final profile = await authService.login(
@@ -158,33 +179,12 @@ class _LoginScreenState extends State<LoginScreen> {
   /// Backend Capacitor return error message Indonesian dari /api/auth/member-login
   /// (mis. "Password salah", "User tidak ditemukan") — pakai langsung kalau
   /// statusCode 400/401. Untuk network error generic, kasih hint actionable.
+  /// Network/timeout/5xx translation didelegasikan ke humanizeError bersama.
   String _humanizeLoginError(Object error) {
-    final raw = error.toString();
-    if (error is ApiException) {
-      // Server error message — biasanya sudah user-friendly dari backend.
-      // Tapi kalau bare "Request gagal." atau status 500, beri konteks.
-      if (error.statusCode == 401) {
-        return 'Email/HP atau password salah. Coba lagi atau pakai "Lupa password?".';
-      }
-      if (error.statusCode == 429) {
-        return 'Terlalu banyak percobaan. Tunggu beberapa menit lalu coba lagi.';
-      }
-      if (error.statusCode != null && error.statusCode! >= 500) {
-        return 'Server sedang bermasalah. Coba lagi nanti.';
-      }
-      return error.message;
+    if (error is ApiException && error.statusCode == 401) {
+      return 'Email/HP atau password salah. Coba lagi atau pakai "Lupa password?".';
     }
-    // Network / timeout errors — exception message biasanya technical.
-    final lower = raw.toLowerCase();
-    if (lower.contains('socketexception') ||
-        lower.contains('failed host lookup') ||
-        lower.contains('connection refused')) {
-      return 'Tidak bisa connect ke server. Cek koneksi internet kamu.';
-    }
-    if (lower.contains('timeout')) {
-      return 'Server butuh waktu lebih lama. Coba lagi sebentar.';
-    }
-    return 'Login gagal: $raw';
+    return humanizeError(error, actionPrefix: 'Login');
   }
 
   Future<void> _promptEnableBiometric() async {
@@ -273,12 +273,20 @@ class _LoginScreenState extends State<LoginScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: cs.surface,
         leading: IconButton(
+          tooltip: 'Kembali',
           icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
-          onPressed: () => Navigator.pushNamedAndRemoveUntil(
-            context,
-            '/',
-            (_) => false,
-          ),
+          // Back mengembalikan user ke HALAMAN ASAL (redirect args — mis.
+          // dari checkout), bukan selalu Beranda. Tanpa redirect → Beranda.
+          onPressed: () {
+            final target = parseLoginRedirect(
+              ModalRoute.of(context)?.settings.arguments,
+            );
+            if (target == null) {
+              Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+              return;
+            }
+            navigateAfterLogin(Navigator.of(context), target);
+          },
         ),
         title: Text(
           'Masuk',
@@ -354,6 +362,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             keyboardType: TextInputType.emailAddress,
                             hint: 'Masukkan email atau nomor HP',
                             prefixIcon: Icons.mail_outline_rounded,
+                            errorText: _identifierError,
+                            onChanged: (_) {
+                              if (_identifierError != null) {
+                                setState(() => _identifierError = null);
+                              }
+                            },
                             autofillHints: const [
                               AutofillHints.username,
                               AutofillHints.email,
@@ -374,14 +388,28 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                               GestureDetector(
+                                behavior: HitTestBehavior.opaque,
                                 onTap: () => Navigator.pushNamed(
                                     context, '/member/forgot-password'),
-                                child: const Text(
-                                  'Lupa password?',
-                                  style: TextStyle(
-                                    color: _brandBlue,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w900,
+                                child: Semantics(
+                                  button: true,
+                                  link: true,
+                                  child: Container(
+                                    // Padding vertikal supaya hit area
+                                    // ≈44px (13px text + 2×15.5).
+                                    alignment: Alignment.center,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 15,
+                                    ),
+                                    child: const Text(
+                                      'Lupa password?',
+                                      style: TextStyle(
+                                        color: _brandBlue,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -393,6 +421,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             obscureText: _obscure,
                             hint: 'Masukkan password',
                             prefixIcon: Icons.lock_outline_rounded,
+                            errorText: _passwordError,
+                            onChanged: (_) {
+                              if (_passwordError != null) {
+                                setState(() => _passwordError = null);
+                              }
+                            },
                             autofillHints: const [AutofillHints.password],
                             suffix: IconButton(
                               onPressed: () =>
@@ -707,6 +741,8 @@ class _LoginTextField extends StatelessWidget {
   final Widget? suffix;
   // #1 autofill: aktifkan Google Password Manager / auto-isi credential.
   final List<String>? autofillHints;
+  final String? errorText;
+  final ValueChanged<String>? onChanged;
 
   const _LoginTextField({
     required this.controller,
@@ -716,16 +752,23 @@ class _LoginTextField extends StatelessWidget {
     this.obscureText = false,
     this.suffix,
     this.autofillHints,
+    this.errorText,
+    this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final errorBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: BorderSide(color: cs.error, width: 1.4),
+    );
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscureText,
       autofillHints: autofillHints,
+      onChanged: onChanged,
       style: TextStyle(
         color: cs.onSurface,
         fontSize: 15,
@@ -733,6 +776,12 @@ class _LoginTextField extends StatelessWidget {
       ),
       decoration: InputDecoration(
         hintText: hint,
+        errorText: errorText,
+        errorStyle: TextStyle(
+          color: cs.error,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
         hintStyle: const TextStyle(
           color: Color(0xFF6B7280),
           fontWeight: FontWeight.w600,
@@ -763,6 +812,8 @@ class _LoginTextField extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: _brandBlue, width: 1.4),
         ),
+        errorBorder: errorBorder,
+        focusedErrorBorder: errorBorder,
       ),
     );
   }

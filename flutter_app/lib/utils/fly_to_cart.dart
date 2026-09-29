@@ -118,7 +118,9 @@ class _FlyToCartOverlayState extends State<_FlyToCartOverlay>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      // 700ms (dari 900) — koreografi terasa, tapi sheet "ditambahkan"
+      // yang menunggu completion tidak tertunda terlalu lama.
+      duration: const Duration(milliseconds: 700),
     );
     _t = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic);
     _ctrl.forward();

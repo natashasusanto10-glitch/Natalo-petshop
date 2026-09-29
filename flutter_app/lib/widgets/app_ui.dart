@@ -5,6 +5,7 @@ import 'package:lottie/lottie.dart' as lottie;
 import 'package:shimmer/shimmer.dart';
 
 import '../services/api_client.dart';
+import '../theme/app_motion_tokens.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
 import '../theme/natalo_colors.dart';
@@ -416,7 +417,7 @@ class AppFadeSwitcher extends StatelessWidget {
     super.key,
     required this.child,
     required this.stateKey,
-    this.duration = const Duration(milliseconds: 220),
+    this.duration = AppMotionTokens.quick,
   });
 
   @override
@@ -425,6 +426,16 @@ class AppFadeSwitcher extends StatelessWidget {
       duration: duration,
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
+      // transitionBuilder eksplisit: fade + scale mulai 0.96 — TANPA ini,
+      // default AnimatedSwitcher = ScaleTransition penuh dari scale(0),
+      // konten terlihat "muncul dari titik nol" (tidak natural).
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1.0).animate(animation),
+          child: child,
+        ),
+      ),
       // Layout: stack alignment top — hindari "jump" vertikal saat ukuran
       // skeleton beda dengan konten.
       layoutBuilder: (currentChild, previousChildren) => Stack(

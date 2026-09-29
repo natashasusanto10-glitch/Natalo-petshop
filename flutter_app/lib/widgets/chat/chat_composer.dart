@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_motion.dart';
 
 import '../../theme/app_radius.dart';
 import '../../theme/app_spacing.dart';
@@ -134,6 +135,7 @@ class _ChatComposerState extends State<ChatComposer> {
               ),
               const SizedBox(width: AppSpacing.sm),
               AnimatedSwitcher(
+                transitionBuilder: appFadeScaleTransition,
                 duration: const Duration(milliseconds: 150),
                 child: (_hasText || widget.canSendWithoutText)
                     ? _SendButton(

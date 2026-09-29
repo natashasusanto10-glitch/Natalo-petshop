@@ -14,6 +14,7 @@ import 'models/app_notification.dart';
 import 'models/cart_item.dart';
 import 'models/member_profile.dart';
 import 'models/product.dart';
+import 'widgets/tab_back_handler.dart';
 import 'screens/account_security_screen.dart';
 import 'screens/account_settings_screen.dart';
 import 'screens/all_brands_screen.dart';
@@ -512,13 +513,34 @@ class NataloPetshopApp extends StatelessWidget {
               _ => const HomeScreen(),
             };
 
-            return _SmoothPageRoute(settings: settings, child: page);
+            // Tab root screens di-nav via pushNamedAndRemoveUntil → selalu
+            // route tunggal di stack. Bungkus dengan TabBackHandler supaya
+            // system back Android: tutup overlay → balik ke Beranda →
+            // double-back-to-exit (bukan terminate app langsung).
+            final isTabRoot = _tabRootRoutes.contains(settings.name);
+            return _SmoothPageRoute(
+              settings: settings,
+              child: isTabRoot
+                  ? TabBackHandler(
+                      isHomeTab: settings.name == '/', child: page)
+                  : page,
+            );
           },
         );
       },
     );
   }
 }
+
+/// Route tab root — target navigasi bottom nav (pushNamedAndRemoveUntil).
+/// Semua route ini dibungkus TabBackHandler (lihat onGenerateRoute).
+const Set<String> _tabRootRoutes = <String>{
+  '/',
+  '/products',
+  '/feed',
+  '/transactions',
+  '/member',
+};
 
 class _SmoothPageRoute extends PageRouteBuilder<void> {
   final Widget child;

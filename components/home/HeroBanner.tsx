@@ -128,7 +128,7 @@ export default function HeroBanner({
         className="hero-banner relative w-full touch-pan-y overflow-hidden rounded-[20px] shadow-sm"
       >
         <div
-          className={`flex h-full ${isDragging ? "" : "transition-transform duration-700 ease-out"}`}
+          className={`flex h-full ${isDragging ? "" : "transition-transform duration-[450ms] ease-[cubic-bezier(0.32,0.72,0,1)]"}`}
           style={{
             transform: `translateX(calc(-${current * 100}% + ${dragOffset}px))`,
           }}
@@ -147,7 +147,7 @@ export default function HeroBanner({
                   type="button"
                   onClick={() => goToSlide(index)}
                   aria-label={`Slide ${index + 1} dari ${total}`}
-                  className={`rounded-full transition-all ${
+                  className={`rounded-full transition-[width,background-color] ${
                     index === current ? "h-1.5 w-6 bg-white/90" : "h-1.5 w-1.5 bg-white/45"
                   }`}
                 />
@@ -204,11 +204,13 @@ function SlideContent({ slide }: { slide: HeroSlide }) {
           {slide.badge}
         </span>
 
-        <h1 className="mb-1.5 text-base font-extrabold leading-tight text-white">
+        {/* h2, bukan h1: ini headline slide karusel yang berputar-putar,
+            bukan judul dokumen — h1 halaman disediakan sr-only di page. */}
+        <h2 className="mb-1.5 text-base font-extrabold leading-tight text-white">
           {slide.headlineBefore && <>{slide.headlineBefore} </>}
           <span className="text-amber-300">{slide.headlineHighlight}</span>
           {slide.headlineAfter && <> {slide.headlineAfter}</>}
-        </h1>
+        </h2>
 
         <p className="mb-2 text-[11px] leading-snug text-white/85">{slide.subtitle}</p>
 

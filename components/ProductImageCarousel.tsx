@@ -322,7 +322,7 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
                   type="button"
                   aria-label={`Lihat ${video ? "slide" : "foto"} ${index + 1}`}
                   onClick={() => goTo(index)}
-                  className={`h-1.5 rounded-full transition-all ${
+                  className={`h-1.5 rounded-full transition-[width,background-color] ${
                     active === index ? "w-5 bg-white" : "w-1.5 bg-white/60"
                   }`}
                 />

@@ -660,7 +660,9 @@ class _CodeStep extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: '------',
                 hintStyle: const TextStyle(
-                  color: Color(0xFFCBD5E1),
+                  // Slot digit dekoratif — #94A3B8 cukup (dari #CBD5E1 yang
+                  // nyaris tak terbaca di atas fill #F8FAFD).
+                  color: Color(0xFF94A3B8),
                   fontWeight: FontWeight.w800,
                   letterSpacing: 8,
                 ),

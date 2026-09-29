@@ -73,7 +73,10 @@ export function WishlistButton({
         saveToWishlist(product);
       }}
       aria-label={saved ? "Hapus dari wishlist" : "Simpan ke wishlist"}
-      className={`flex ${sizeClass} items-center justify-center rounded-full border transition ${
+      // Hit area 44px via pseudo-element inset — visual tetap 28/36px
+      // (klik pada area pseudo-elemen button tetap terhitung sebagai klik
+      // button tersebut).
+      className={`relative flex ${sizeClass} items-center justify-center rounded-full border transition before:absolute before:-inset-2 before:rounded-full ${
         saved
           ? "border-red-300 bg-red-50 text-red-500"
           : "border-gray-200 bg-white text-gray-400 hover:border-red-300 hover:text-red-400"

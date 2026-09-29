@@ -27,6 +27,9 @@ export default function FeedPage() {
         nativeBackgroundColor="#00000000"
         overlaysWebView
       />
+      {/* h1 sr-only — feed immersive tanpa heading terlihat; screen reader
+          & crawler tetap dapat konteks halaman. */}
+      <h1 className="sr-only">Feed Natalo Petshop</h1>
       <Suspense fallback={null}>
         <FeedClient />
       </Suspense>

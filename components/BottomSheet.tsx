@@ -21,6 +21,8 @@ interface Props {
 }
 
 const DRAG_CLOSE_THRESHOLD = 120;
+// Flick cepat menutup sheet apa pun jaraknya — velocity dalam px/ms.
+const DRAG_CLOSE_VELOCITY = 0.11;
 const SNAP_BACK_MS = 320;
 // iOS Core Animation spring curve dengan slight overshoot — bikin snap-back
 // terasa "physical" mirip native sheet, bukan ease-out flat.
@@ -107,6 +109,10 @@ export function BottomSheet({
 }: Props) {
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const dragStartYRef = useRef(0);
+  const dragStartTimeRef = useRef(0);
+  // Identifier sentuhan pertama — jari kedua tidak boleh "menculik" drag
+  // (posisi tidak melompat saat user pakai dua jari).
+  const dragTouchIdRef = useRef<number | null>(null);
   const dragYRef = useRef(0);
   const isDraggingRef = useRef(false);
   const snapBackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -167,9 +173,12 @@ export function BottomSheet({
 
   function beginDrag(target: EventTarget | null, clientY: number) {
     if (target instanceof HTMLElement && target.closest("button")) return;
+    // Multi-touch protection: drag kedua diabaikan selama drag pertama hidup.
+    if (isDraggingRef.current) return;
 
     if (snapBackTimerRef.current) clearTimeout(snapBackTimerRef.current);
     dragStartYRef.current = clientY;
+    dragStartTimeRef.current = Date.now();
     isDraggingRef.current = true;
     setIsDragging(true);
     setIsSnappingBack(false);
@@ -187,12 +196,17 @@ export function BottomSheet({
   function finishDrag() {
     if (!isDraggingRef.current) return;
     isDraggingRef.current = false;
+    dragTouchIdRef.current = null;
     setIsDragging(false);
 
     const sheetHeight = sheetRef.current?.getBoundingClientRect().height ?? DRAG_CLOSE_THRESHOLD;
     const closeThreshold = Math.min(DRAG_CLOSE_THRESHOLD, sheetHeight * 0.3);
 
-    if (dragYRef.current >= closeThreshold) {
+    // Velocity: flick cepat menutup meski jarak belum sampai threshold.
+    const elapsed = Date.now() - dragStartTimeRef.current;
+    const velocity = elapsed > 0 ? dragYRef.current / elapsed : 0;
+
+    if (dragYRef.current >= closeThreshold || velocity > DRAG_CLOSE_VELOCITY) {
       onClose();
       return;
     }
@@ -209,13 +223,28 @@ export function BottomSheet({
   }
 
   function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
-    const touch = event.touches[0];
+    // Kunci sentuhan PERTAMA yang memulai drag; sentuhan tambahan diabaikan
+    // supaya posisi tidak melompat saat user pakai dua jari.
+    const touch = event.changedTouches[0];
     if (!touch) return;
+    if (dragTouchIdRef.current !== null) return;
+    dragTouchIdRef.current = touch.identifier;
     beginDrag(event.target, touch.clientY);
   }
 
   function handleTouchMove(event: TouchEvent<HTMLDivElement>) {
-    const touch = event.touches[0];
+    const lockedId = dragTouchIdRef.current;
+    let touch: (typeof event.touches)[number] | undefined;
+    if (lockedId !== null) {
+      for (let i = 0; i < event.touches.length; i++) {
+        if (event.touches[i].identifier === lockedId) {
+          touch = event.touches[i];
+          break;
+        }
+      }
+    } else {
+      touch = event.touches[0];
+    }
     if (!touch) return;
     updateDrag(touch.clientY);
     if (dragYRef.current > 0 && event.cancelable) event.preventDefault();

@@ -293,7 +293,7 @@ function LegacyProductVideoUpload({
             <div className="space-y-1">
               <div className="h-2 overflow-hidden rounded-full bg-zinc-100">
                 <div
-                  className="h-full bg-natalo-600 transition-all"
+                  className="h-full bg-natalo-600 transition-[width]"
                   style={{ width: `${progress}%` }}
                 />
               </div>

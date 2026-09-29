@@ -280,7 +280,7 @@ export default function ImportProductsPage() {
             </div>
             <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-100">
               <div
-                className={`h-full transition-all duration-300 ${
+                className={`h-full transition-[width] duration-300 ${
                   done ? "bg-emerald-500" : "bg-natalo-500"
                 }`}
                 style={{ width: `${pct}%` }}

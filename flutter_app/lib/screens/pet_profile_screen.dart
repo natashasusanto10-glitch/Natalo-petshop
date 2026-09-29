@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../utils/motion_prefs.dart';
+
 import '../models/pet.dart';
 import '../models/pet_care_record.dart';
 import '../models/pet_shopping.dart';
@@ -53,7 +55,8 @@ class _PetProfileScreenState extends State<PetProfileScreen>
     _pet = widget.pet;
     _entrance = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 520),
+      // 380ms (dari 520) — entrance tetap tenang tapi tidak menunggu.
+      duration: const Duration(milliseconds: 380),
     );
     _loadCare();
     _extractPhotoTint();
@@ -115,7 +118,9 @@ class _PetProfileScreenState extends State<PetProfileScreen>
     if (_entranceStarted) return;
     _entranceStarted = true;
     // Reduced-motion: langsung tampil penuh tanpa animasi masuk.
-    if (MediaQuery.of(context).disableAnimations) {
+    // (MotionPrefs menggabungkan OS + toggle in-app — jangan MediaQuery
+    // langsung yang melewati preferensi user.)
+    if (MotionPrefs.shouldReduce(context)) {
       _entrance.value = 1;
     } else {
       // Tunggu transisi halaman selesai supaya entrance tidak balapan

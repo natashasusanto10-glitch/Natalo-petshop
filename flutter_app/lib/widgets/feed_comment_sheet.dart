@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'app_motion.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -1118,6 +1119,7 @@ class _FeedReelsCommentSurfaceState extends State<FeedReelsCommentSurface>
             child: IgnorePointer(
               ignoring: _mountedDrawer,
               child: AnimatedSwitcher(
+                transitionBuilder: appFadeScaleTransition,
                 duration: const Duration(milliseconds: 160),
                 switchInCurve: Curves.easeOutCubic,
                 switchOutCurve: Curves.easeInCubic,

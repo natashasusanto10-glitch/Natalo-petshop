@@ -797,6 +797,12 @@ export default async function HomePage() {
           di Header, tidak duplikat.) */}
       <AppleReveal />
 
+      {/* h1 sr-only: halaman mulai dari h2 sebelumnya — melanggar hirarki
+          heading WCAG & melewatkan sinyal SEO terbesar homepage. */}
+      <h1 className="sr-only">
+        Natalo Petshop — Kebutuhan Hewan Medan: Makanan, Aksesoris & Obat
+      </h1>
+
       {/* ── 2. BANNER CAROUSEL UTAMA ── */}
       {/* Slides dari tabel HomeBanner (dikelola admin, sumber yang SAMA
           dengan app Flutter lewat /api/banners); fallback ke

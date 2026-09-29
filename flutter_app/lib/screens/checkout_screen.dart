@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../utils/humanize_error.dart';
 import '../utils/shop_navigation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -1034,7 +1035,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (!mounted) return;
       AppToast.showBanner(
         context,
-        'Checkout gagal: $error',
+        humanizeError(error, actionPrefix: 'Checkout'),
         kind: ToastKind.error,
       );
     } finally {
@@ -3833,12 +3834,18 @@ class _CheckoutBottomBar extends StatelessWidget {
                           fontWeight: NataloWeight.strong,
                         ),
                       ),
-                      Text(
-                        formatRupiah(total),
-                        style: TextStyle(
-                          color: cs.onSurface,
-                          fontSize: NataloTextSize.title,
-                          fontWeight: NataloWeight.strong,
+                      // FittedBox scaleDown: total panjang / font scaling
+                      // besar tidak wrap atau overflow keluar bar.
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          formatRupiah(total),
+                          style: TextStyle(
+                            color: cs.onSurface,
+                            fontSize: NataloTextSize.title,
+                            fontWeight: NataloWeight.strong,
+                          ),
                         ),
                       ),
                       if (totalSavings > 0) ...[
@@ -4923,18 +4930,13 @@ class _VoucherEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          'Belum ada voucher yang bisa digunakan untuk pesanan ini.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontWeight: NataloWeight.strong,
-          ),
-        ),
-      ),
+    // Empty state terdesain (bukan teks polos) — konsisten dgn cart/wishlist/
+    // orders. Icon + judul + subjudul membantu user paham KENAPA kosong.
+    return AppEmptyState(
+      icon: Icons.confirmation_number_outlined,
+      title: 'Belum ada voucher aktif',
+      subtitle:
+          'Voucher yang bisa dipakai untuk pesanan ini akan muncul di sini.',
     );
   }
 }

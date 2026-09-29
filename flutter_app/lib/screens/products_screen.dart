@@ -1671,8 +1671,10 @@ class _DockIconButton extends StatelessWidget {
                 borderRadius: BorderRadius.circular(11),
               ),
             ),
-            // Layer tap + ripple 44 (transparan, clip rounded) — lebih besar
+            // Layer tap + overlay 44 (transparan, clip rounded) — lebih besar
             // dari chip supaya area tap tetap 44 walau visual 38.
+            // highlightColor = pressed overlay (tanpa ripple) supaya chip
+            // tetap memberi feedback saat ditekan.
             Positioned.fill(
               child: Material(
                 color: Colors.transparent,
@@ -1681,10 +1683,8 @@ class _DockIconButton extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   splashFactory: NoSplash.splashFactory,
                   splashColor: Colors.transparent,
-                  highlightColor: Colors.transparent,
-                  overlayColor: const WidgetStatePropertyAll<Color>(
-                    Colors.transparent,
-                  ),
+                  highlightColor:
+                      NataloColors.heroMid.withValues(alpha: 0.12),
                 ),
               ),
             ),

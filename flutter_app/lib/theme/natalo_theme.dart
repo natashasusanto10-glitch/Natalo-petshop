@@ -265,9 +265,20 @@ class NataloTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      iconButtonTheme: const IconButtonThemeData(
+      iconButtonTheme: IconButtonThemeData(
         style: ButtonStyle(
-          overlayColor: WidgetStatePropertyAll<Color>(Colors.transparent),
+          // Press feedback TANPA ripple Material — konsisten dgn bottom nav
+          // yang pakai pressed-overlay alpha rendah. Sebelumnya overlay
+          // transparent + NoSplash membuat SEMUA IconButton app-wide
+          // (header cart/chat/notif, wishlist heart, dsb.) tidak memberi
+          // respons visual apa pun saat ditekan.
+          overlayColor: WidgetStateProperty.resolveWith<Color?>(
+            (states) => states.contains(WidgetState.pressed)
+                ? scheme.onSurface.withValues(alpha: 0.10)
+                : states.contains(WidgetState.hovered)
+                    ? scheme.onSurface.withValues(alpha: 0.06)
+                    : Colors.transparent,
+          ),
           splashFactory: NoSplash.splashFactory,
         ),
       ),
@@ -519,9 +530,17 @@ class NataloTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      iconButtonTheme: const IconButtonThemeData(
+      iconButtonTheme: IconButtonThemeData(
         style: ButtonStyle(
-          overlayColor: WidgetStatePropertyAll<Color>(Colors.transparent),
+          // Press feedback TANPA ripple Material — konsisten dgn bottom nav
+          // (lihat versi light untuk rationale lengkap).
+          overlayColor: WidgetStateProperty.resolveWith<Color?>(
+            (states) => states.contains(WidgetState.pressed)
+                ? colorScheme.onSurface.withValues(alpha: 0.10)
+                : states.contains(WidgetState.hovered)
+                    ? colorScheme.onSurface.withValues(alpha: 0.06)
+                    : Colors.transparent,
+          ),
           splashFactory: NoSplash.splashFactory,
         ),
       ),

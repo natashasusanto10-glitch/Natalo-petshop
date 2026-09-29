@@ -136,8 +136,21 @@ export default function RootLayout({
       <head>
         <meta charSet="UTF-8" />
         <meta httpEquiv="Content-Type" content="text/html; charset=utf-8" />
+        {/* Tanpa JS, .apple-reveal (opacity:0 via CSS untuk animasi scroll)
+            tidak pernah mendapat .is-visible → konten tak pernah muncul. */}
+        <noscript>
+          <style>{`.apple-reveal{opacity:1 !important;transform:none !important}`}</style>
+        </noscript>
       </head>
       <body>
+        {/* Skip-link keyboard a11y: user tab pertama kali langsung dapat
+            opsi lompat ke konten, melewati header + nav. */}
+        <a
+          href="#nat-main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[9999] focus:rounded-lg focus:bg-natalo-600 focus:px-4 focus:py-3 focus:text-sm focus:font-bold focus:text-white focus:shadow-lg"
+        >
+          Lewati ke konten utama
+        </a>
         <PWARegister />
         <NativeSwipeBackController />
         <IOSSwipeBack />
@@ -158,7 +171,7 @@ export default function RootLayout({
           </Suspense>
         </StoreOnly>
         <FeedUploadProvider>
-          <main className="nat-main-shell">
+          <main id="nat-main" className="nat-main-shell">
             <SwipeBackProvider>{children}</SwipeBackProvider>
           </main>
           <StoreOnly>

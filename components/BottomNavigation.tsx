@@ -181,7 +181,7 @@ export function BottomNavigation() {
           {!isFeedRoute && (
             <span
               aria-hidden
-              className="pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-1/4 rounded-full bg-natalo-50 transition-transform duration-[450ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+              className="pointer-events-none absolute left-0 top-1.5 bottom-1.5 w-1/4 rounded-full bg-natalo-50 transition-transform duration-[260ms] ease-[cubic-bezier(0.32,0.72,0,1)]"
               style={{ transform: `translateX(${activeIndex * 100}%)` }}
             />
           )}

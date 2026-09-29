@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
+import '../utils/humanize_error.dart';
 
 import '../models/member_profile.dart';
 import '../services/member_service.dart';
@@ -80,7 +81,7 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
       if (!mounted) return;
       AppToast.showBanner(
         context,
-        'Gagal set utama: $error',
+        humanizeError(error, actionPrefix: 'Set alamat utama'),
         kind: ToastKind.error,
       );
     }
@@ -126,7 +127,7 @@ class _MemberAddressesScreenState extends State<MemberAddressesScreen> {
       if (!mounted) return;
       AppToast.showBanner(
         context,
-        'Alamat gagal dihapus: $error',
+        humanizeError(error, actionPrefix: 'Hapus alamat'),
         kind: ToastKind.error,
       );
     }
@@ -598,6 +599,10 @@ class _AddressActionButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(999),
         child: Container(
+          // minHeight 44 = touch target minimum — tombol "Hapus" (destruktif)
+          // tadinya cuma ~32px, rawan salah-tap.
+          constraints: const BoxConstraints(minHeight: 44),
+          alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
@@ -714,7 +719,7 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
       if (!mounted) return;
       AppToast.showBanner(
         context,
-        'Alamat gagal disimpan: $error',
+        humanizeError(error, actionPrefix: 'Simpan alamat'),
         kind: ToastKind.error,
       );
     } finally {
@@ -767,9 +772,15 @@ class _AddressFormSheetState extends State<_AddressFormSheet> {
                 controller: _phoneController,
                 label: 'Nomor telepon',
                 keyboardType: TextInputType.phone,
-                validator: (value) => (value?.trim().length ?? 0) < 8
-                    ? 'Nomor belum valid'
-                    : null,
+                // Validasi pola (bukan cuma panjang): 8-16 digit, boleh
+                // diawali +62/62/0. Tolak huruf/simbol lain.
+                validator: (value) {
+                  final raw = value?.trim() ?? '';
+                  final digits = raw.replaceAll(RegExp(r'[^\d]'), '');
+                  final ok = RegExp(r'^(\+62|62|0)?\d{8,13}$').hasMatch(raw) ||
+                      (digits.length >= 8 && digits.length <= 15);
+                  return ok ? null : 'Gunakan 8-15 digit nomor telepon (mis. 0812...)';
+                },
               ),
               const SizedBox(height: 12),
               // Single search field — autocomplete address Google Places.

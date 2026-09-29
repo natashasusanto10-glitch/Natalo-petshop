@@ -275,7 +275,7 @@ export function NotificationSettingsClient() {
         </button>
 
         {clientDiag && (
-          <pre className="mt-4 max-h-80 overflow-auto rounded-xl bg-white p-3 text-[11px] leading-relaxed text-gray-800 ring-1 ring-purple-200">
+          <pre className="mt-4 max-h-80 overflow-auto rounded-xl bg-white p-3 text-xs leading-relaxed text-gray-800 ring-1 ring-purple-200">
             {JSON.stringify(clientDiag, null, 2)}
           </pre>
         )}
@@ -298,7 +298,7 @@ export function NotificationSettingsClient() {
         </button>
 
         {testResult && (
-          <pre className="mt-4 max-h-80 overflow-auto rounded-xl bg-white p-3 text-[11px] leading-relaxed text-gray-800 ring-1 ring-blue-200">
+          <pre className="mt-4 max-h-80 overflow-auto rounded-xl bg-white p-3 text-xs leading-relaxed text-gray-800 ring-1 ring-blue-200">
             {JSON.stringify(testResult, null, 2)}
           </pre>
         )}

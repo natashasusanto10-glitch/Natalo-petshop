@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_motion_tokens.dart';
 import 'motion_prefs.dart';
 
 /// Push ala kartu modal iOS modern (Photos "New", Notes) — dipakai untuk
@@ -15,8 +16,8 @@ Route<T> cardModalRoute<T>(WidgetBuilder builder, {RouteSettings? settings}) {
     settings: settings,
     fullscreenDialog: true,
     opaque: true,
-    transitionDuration: const Duration(milliseconds: 380),
-    reverseTransitionDuration: const Duration(milliseconds: 260),
+    transitionDuration: AppMotionTokens.modal,
+    reverseTransitionDuration: AppMotionTokens.route,
     pageBuilder: (context, _, __) => builder(context),
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       if (MotionPrefs.shouldReduce(context)) {

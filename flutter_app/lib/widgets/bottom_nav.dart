@@ -313,11 +313,11 @@ class BottomNavBar extends StatelessWidget {
         // Gaya C — margin samping membesar saat collapsed → pill menyempit
         // ke tengah. Margin bawah selalu clear home indicator + gap.
         return AnimatedPadding(
-          // Durasi dinaikkan 320→420 + curve lebih lembut supaya menyempit/
-          // melebar terasa tenang, tidak "menyentak". Threshold di
-          // updateBottomNavScroll mencegah toggle terlalu sering.
-          duration: const Duration(milliseconds: 420),
-          curve: Curves.easeInOutCubic,
+          // Durasi 280 + easeOutCubic: collapse ini terpicu tiap gesture
+          // scroll-down (aksi frekuensi tinggi) — 420ms terasa pamer.
+          // Threshold di updateBottomNavScroll tetap mencegah toggle spam.
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
           padding: EdgeInsets.fromLTRB(
             collapsed ? 52 : 8,
             6,
@@ -412,8 +412,8 @@ class _BottomNavItem extends StatelessWidget {
                 // AnimatedSize: label melebar/menyusut halus saat tab jadi
                 // aktif atau saat collapse.
                 AnimatedSize(
-                  duration: const Duration(milliseconds: 340),
-                  curve: Curves.easeInOutCubic,
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
                   child: showLabel
                       ? Padding(
                           padding: const EdgeInsets.only(left: 7),
@@ -471,7 +471,8 @@ class _NavBounceState extends State<_NavBounce>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 360),
+      // Bounce ikon saat pilih tab — 300ms cukup terasa tanpa menunda.
+      duration: const Duration(milliseconds: 300),
     );
     _scale = TweenSequence<double>([
       TweenSequenceItem(

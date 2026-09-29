@@ -42,7 +42,7 @@ export function AddToCartButton({ product }: { product: StoreProduct }) {
           setSheetOpen(true);
         }}
         disabled={product.stock <= 0}
-        className={`w-full rounded-full px-6 py-4 text-sm font-bold text-white transition-all duration-100 active:scale-95 ${
+        className={`w-full rounded-full px-6 py-4 text-sm font-bold text-white transition duration-100 active:scale-95 ${
           product.stock <= 0
             ? "cursor-not-allowed bg-zinc-300 active:scale-100"
             : added

@@ -181,15 +181,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(_slides.length, (index) {
                   final active = index == _currentIndex;
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    curve: Curves.easeOutCubic,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    height: 8,
-                    width: active ? 28 : 8,
-                    decoration: BoxDecoration(
-                      color: active ? NataloColors.primary : cs.outlineVariant,
-                      borderRadius: BorderRadius.circular(999),
+                  // Dot tap-able: langsung lompat ke slide terkait (44px
+                  // hit area via padding vertikal).
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _controller.animateToPage(
+                      index,
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                    ),
+                    child: Semantics(
+                      button: true,
+                      label: 'Slide ${index + 1}',
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          height: 8,
+                          width: active ? 28 : 8,
+                          decoration: BoxDecoration(
+                            color:
+                                active ? NataloColors.primary : cs.outlineVariant,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
                     ),
                   );
                 }),
