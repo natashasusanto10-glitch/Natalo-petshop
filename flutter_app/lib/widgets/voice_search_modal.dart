@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'app_motion.dart';
+import '../utils/motion_prefs.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -64,8 +66,19 @@ class _VoiceSearchSheetState extends State<_VoiceSearchSheet>
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
+    );
     _startListening();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Pulse dekoratif — jangan repeat saat user minta reduce-motion
+    // (OS "Kurangi Gerak" atau toggle in-app).
+    if (_pulseController.isAnimating) return;
+    if (!MotionPrefs.shouldReduce(context)) {
+      _pulseController.repeat(reverse: true);
+    }
   }
 
   @override
@@ -188,6 +201,7 @@ class _VoiceSearchSheetState extends State<_VoiceSearchSheet>
                 const SizedBox(height: 22),
                 // Live transcript
                 AnimatedSwitcher(
+                  transitionBuilder: appFadeScaleTransition,
                   duration: const Duration(milliseconds: 200),
                   child: _transcript.isEmpty
                       ? const SizedBox(

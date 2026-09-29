@@ -44,7 +44,7 @@ export function FavoriteButton({ productId, initialFavorited = false, size = "md
       onClick={handleClick}
       aria-label={favorited ? "Hapus dari favorit" : "Simpan ke favorit"}
       aria-pressed={favorited}
-      className={`${btnSize} rounded-full transition-all duration-150 active:scale-90 ${
+      className={`${btnSize} rounded-full transition duration-150 active:scale-90 ${
         favorited
           ? "bg-red-50 text-red-500 hover:bg-red-100"
           : "bg-white/80 text-gray-400 hover:bg-white hover:text-red-400"

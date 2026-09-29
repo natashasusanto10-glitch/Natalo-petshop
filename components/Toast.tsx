@@ -16,6 +16,8 @@ type Toast = {
   msg: string;
   kind: ToastKind;
   actions?: ToastAction[];
+  /** false = sedang animasi keluar (exit transition) — tetap di DOM ~200ms. */
+  visible: boolean;
 };
 
 type ToastEventDetail = {
@@ -27,6 +29,9 @@ type ToastEventDetail = {
 
 const EVENT = "nat-toast";
 const DURATION_MS = 5000;
+// Exit transition — toast jangan lenyap seketika (nested transition ala
+// cart-success-toast). 220ms sinkron dgn .nat-toast-exit di globals.css.
+const TOAST_EXIT_MS = 220;
 const CART_SUCCESS_EVENT = "nat-cart-success-toast";
 // Held a bit longer so users have time to read + tap "Lihat Keranjang"
 // without the toast disappearing on them.
@@ -88,32 +93,77 @@ export function ToastProvider() {
     action: { label: string; href: string } | null;
   } | null>(null);
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  // Akses fungsi dismiss dari JSX tanpa re-register listener — diisi
+  // oleh useEffect di bawah.
+  const dismissRef = useRef<(id: number) => void>(() => {});
   const cartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cartUnmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // Sisa waktu auto-dismiss per toast — dipakai untuk pause timer saat
+    // tab hidden (user kembali ke tab, toast-nya belum menguap).
+    const remaining = new Map<number, number>();
+    const startedAt = new Map<number, number>();
+    // Timer exit-transition (removal dari array) — terpisah dari timer
+    // auto-dismiss supaya pause tidak menghentikan animasi keluar.
+    const exitTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
     function dismiss(id: number) {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
       const timer = timersRef.current.get(id);
       if (timer) {
         clearTimeout(timer);
         timersRef.current.delete(id);
       }
+      remaining.delete(id);
+      startedAt.delete(id);
+      // Kalau sudah mid-exit, jangan restart animasi keluar.
+      if (exitTimers.has(id)) return;
+      setToasts((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, visible: false } : t)),
+      );
+      exitTimers.set(
+        id,
+        setTimeout(() => {
+          exitTimers.delete(id);
+          setToasts((prev) => prev.filter((t) => t.id !== id));
+        }, TOAST_EXIT_MS),
+      );
+    }
+    dismissRef.current = dismiss;
+
+    function armTimer(id: number, ms: number) {
+      startedAt.set(id, Date.now());
+      remaining.set(id, ms);
+      const timer = setTimeout(() => dismiss(id), ms);
+      timersRef.current.set(id, timer);
     }
 
-    function handle(e: Event) {
-      const detail = (e as CustomEvent<ToastEventDetail>).detail;
-      if (!detail?.msg) return;
-      const id = Date.now() + Math.random();
-      const next: Toast = {
-        id,
-        msg: detail.msg,
-        kind: detail.kind || "default",
-        actions: detail.actions ?? (detail.action ? [detail.action] : undefined),
-      };
-      setToasts((prev) => [...prev, next].slice(-3));
-      const timer = setTimeout(() => dismiss(id), DURATION_MS);
-      timersRef.current.set(id, timer);
+    function pauseAll() {
+      for (const [id, timer] of timersRef.current) {
+        clearTimeout(timer);
+        timersRef.current.delete(id);
+        const start = startedAt.get(id) ?? Date.now();
+        const left = (remaining.get(id) ?? DURATION_MS) - (Date.now() - start);
+        remaining.set(id, Math.max(0, left));
+      }
+    }
+
+    function resumeAll() {
+      // Re-arm dari sisa waktu. Iterasi map `remaining` LANGSUNG — jangan
+      // bungkus armTimer dalam updater setState (updater harus murni;
+      // StrictMode menjalankannya 2× → timer ganda).
+      // `remaining` hanya berisi toast yang masih hidup (dismiss menghapus
+      // entrinya), jadi tidak perlu membaca state toasts.
+      for (const [id, left] of remaining) {
+        if (exitTimers.has(id)) continue;
+        if (timersRef.current.has(id)) continue;
+        armTimer(id, left);
+      }
+    }
+
+    function handleVisibility() {
+      if (document.hidden) pauseAll();
+      else resumeAll();
     }
 
     function handleCartSuccess(e: Event) {
@@ -143,16 +193,40 @@ export function ToastProvider() {
       }, CART_SUCCESS_DURATION_MS);
     }
 
+    function handle(e: Event) {
+      const detail = (e as CustomEvent<ToastEventDetail>).detail;
+      if (!detail?.msg) return;
+      const id = Date.now() + Math.random();
+      const next: Toast = {
+        id,
+        msg: detail.msg,
+        kind: detail.kind || "default",
+        actions: detail.actions ?? (detail.action ? [detail.action] : undefined),
+        visible: false,
+      };
+      // Enter: render hidden dulu → frame berikutnya tampilkan supaya
+      // transition masuk terpicu (pola sama dgn cart-success-toast).
+      setToasts((prev) => [...prev, next].slice(-3));
+      requestAnimationFrame(() => {
+        setToasts((prev) =>
+          prev.map((t) => (t.id === id ? { ...t, visible: true } : t)),
+        );
+      });
+      armTimer(id, DURATION_MS);
+    }
+
     window.addEventListener(EVENT, handle);
     window.addEventListener(CART_SUCCESS_EVENT, handleCartSuccess);
+    document.addEventListener("visibilitychange", handleVisibility);
     const timers = timersRef.current;
     return () => {
       window.removeEventListener(EVENT, handle);
       window.removeEventListener(CART_SUCCESS_EVENT, handleCartSuccess);
+      document.removeEventListener("visibilitychange", handleVisibility);
       timers.forEach((t) => clearTimeout(t));
       timers.clear();
-      if (cartTimerRef.current) clearTimeout(cartTimerRef.current);
-      if (cartUnmountTimerRef.current) clearTimeout(cartUnmountTimerRef.current);
+      exitTimers.forEach((t) => clearTimeout(t));
+      exitTimers.clear();
     };
   }, []);
 
@@ -170,7 +244,7 @@ export function ToastProvider() {
             <ToastItem
               key={t.id}
               toast={t}
-              onDismiss={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
+              onDismiss={() => dismissRef.current(t.id)}
             />
           ))}
         </div>
@@ -216,7 +290,11 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   return (
     <div
       role="status"
-      className={`pointer-events-auto flex w-full max-w-md flex-wrap items-center gap-2.5 rounded-xl px-3.5 py-3 text-sm shadow-lg nat-toast-slide ${colorMap[toast.kind]}`}
+      // Enter: nat-toast-slide (keyframe sekali). Exit: class nat-toast-exit
+      // (transition) saat visible=false — toast tidak lenyap seketika.
+      className={`pointer-events-auto flex w-full max-w-md flex-wrap items-center gap-2.5 rounded-xl px-3.5 py-3 text-sm shadow-lg ${
+        toast.visible ? "nat-toast-slide" : "nat-toast-exit"
+      } ${colorMap[toast.kind]}`}
     >
       <span aria-hidden className="text-[10px] font-black uppercase leading-none opacity-80">
         {iconMap[toast.kind]}

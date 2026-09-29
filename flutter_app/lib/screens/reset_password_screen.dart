@@ -156,6 +156,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         scrolledUnderElevation: 0,
         surfaceTintColor: cs.surface,
         leading: IconButton(
+          tooltip: 'Kembali',
           icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
           onPressed: () => Navigator.maybePop(context),
         ),
@@ -251,6 +252,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         decoration: InputDecoration(
                           hintText: 'Minimal 8 karakter',
                           suffixIcon: IconButton(
+                            tooltip: 'Tampilkan atau sembunyikan password',
                             onPressed: () => setState(
                                 () => _obscureNew = !_obscureNew),
                             icon: Icon(_obscureNew
@@ -272,6 +274,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         decoration: InputDecoration(
                           hintText: 'Ketik ulang password baru',
                           suffixIcon: IconButton(
+                            tooltip: 'Tampilkan atau sembunyikan password',
                             onPressed: () => setState(
                                 () => _obscureConfirm = !_obscureConfirm),
                             icon: Icon(_obscureConfirm

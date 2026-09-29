@@ -1363,7 +1363,7 @@ export function AdminFeedCreateClient() {
               <>
                 <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-gray-100">
                   <div
-                    className="h-full rounded-full bg-natalo-600 transition-all duration-200"
+                    className="h-full rounded-full bg-natalo-600 transition-[width] duration-200"
                     style={{ width: `${compressProgress}%` }}
                   />
                 </div>

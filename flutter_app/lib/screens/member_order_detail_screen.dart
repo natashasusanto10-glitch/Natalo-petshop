@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../widgets/app_motion.dart';
 
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
@@ -454,6 +455,7 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 118),
               children: [
                 AnimatedSwitcher(
+                  transitionBuilder: appFadeScaleTransition,
                   duration: const Duration(milliseconds: 180),
                   child: loading
                       ? const LinearProgressIndicator(minHeight: 3)
@@ -1352,6 +1354,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
           ],
           const SizedBox(height: 14),
           AnimatedSwitcher(
+            transitionBuilder: appFadeScaleTransition,
             duration: const Duration(milliseconds: 180),
             child: _hasStoredProof
                 ? Padding(
@@ -1371,6 +1374,7 @@ class _PaymentProofCardState extends State<_PaymentProofCard> {
                 : const SizedBox.shrink(),
           ),
           AnimatedSwitcher(
+            transitionBuilder: appFadeScaleTransition,
             duration: const Duration(milliseconds: 180),
             child: _uploading
                 ? const LinearProgressIndicator(minHeight: 6)

@@ -353,7 +353,7 @@ export function CartVoucherSheet({
                   <button
                     type="button"
                     onClick={() => onSelectMember(null, 0, "")}
-                    className="text-[11px] font-bold text-natalo-600 active:underline"
+                    className="text-xs font-bold text-natalo-600 active:underline"
                   >
                     Lepas semua
                   </button>
@@ -416,7 +416,7 @@ export function CartVoucherSheet({
 
                   {memberUnavailable.length > 0 && (
                     <>
-                      <p className="mt-3 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                      <p className="mt-3 text-xs font-bold uppercase tracking-wide text-zinc-500">
                         Belum bisa dipakai
                       </p>
                       <ul className="mt-1 space-y-2">

@@ -102,7 +102,7 @@ export function ReviewSection({ productSlug }: Props) {
                   <span className="w-8 text-amber-500">{star}★</span>
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-200">
                     <div
-                      className="h-full bg-amber-400 transition-all"
+                      className="h-full bg-amber-400 transition-[width]"
                       style={{ width: `${pct}%` }}
                     />
                   </div>

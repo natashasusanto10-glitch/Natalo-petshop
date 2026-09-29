@@ -135,10 +135,10 @@ class _AppCartButtonState extends State<AppCartButton>
                 constraints: const BoxConstraints(minWidth: 34, minHeight: 44),
                 // shrinkWrap: tanpa ini MaterialTapTargetSize.padded tetap
                 // melebarkan layout ke 48px → gap antar ikon header jauh.
+                // (overlay/splash TIDAK ditekan lokal — press feedback
+                // datang dari iconButtonTheme global.)
                 style: IconButton.styleFrom(
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  overlayColor: Colors.transparent,
-                  splashFactory: NoSplash.splashFactory,
                 ),
                 onPressed: () => _tapThrottle.run(
                   widget.onPressed ??

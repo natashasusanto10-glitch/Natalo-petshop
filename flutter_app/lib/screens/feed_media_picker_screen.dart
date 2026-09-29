@@ -1,5 +1,6 @@
 // ignore_for_file: use_build_context_synchronously
 import 'dart:async';
+import '../widgets/app_motion.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -1086,6 +1087,7 @@ class _FeedMediaPickerScreenState extends State<FeedMediaPickerScreen> {
       // pakai ui.instantiateImageCodec). Pinch responsive instan tanpa
       // dead-window 500ms-1s yang lama.
       return AnimatedSwitcher(
+        transitionBuilder: appFadeScaleTransition,
         duration: const Duration(milliseconds: 180),
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,

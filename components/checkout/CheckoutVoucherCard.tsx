@@ -452,7 +452,7 @@ export function CheckoutVoucherCard({
 
       {/* Info text aturan voucher — match spec exactly */}
       {!hasMemberApplied && !manualApplied && (
-        <p className="mt-2 text-[11px] text-zinc-500">
+        <p className="mt-2 text-xs text-zinc-500">
           Maksimal 4 voucher: diskon produk + gratis ongkir + loyalty point + kode manual/private
         </p>
       )}
@@ -591,7 +591,7 @@ export function CheckoutVoucherCard({
                                     </p>
                                     <TargetBadge targetUser={v.targetUser} />
                                   </div>
-                                  <p className="mt-0.5 text-[11px] text-zinc-500">
+                                  <p className="mt-0.5 text-xs text-zinc-500">
                                     {describeMinimum(v)}
                                   </p>
                                 </div>

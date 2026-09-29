@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_motion_tokens.dart';
 import '../utils/motion_prefs.dart';
 
 /// Wrapper untuk fade+slide-in entry animation, respect reduce-motion.
@@ -14,7 +15,7 @@ class AppFadeSlideIn extends StatefulWidget {
     super.key,
     required this.child,
     this.delay = Duration.zero,
-    this.duration = const Duration(milliseconds: 320),
+    this.duration = AppMotionTokens.standard,
     this.beginOffset = const Offset(0, 0.06),
   });
 
@@ -58,4 +59,18 @@ class _AppFadeSlideInState extends State<AppFadeSlideIn>
       ),
     );
   }
+}
+
+/// TransitionBuilder bersama untuk AnimatedSwitcher: fade + scale mulai
+/// 0.96 — pengganti default Flutter (ScaleTransition penuh dari scale(0),
+/// konten terlihat "muncul dari titik nol"). Jangan dipakai di ikon
+/// micro-delight (heart burst) yang pop-nya memang disengaja.
+Widget appFadeScaleTransition(Widget child, Animation<double> animation) {
+  return FadeTransition(
+    opacity: animation,
+    child: ScaleTransition(
+      scale: Tween<double>(begin: 0.96, end: 1.0).animate(animation),
+      child: child,
+    ),
+  );
 }

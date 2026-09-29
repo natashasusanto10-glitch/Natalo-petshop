@@ -83,7 +83,12 @@ class _LoadingButtonState extends State<LoadingButton> {
         switchOutCurve: Curves.easeIn,
         transitionBuilder: (child, anim) => FadeTransition(
           opacity: anim,
-          child: ScaleTransition(scale: anim, child: child),
+          // Mulai dari 0.96, bukan 0 — spinner/label tidak "muncul dari
+          // titik nol" saat state berganti.
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.96, end: 1.0).animate(anim),
+            child: child,
+          ),
         ),
         child: widget.loading
             ? const SizedBox(

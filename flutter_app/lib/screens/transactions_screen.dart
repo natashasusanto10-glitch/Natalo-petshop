@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../widgets/app_motion.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -334,6 +335,7 @@ class _TransactionAlertsState extends State<_TransactionAlerts> {
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
           child: AnimatedSwitcher(
+            transitionBuilder: appFadeScaleTransition,
             duration: const Duration(milliseconds: 180),
             child: (unpaid.isEmpty && vouchers.isEmpty)
                 ? const SizedBox.shrink(key: ValueKey('no-alerts'))

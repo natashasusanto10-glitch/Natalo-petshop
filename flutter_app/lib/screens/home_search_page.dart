@@ -187,20 +187,24 @@ class _SearchHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Back button — touch target 48px
-          Material(
-            color: Colors.transparent,
-            shape: const CircleBorder(),
-            child: InkWell(
-              onTap: onBack,
-              customBorder: const CircleBorder(),
-              child: SizedBox(
-                width: 44,
-                height: 44,
-                child: Icon(
-                  Icons.arrow_back_rounded,
-                  color: cs.onSurface,
-                  size: 22,
+          // Back button — touch target 44px
+          Semantics(
+            button: true,
+            label: 'Kembali',
+            child: Material(
+              color: Colors.transparent,
+              shape: const CircleBorder(),
+              child: InkWell(
+                onTap: onBack,
+                customBorder: const CircleBorder(),
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Icon(
+                    Icons.arrow_back_rounded,
+                    color: cs.onSurface,
+                    size: 22,
+                  ),
                 ),
               ),
             ),
@@ -641,12 +645,20 @@ class _RecentSearchRow extends StatelessWidget {
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: onDelete,
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 16,
-                  color: cs.onSurfaceVariant,
+              child: Semantics(
+                button: true,
+                label: 'Hapus riwayat pencarian',
+                child: SizedBox(
+                  // 44px hit area — ikon ✕ visual 16px.
+                  width: 44,
+                  height: 44,
+                  child: Center(
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 16,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -785,39 +797,48 @@ class _TrendingChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Material(
-      color: cs.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onTap,
+    return Semantics(
+      button: true,
+      label: 'Cari $keyword',
+      child: Material(
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: cs.outlineVariant),
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.trending_up_rounded,
-                size: 16,
-                color: NataloColors.primary,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  keyword,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: cs.outlineVariant),
+            ),
+            child: FittedBox(
+              // Chip tingginya fixed oleh grid aspect ratio — font scaling
+              // besar membuat teks menyusut, bukan terpotong vertikal.
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.trending_up_rounded,
+                    size: 16,
+                    color: NataloColors.primary,
                   ),
-                ),
+                  const SizedBox(width: 6),
+                  Text(
+                    keyword,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

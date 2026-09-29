@@ -127,6 +127,7 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
           surfaceTintColor: Colors.white,
           toolbarHeight: 60,
           leading: IconButton(
+            tooltip: 'Tutup',
             icon: const Icon(Icons.close_rounded, color: Color(0xFF17202A)),
             onPressed: () {
               AppHaptics.tap();
@@ -180,10 +181,12 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
           ),
           actions: [
             IconButton(
+              tooltip: 'Muat ulang',
               icon: const Icon(Icons.refresh_rounded, color: _brandBlue),
               onPressed: _onRefresh,
             ),
             IconButton(
+              tooltip: 'Bagikan',
               icon: const Icon(Icons.ios_share_rounded, color: _brandBlue),
               onPressed: _onShare,
             ),
@@ -316,16 +319,19 @@ class _BrowserBottomBar extends StatelessWidget {
               icon: Icons.arrow_back_ios_new_rounded,
               enabled: canGoBack,
               onTap: onBack,
+              tooltip: 'Mundur',
             ),
             _ToolbarButton(
               icon: Icons.arrow_forward_ios_rounded,
               enabled: canGoForward,
               onTap: onForward,
+              tooltip: 'Maju',
             ),
             _ToolbarButton(
               icon: Icons.open_in_new_rounded,
               enabled: true,
               onTap: onOpenExternal,
+              tooltip: 'Buka di browser',
             ),
           ],
         ),
@@ -338,16 +344,19 @@ class _ToolbarButton extends StatelessWidget {
   final IconData icon;
   final bool enabled;
   final VoidCallback onTap;
+  final String tooltip;
 
   const _ToolbarButton({
     required this.icon,
     required this.enabled,
     required this.onTap,
+    required this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
     return IconButton(
+      tooltip: tooltip,
       onPressed: enabled ? onTap : null,
       icon: Icon(
         icon,

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../utils/motion_prefs.dart';
+
 class AppStartupSplash extends StatefulWidget {
   final Widget child;
 
@@ -91,7 +93,11 @@ class _StartupSplashSurface extends StatelessWidget {
               children: [
                 TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0.96, end: 1),
-                  duration: const Duration(milliseconds: 520),
+                  // 360ms + reduce-motion check (dulu 520ms tanpa cek —
+                  // bypass MotionPrefs dan terasa lambat untuk splash).
+                  duration: MotionPrefs.shouldReduce(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 360),
                   curve: Curves.easeOutBack,
                   builder: (context, scale, child) {
                     return Transform.scale(

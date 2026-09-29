@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../widgets/app_motion.dart';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -774,11 +775,24 @@ class _HomeScreenState extends State<HomeScreen> {
                                           );
                                         }
                                         final product = _exploreProducts[index];
-                                        return _HomeProductCard(
-                                          product: product,
-                                          squareImage: true,
-                                          onTap: () => _openProductDetail(
-                                              context, product),
+                                        // Stagger masuk 40ms/kartu (max 8
+                                        // kartu = 320ms) — kartu batch scroll
+                                        // berikutnya modulo-balik ke delay
+                                        // kecil. Reduce-motion di-skip di
+                                        // dalam AppFadeSlideIn.
+                                        return AppFadeSlideIn(
+                                          delay: Duration(
+                                            milliseconds: 40 * (index % 8),
+                                          ),
+                                          duration: const Duration(
+                                            milliseconds: 240,
+                                          ),
+                                          child: _HomeProductCard(
+                                            product: product,
+                                            squareImage: true,
+                                            onTap: () => _openProductDetail(
+                                                context, product),
+                                          ),
                                         );
                                       }
 
@@ -1481,6 +1495,7 @@ class _HomeSearchSheetState extends State<_HomeSearchSheet> {
                       ),
                     ),
                     IconButton(
+                      tooltip: 'Tutup',
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.close_rounded),
                     ),
@@ -1499,6 +1514,7 @@ class _HomeSearchSheetState extends State<_HomeSearchSheet> {
                     suffixIcon: keyword.isEmpty
                         ? null
                         : IconButton(
+                            tooltip: 'Tutup',
                             onPressed: () {
                               _controller.clear();
                               _onChanged('');
@@ -1510,6 +1526,7 @@ class _HomeSearchSheetState extends State<_HomeSearchSheet> {
                 const SizedBox(height: 12),
                 Flexible(
                   child: AnimatedSwitcher(
+                    transitionBuilder: appFadeScaleTransition,
                     duration: const Duration(milliseconds: 180),
                     child: _HomeSearchContent(
                       key: ValueKey('$keyword-$_loading'),
@@ -3060,8 +3077,12 @@ class _HomeProductCard extends StatelessWidget {
     );
 
     final infoChildren = <Widget>[
-      SizedBox(
-        height: nameHeight,
+      // minHeight (bukan height exact, bukan FittedBox): FittedBox memberi
+      // child constraint TIDAK terbatas → Text tidak pernah wrap 2 baris.
+      // minHeight membiarkan nama TUMBUH saat font scaling besar — baris
+      // grid memang auto-height (Column-of-Rows), jadi aman memanjang.
+      ConstrainedBox(
+        constraints: BoxConstraints(minHeight: nameHeight),
         child: Text(
           product.title,
           maxLines: 2,

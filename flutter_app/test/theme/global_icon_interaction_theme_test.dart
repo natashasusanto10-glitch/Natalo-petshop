@@ -32,17 +32,31 @@ void main() {
       expect(taps, tapsAfterLongPress + 1);
     });
 
-    test('${entry.key} theme makes every IconButton overlay transparent', () {
+    test(
+        '${entry.key} theme gives IconButtons a pressed overlay '
+        '(press feedback tanpa ripple)', () {
       final overlay = entry.value.iconButtonTheme.style?.overlayColor;
 
       expect(overlay, isNotNull);
-      for (final state in <WidgetState>{
+      // Pressed & hovered → tint terlihat (feedback). State lain (focused,
+      // default) → transparan. Sebelumnya SEMUA transparan yang membuat
+      // seluruh IconButton app-wide tidak merespons tekanan.
+      final pressed = overlay!.resolve(const <WidgetState>{
         WidgetState.pressed,
+      });
+      final hovered = overlay.resolve(const <WidgetState>{
         WidgetState.hovered,
-        WidgetState.focused,
-      }) {
-        expect(overlay!.resolve(<WidgetState>{state}), Colors.transparent);
-      }
+      });
+      expect(pressed, isNot(Colors.transparent));
+      expect(hovered, isNot(Colors.transparent));
+      expect(
+        overlay.resolve(const <WidgetState>{WidgetState.focused}),
+        Colors.transparent,
+      );
+      expect(
+        overlay.resolve(const <WidgetState>{}),
+        Colors.transparent,
+      );
     });
   }
 }

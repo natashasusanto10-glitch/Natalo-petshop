@@ -4174,6 +4174,7 @@ class _ReviewMediaViewerScreenState extends State<_ReviewMediaViewerScreen> {
             child: Padding(
               padding: const EdgeInsets.only(left: 8, top: 8),
               child: IconButton(
+                tooltip: 'Kembali',
                 onPressed: () => Navigator.of(context).pop(),
                 icon: const Icon(
                   Icons.arrow_back_rounded,
@@ -4847,6 +4848,7 @@ class _ProductVariantBottomSheetState
                         Row(
                           children: [
                             IconButton(
+                              tooltip: 'Tutup',
                               onPressed: () => Navigator.of(context).pop(),
                               icon: const Icon(Icons.close_rounded, size: 30),
                               color: cs.onSurface,
@@ -5207,13 +5209,15 @@ class _QuantityStepper extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
+            tooltip: 'Kurangi jumlah',
             onPressed: canDecrease ? onDecrease : null,
             icon: const Icon(Icons.remove_rounded),
             iconSize: 20,
             color: cs.onSurface,
             disabledColor: const Color(0xFFCBD5E1),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+            // 44 = touch target minimum (samakan dgn stepper cart).
+            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
           ),
           SizedBox(
             width: 32,
@@ -5228,13 +5232,15 @@ class _QuantityStepper extends StatelessWidget {
             ),
           ),
           IconButton(
+            tooltip: 'Tambah jumlah',
             onPressed: canIncrease ? onIncrease : null,
             icon: const Icon(Icons.add_rounded),
             iconSize: 22,
             color: cs.onSurface,
             disabledColor: const Color(0xFFCBD5E1),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+            // 44 = touch target minimum (samakan dgn stepper cart).
+            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
           ),
         ],
       ),

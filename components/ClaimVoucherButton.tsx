@@ -100,7 +100,7 @@ export function ClaimVoucherButton({ totalPoints }: Props) {
                   <span className="font-bold text-natalo-700">
                     voucher diskon {formatRupiah(tier.discountAmount)}
                   </span>
-                  <span className="ml-2 block text-[11px] font-semibold text-gray-400">
+                  <span className="ml-2 block text-xs font-semibold text-gray-500">
                     Min. belanja {formatRupiah(tier.minimumOrder)}
                   </span>
                   {!canAfford && (

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/app_motion.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/app_radius.dart';
 import '../theme/app_spacing.dart';
@@ -254,6 +255,7 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
                       ),
                       const SizedBox(height: 16),
                       AnimatedSwitcher(
+                        transitionBuilder: appFadeScaleTransition,
                         duration: const Duration(milliseconds: 220),
                         switchInCurve: Curves.easeOutCubic,
                         switchOutCurve: Curves.easeOutCubic,
@@ -1227,6 +1229,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                       const SizedBox(height: 8),
                       Center(
                         child: AnimatedSwitcher(
+                          transitionBuilder: appFadeScaleTransition,
                           duration: const Duration(milliseconds: 180),
                           child: Text(
                             _rating == 0

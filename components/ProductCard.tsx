@@ -75,7 +75,9 @@ export function ProductCard({
                 placeholder="blur"
                 blurDataURL={IMAGE_BLUR_GRAY}
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-                className="object-cover transition group-hover:scale-105"
+                // Hover-zoom hanya untuk pointer presisi — di layar sentuh
+                // (Capacitor), tap memicu "hover" saat justru membuka produk.
+                className="object-cover transition [@media(hover:hover)_and_(pointer:fine)]:group-hover:scale-105"
               />
             ) : (
               <div className="flex h-full items-center justify-center text-4xl text-gray-300">🐾</div>

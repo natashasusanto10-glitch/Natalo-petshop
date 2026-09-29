@@ -1,5 +1,7 @@
 import 'dart:async';
+import '../widgets/app_motion.dart';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../theme/natalo_colors.dart';
 import 'package:flutter/services.dart';
@@ -43,6 +45,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _loading = false;
   bool _otpSent = false; // step 1 sukses → tampilkan field OTP
+  // Persetujuan Syarat & Ketentuan + Kebijakan Privasi (wajib — UU PDP)
+  // sebelum kirim OTP / pembuatan akun.
+  bool _consentAccepted = false;
   // #3 inline validation: error per-field (null = tidak ada error). Diisi
   // saat _validate(), di-clear saat user mulai mengetik di field tsb.
   String? _nameError;
@@ -232,6 +237,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _onPrimary() async {
     AppHaptics.tap();
+    // Persetujuan wajib sebelum kirim OTP — toast + haptic warning supaya
+    // jelas kenapa tidak lanjut (button sengaja tidak di-disable supaya
+    // user tetap dapat penjelasan, bukan button mati tanpa alasan).
+    if (!_otpSent && !_consentAccepted) {
+      AppHaptics.warning();
+      AppToast.showBanner(
+        context,
+        'Centang persetujuan Syarat & Ketentuan dan Kebijakan Privasi untuk melanjutkan.',
+        kind: ToastKind.warning,
+      );
+      return;
+    }
     if (!_validate()) return;
     setState(() => _loading = true);
     try {
@@ -508,6 +525,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             setState(() => _passwordError = null);
                           }
                         },
+                      ),
+                      const SizedBox(height: 14),
+                      // Persetujuan (UU PDP) — wajib dicentang sebelum
+                      // kirim OTP. Link buka route statis yang sudah ada.
+                      _ConsentRow(
+                        accepted: _consentAccepted,
+                        onChanged: (value) =>
+                            setState(() => _consentAccepted = value),
                       ),
                     ] else ...[
                       // ── LANGKAH 2: Verifikasi OTP ──
@@ -883,7 +908,9 @@ class _RegisterTextField extends StatelessWidget {
         hintText: hint,
         errorText: errorText,
         hintStyle: const TextStyle(
-          color: Color(0xFF98A2B3),
+          // Placeholder-gray standar (dari #98A2B3 yang 2.7:1 — contoh
+          // seperti "nama@email.com" harus tetap kebaca).
+          color: Color(0xFF94A3B8),
           fontWeight: FontWeight.w600,
         ),
         prefixIcon: Icon(icon, color: const Color(0xFF6B7280), size: 22),
@@ -928,6 +955,126 @@ class _RegisterTextField extends StatelessWidget {
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(18),
           borderSide: const BorderSide(color: Color(0xFFE5484D), width: 1.5),
+        ),
+      ),
+    );
+  }
+}
+
+/// Baris persetujuan Syarat & Ketentuan + Kebijakan Privasi (wajib UU PDP).
+/// StatefulWidget supaya TapGestureRecognizer kedua link bisa di-dispose.
+/// Tap area checkbox 44px (SizedBox) + teks ikut toggle; link tetap bisa
+/// dibuka terpisah.
+class _ConsentRow extends StatefulWidget {
+  final bool accepted;
+  final ValueChanged<bool> onChanged;
+
+  const _ConsentRow({required this.accepted, required this.onChanged});
+
+  @override
+  State<_ConsentRow> createState() => _ConsentRowState();
+}
+
+class _ConsentRowState extends State<_ConsentRow> {
+  late final TapGestureRecognizer _termsRecognizer;
+  late final TapGestureRecognizer _privacyRecognizer;
+
+  @override
+  void initState() {
+    super.initState();
+    _termsRecognizer = TapGestureRecognizer()
+      ..onTap = () => Navigator.pushNamed(context, '/syarat-ketentuan');
+    _privacyRecognizer = TapGestureRecognizer()
+      ..onTap = () => Navigator.pushNamed(context, '/kebijakan-privasi');
+  }
+
+  @override
+  void dispose() {
+    _termsRecognizer.dispose();
+    _privacyRecognizer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Semantics(
+      label: 'Setuju dengan Syarat dan Ketentuan serta Kebijakan Privasi',
+      checked: widget.accepted,
+      child: InkWell(
+        onTap: () {
+          AppHaptics.tap();
+          widget.onChanged(!widget.accepted);
+        },
+        borderRadius: BorderRadius.circular(10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: Center(
+                // IgnorePointer: tanpa ini, tap pada checkbox memicu
+                // Checkbox.onChanged DAN InkWell.onTap induk = toggle ganda
+                // (centang langsung batal). InkWell di atas yang mengatur
+                // semua toggle; checkbox murni visual.
+                child: IgnorePointer(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: Checkbox(
+                      value: widget.accepted,
+                      onChanged: null,
+                      activeColor: _brandBlue,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 2),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                child: Text.rich(
+                  TextSpan(
+                    text: 'Saya setuju dengan ',
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      height: 1.45,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: 'Syarat & Ketentuan',
+                        recognizer: _termsRecognizer,
+                        style: TextStyle(
+                          color: _brandBlue,
+                          fontWeight: FontWeight.w800,
+                          decoration: TextDecoration.underline,
+                          decorationColor: _brandBlue.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      const TextSpan(text: ' dan '),
+                      TextSpan(
+                        text: 'Kebijakan Privasi',
+                        recognizer: _privacyRecognizer,
+                        style: TextStyle(
+                          color: _brandBlue,
+                          fontWeight: FontWeight.w800,
+                          decoration: TextDecoration.underline,
+                          decorationColor: _brandBlue.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      const TextSpan(text: ' Natalo Petshop.'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -986,6 +1133,7 @@ class _RegisterSubmitButtonState extends State<_RegisterSubmitButton> {
           ),
         ),
         child: AnimatedSwitcher(
+          transitionBuilder: appFadeScaleTransition,
           duration: const Duration(milliseconds: 180),
           child: Row(
             key: ValueKey(label),

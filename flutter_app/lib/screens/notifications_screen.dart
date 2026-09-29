@@ -790,6 +790,7 @@ class NotificationHeroHeader extends StatelessWidget {
           Row(
             children: [
               IconButton(
+                tooltip: 'Kembali',
                 onPressed: onBack,
                 icon: const Icon(Icons.arrow_back_rounded),
                 color: Colors.white,

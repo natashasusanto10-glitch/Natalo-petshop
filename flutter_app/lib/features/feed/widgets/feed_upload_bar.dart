@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../../../widgets/app_motion.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -272,6 +273,7 @@ class _FeedUploadBarBodyState extends State<_FeedUploadBarBody>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               AnimatedSwitcher(
+                transitionBuilder: appFadeScaleTransition,
                 duration: const Duration(milliseconds: 300),
                 child: Text(
                   _titleText(),

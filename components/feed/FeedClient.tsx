@@ -574,9 +574,11 @@ function EmptyFeedState() {
   return (
     <div className="box-border flex h-full items-center justify-center px-7 [padding-bottom:calc(var(--natalo-bottom-nav-height)+env(safe-area-inset-bottom)+2rem)] [padding-top:calc(env(safe-area-inset-top)+4rem)]">
       <div className="max-w-[300px] text-center">
-        <h1 className="text-[24px] font-bold leading-tight tracking-normal text-white">
+        {/* h2: judul empty-state, bukan judul dokumen (h1 halaman = sr-only
+            di app/feed/page.tsx). */}
+        <h2 className="text-[24px] font-bold leading-tight tracking-normal text-white">
           Segera Hadir
-        </h1>
+        </h2>
         <p className="mt-3 text-sm font-medium leading-relaxed text-white/62">
           Natalo Feed sedang disiapkan untuk video, tips, promo, dan komunitas pet lovers.
         </p>

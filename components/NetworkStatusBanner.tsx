@@ -107,7 +107,7 @@ export function NetworkStatusBanner() {
     <div
       role="status"
       aria-live="polite"
-      className={`fixed inset-x-0 top-0 z-[55] flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold shadow-md transition-all duration-300 ${
+      className={`fixed inset-x-0 top-0 z-[55] flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold shadow-md transition-transform duration-300 ${
         state.connected
           ? "bg-green-500 text-white"
           : "bg-amber-400 text-amber-950"

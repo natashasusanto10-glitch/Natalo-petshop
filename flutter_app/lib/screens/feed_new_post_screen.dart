@@ -596,6 +596,7 @@ class _FeedNewPostScreenState extends State<FeedNewPostScreen> {
           elevation: 0,
           scrolledUnderElevation: 0,
           leading: IconButton(
+            tooltip: 'Kembali',
             onPressed: () async {
               if (await _confirmLeave() && context.mounted) {
                 Navigator.pop(context, false);
