@@ -43,14 +43,14 @@ export default function BirthDateOverrideClient() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserSearchResult[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(
-    null,
+    null
   );
   const [searching, startSearching] = useTransition();
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const [overrideState, overrideAction, overridePending] = useActionState(
     unlockAndUpdateBirthDate,
-    initialOverride,
+    initialOverride
   );
 
   function handleSearch(e: React.FormEvent<HTMLFormElement>) {
@@ -75,14 +75,11 @@ export default function BirthDateOverrideClient() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 md:py-10">
-      <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
-        Override Tanggal Lahir Customer
-      </h1>
+    <div className="mt-6">
       <p className="mt-2 text-sm text-zinc-600">
-        Tools untuk CS team unlock + ubah tgl lahir customer yang sudah ke-lock
-        otomatis setelah dapat voucher ultah pertama. Semua override tercatat
-        di audit log.
+        Gunakan halaman ini untuk membuka dan memperbaiki tanggal lahir yang
+        sudah terkunci setelah voucher ulang tahun pertama. Perubahan tercatat
+        dalam riwayat aktivitas.
       </p>
 
       <div className="mt-6 rounded-2xl border-2 border-amber-200 bg-amber-50 p-4">
@@ -95,10 +92,12 @@ export default function BirthDateOverrideClient() {
             ragu)
           </li>
           <li>
-            Verifikasi identity — minimal sebutkan nama lengkap, email, atau
-            no HP terdaftar
+            Verifikasi identity — minimal sebutkan nama lengkap, email, atau no
+            HP terdaftar
           </li>
-          <li>Untuk perubahan tgl lahir krusial (mis. ubah jauh), minta foto KTP</li>
+          <li>
+            Untuk perubahan tgl lahir krusial (mis. ubah jauh), minta foto KTP
+          </li>
         </ul>
       </div>
 
@@ -116,16 +115,11 @@ export default function BirthDateOverrideClient() {
             className="flex-1 rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
             disabled={searching}
           />
-          <Button
-            type="submit"
-            disabled={searching || query.trim().length < 2}
-          >
+          <Button type="submit" disabled={searching || query.trim().length < 2}>
             {searching ? "Cari…" : "Cari"}
           </Button>
         </div>
-        {searchError && (
-          <p className="text-xs text-red-600">{searchError}</p>
-        )}
+        {searchError && <p className="text-xs text-red-600">{searchError}</p>}
       </form>
 
       {/* Search results */}
@@ -164,16 +158,16 @@ export default function BirthDateOverrideClient() {
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     {user.birthDateLockedAt ? (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-800">
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                         🔒 LOCKED
                       </span>
                     ) : (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                         ✓ UNLOCKED
                       </span>
                     )}
                     {user.birthdayVoucherYear && (
-                      <span className="text-[10px] text-zinc-500">
+                      <span className="text-xs text-zinc-500">
                         Voucher: {user.birthdayVoucherYear}
                       </span>
                     )}
@@ -188,12 +182,12 @@ export default function BirthDateOverrideClient() {
       {/* Override form (visible when user selected) */}
       {selectedUser && (
         <div className="mt-6 rounded-2xl border-2 border-zinc-900 bg-white p-5">
-          <h2 className="text-lg font-black text-zinc-950">
+          <h2 className="text-lg font-semibold text-zinc-950">
             Override untuk: {selectedUser.name}
           </h2>
           <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
             <div className="rounded-lg bg-zinc-50 p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+              <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
                 Tgl lahir saat ini
               </p>
               <p className="mt-1 font-bold text-zinc-950">
@@ -201,7 +195,7 @@ export default function BirthDateOverrideClient() {
               </p>
             </div>
             <div className="rounded-lg bg-zinc-50 p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+              <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
                 Locked since
               </p>
               <p className="mt-1 font-bold text-zinc-950">

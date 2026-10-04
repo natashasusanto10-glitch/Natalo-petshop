@@ -9,16 +9,25 @@ const MAX_IMAGE_URL_LENGTH = 500;
 
 const optionSchema = z.object({
   value: z.string().trim().min(1).max(MAX_NAME_LENGTH),
-  position: z.number().int().min(0).max(MAX_OPTIONS_PER_ATTRIBUTE - 1),
+  position: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_OPTIONS_PER_ATTRIBUTE - 1),
 });
 
 const attributeSchema = z.object({
   name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
-  position: z.number().int().min(0).max(MAX_ATTRIBUTES - 1),
+  position: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_ATTRIBUTES - 1),
   options: z.array(optionSchema).min(1).max(MAX_OPTIONS_PER_ATTRIBUTE),
 });
 
 const variantSchema = z.object({
+  id: z.string().min(1).max(100).optional(),
   optionRefs: z.array(z.string().trim().min(1)).min(1).max(MAX_ATTRIBUTES),
   price: z.number().int().min(0).max(999_999_999),
   stock: z.number().int().min(0).max(999_999),
@@ -27,7 +36,10 @@ const variantSchema = z.object({
     .string()
     .trim()
     .max(MAX_SKU_LENGTH)
-    .regex(/^[A-Za-z0-9_\-]+$/, "SKU hanya boleh mengandung huruf, angka, _ dan -")
+    .regex(
+      /^[A-Za-z0-9_\-]+$/,
+      "SKU hanya boleh mengandung huruf, angka, _ dan -"
+    )
     .optional(),
   imageUrl: z.string().trim().max(MAX_IMAGE_URL_LENGTH).optional(),
   isActive: z.boolean().default(true),
@@ -95,10 +107,20 @@ export const putVariantsPayloadSchema = z
       }
     }
 
+    const idSet = new Set<string>();
     const skuSet = new Set<string>();
     const combinationSet = new Set<string>();
     let activeVariantCount = 0;
     for (const [variantIndex, variant] of data.variants.entries()) {
+      if (variant.id) {
+        if (idSet.has(variant.id))
+          ctx.addIssue({
+            code: "custom",
+            path: ["variants", variantIndex, "id"],
+            message: "Identitas varian tidak boleh duplikat.",
+          });
+        idSet.add(variant.id);
+      }
       if (variant.isActive) {
         activeVariantCount += 1;
         if (variant.price <= 0) {
@@ -136,6 +158,17 @@ export const putVariantsPayloadSchema = z
         }
       }
 
+      const selectedAttributes = new Set(
+        variant.optionRefs.map((ref) => ref.split(":", 1)[0])
+      );
+      if (selectedAttributes.size !== data.attributes.length) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["variants", variantIndex, "optionRefs"],
+          message: "Setiap varian harus memilih satu opsi dari tiap atribut.",
+        });
+      }
+
       if (variant.optionRefs.length !== data.attributes.length) {
         ctx.addIssue({
           code: "custom",
@@ -144,7 +177,7 @@ export const putVariantsPayloadSchema = z
         });
       }
 
-      const combinationKey = [...refs].sort().join("|");
+      const combinationKey = JSON.stringify([...refs].sort());
       if (combinationSet.has(combinationKey)) {
         ctx.addIssue({
           code: "custom",
@@ -203,14 +236,17 @@ const VARIANT_FIELD_LABELS: Record<string, string> = {
  * bisa punya sampai 200 varian.
  */
 export function formatVariantIssues(
-  issues: Array<{ path: Array<string | number | symbol>; message: string }>,
+  issues: Array<{ path: Array<string | number | symbol>; message: string }>
 ): string {
   if (issues.length === 0) return "Ada data varian yang belum valid.";
   const described = issues.slice(0, 3).map((issue) => {
     const [root, index, field] = issue.path;
-    const rootLabel = root === "attributes" ? "Atribut" : root === "variants" ? "Varian" : "";
-    const where = typeof index === "number" ? `${rootLabel} #${index + 1}` : rootLabel;
-    const fieldLabel = typeof field === "string" ? VARIANT_FIELD_LABELS[field] ?? field : "";
+    const rootLabel =
+      root === "attributes" ? "Atribut" : root === "variants" ? "Varian" : "";
+    const where =
+      typeof index === "number" ? `${rootLabel} #${index + 1}` : rootLabel;
+    const fieldLabel =
+      typeof field === "string" ? VARIANT_FIELD_LABELS[field] ?? field : "";
     const prefix = [where, fieldLabel].filter(Boolean).join(" — ");
     return prefix ? `${prefix}: ${issue.message}` : issue.message;
   });

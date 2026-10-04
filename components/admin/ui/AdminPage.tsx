@@ -29,7 +29,7 @@ export function AdminPage({
 }) {
   return (
     <div
-      className={`mx-auto w-full px-4 py-5 md:py-8 ${WIDTH_CLASSES[maxWidth]} ${className}`.trim()}
+      className={`admin-page mx-auto w-full ${WIDTH_CLASSES[maxWidth]} ${className}`.trim()}
     >
       {children}
     </div>

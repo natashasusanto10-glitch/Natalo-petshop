@@ -48,7 +48,9 @@ export type RefundFormItem = {
 };
 
 function formatRupiah(n: number): string {
-  return `Rp${new Intl.NumberFormat("id-ID").format(Math.max(0, Math.round(n)))}`;
+  return `Rp${new Intl.NumberFormat("id-ID").format(
+    Math.max(0, Math.round(n))
+  )}`;
 }
 
 const INITIAL_STATE: RefundActionResult = { ok: false, message: "" };
@@ -68,7 +70,7 @@ export default function RefundFormClient({
    */
   action: (
     prevState: RefundActionResult,
-    formData: FormData,
+    formData: FormData
   ) => Promise<RefundActionResult>;
   orderSubtotal: number;
   orderProductDiscount: number;
@@ -87,7 +89,7 @@ export default function RefundFormClient({
   // banner feedback langsung di form (no page reload, no error boundary).
   const [actionState, formAction, isPending] = useActionState(
     action,
-    INITIAL_STATE,
+    INITIAL_STATE
   );
 
   // Reset form fields setelah success — supaya admin bisa langsung issue
@@ -105,7 +107,7 @@ export default function RefundFormClient({
 
   const selectedItem = useMemo(
     () => items.find((it) => it.id === itemId) ?? null,
-    [items, itemId],
+    [items, itemId]
   );
 
   // Diskon ratio — % of subtotal yang ke-cover voucher.
@@ -134,9 +136,8 @@ export default function RefundFormClient({
   const voucherAllocation = grossAmount - netAmount;
 
   // Default amount: net kalau ada voucher, gross kalau gak.
-  const computedAmount = hasProductVoucher && refundMode === "net"
-    ? netAmount
-    : grossAmount;
+  const computedAmount =
+    hasProductVoucher && refundMode === "net" ? netAmount : grossAmount;
 
   const requireManual = !selectedItem;
 
@@ -149,9 +150,10 @@ export default function RefundFormClient({
   // "Seluruh order", checkbox di-disabled tapi field manual tampil.
   // User ngetik amount → submit button TETAP DISABLED karena
   // effectiveAmount fallback ke computedAmount = 0 (no item).
-  const effectiveAmount = (manualOverride || requireManual)
-    ? parseInt(manualAmount, 10) || 0
-    : computedAmount;
+  const effectiveAmount =
+    manualOverride || requireManual
+      ? parseInt(manualAmount, 10) || 0
+      : computedAmount;
 
   const handleItemChange = (newItemId: string) => {
     setItemId(newItemId);
@@ -190,14 +192,14 @@ export default function RefundFormClient({
               <p
                 className={
                   actionState.ok
-                    ? "mt-0.5 text-[11px] text-emerald-800"
-                    : "mt-0.5 text-[11px] text-red-800"
+                    ? "mt-0.5 text-xs text-emerald-800"
+                    : "mt-0.5 text-xs text-red-800"
                 }
               >
                 {actionState.message}
               </p>
               {actionState.ok && actionState.timestamp && (
-                <p className="mt-1 text-[10px] text-emerald-600">
+                <p className="mt-1 text-xs text-emerald-600">
                   {new Date(actionState.timestamp).toLocaleString("id-ID", {
                     dateStyle: "medium",
                     timeStyle: "short",
@@ -281,7 +283,7 @@ export default function RefundFormClient({
                 </div>
                 <div className="mt-1 border-t border-blue-200 pt-1.5 flex items-center justify-between text-blue-900">
                   <span className="font-semibold">Net (setelah voucher)</span>
-                  <span className="font-black">
+                  <span className="font-semibold">
                     {formatRupiah(netAmount)}
                   </span>
                 </div>
@@ -292,7 +294,7 @@ export default function RefundFormClient({
           {/* Mode picker — gross vs net (cuma kalau ada voucher) */}
           {hasProductVoucher && (
             <div className="rounded-lg border border-zinc-200 bg-white p-2.5">
-              <p className="text-[11px] font-semibold uppercase text-zinc-500">
+              <p className="text-xs font-semibold uppercase text-zinc-500">
                 Pilih nominal yang di-refund
               </p>
               <div className="mt-1.5 space-y-1.5">
@@ -308,13 +310,13 @@ export default function RefundFormClient({
                   <div className="flex-1">
                     <p className="text-xs font-semibold text-zinc-900">
                       Net — {formatRupiah(netAmount)}{" "}
-                      <span className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                      <span className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-bold text-emerald-700">
                         DIREKOMENDASIKAN
                       </span>
                     </p>
-                    <p className="mt-0.5 text-[11px] text-zinc-500">
-                      Jumlah yang user actually bayar untuk item ini
-                      (sudah dikurangi alokasi voucher proporsional).
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      Jumlah yang user actually bayar untuk item ini (sudah
+                      dikurangi alokasi voucher proporsional).
                     </p>
                   </div>
                 </label>
@@ -331,10 +333,10 @@ export default function RefundFormClient({
                     <p className="text-xs font-semibold text-zinc-900">
                       Gross — {formatRupiah(grossAmount)}
                     </p>
-                    <p className="mt-0.5 text-[11px] text-zinc-500">
-                      Harga penuh item tanpa potong voucher. Pakai
-                      kalau voucher item-specific (gak apply ke item
-                      ini) atau pakai goodwill compensation.
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      Harga penuh item tanpa potong voucher. Pakai kalau voucher
+                      item-specific (gak apply ke item ini) atau pakai goodwill
+                      compensation.
                     </p>
                   </div>
                 </label>
@@ -354,7 +356,8 @@ export default function RefundFormClient({
             disabled={requireManual}
             className="h-4 w-4 rounded border-zinc-300 text-blue-600"
           />
-          Override nominal manual{requireManual && " (wajib untuk seluruh order)"}
+          Override nominal manual
+          {requireManual && " (wajib untuk seluruh order)"}
         </label>
         {(manualOverride || requireManual) && (
           <div className="mt-2">
@@ -368,12 +371,12 @@ export default function RefundFormClient({
               onChange={(e) => setManualAmount(e.target.value)}
               className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
             />
-            <p className="mt-1 text-[11px] text-zinc-500">
-              Untuk refund seluruh order, voucher item-specific, atau
-              kasus khusus yang gak fit ke gross/net calculation.
+            <p className="mt-1 text-xs text-zinc-500">
+              Untuk refund seluruh order, voucher item-specific, atau kasus
+              khusus yang gak fit ke gross/net calculation.
             </p>
             {!requireManual && (
-              <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
                 <button
                   type="button"
                   onClick={() => setManualAmount(String(grossAmount))}
@@ -437,14 +440,21 @@ export default function RefundFormClient({
       {/* Final amount confirm display */}
       {effectiveAmount > 0 && (
         <div className="rounded-lg border-2 border-blue-200 bg-blue-50 px-3 py-2.5">
-          <p className="text-xs text-zinc-600">Total refund yang akan dikredit:</p>
-          <p className="mt-0.5 text-lg font-black text-blue-900">
+          <p className="text-xs text-zinc-600">
+            Total refund yang akan dikredit:
+          </p>
+          <p className="mt-0.5 text-lg font-semibold text-blue-900">
             {formatRupiah(effectiveAmount)}
           </p>
           {/* Helper note context */}
           {!manualOverride && selectedItem && hasProductVoucher && (
-            <p className="mt-1 text-[11px] text-zinc-600">
-              Mode: <span className="font-bold">{refundMode === "net" ? "Net (setelah voucher)" : "Gross (tanpa voucher)"}</span>
+            <p className="mt-1 text-xs text-zinc-600">
+              Mode:{" "}
+              <span className="font-bold">
+                {refundMode === "net"
+                  ? "Net (setelah voucher)"
+                  : "Gross (tanpa voucher)"}
+              </span>
             </p>
           )}
         </div>
@@ -452,11 +462,12 @@ export default function RefundFormClient({
 
       {/* Shipping discount info — read-only, gak affect product refund */}
       {orderShippingDiscount > 0 && (
-        <p className="text-[11px] text-zinc-500">
-          ℹ️ Order ini juga pakai voucher ongkir ({formatRupiah(orderShippingDiscount)}
-          ). Voucher ongkir tidak alokasi ke per-item — refund-nya
-          hitung manual via Override kalau perlu (e.g. cancel seluruh
-          order = refund total = ongkir + barang).
+        <p className="text-xs text-zinc-500">
+          ℹ️ Order ini juga pakai voucher ongkir (
+          {formatRupiah(orderShippingDiscount)}
+          ). Voucher ongkir tidak alokasi ke per-item — refund-nya hitung manual
+          via Override kalau perlu (e.g. cancel seluruh order = refund total =
+          ongkir + barang).
         </p>
       )}
 
@@ -465,17 +476,27 @@ export default function RefundFormClient({
       </Button>
 
       {/* Order context untuk debugging admin */}
-      <details className="text-[11px] text-zinc-500">
-        <summary className="cursor-pointer">Lihat data order (untuk verifikasi)</summary>
+      <details className="text-xs text-zinc-500">
+        <summary className="cursor-pointer">
+          Lihat data order (untuk verifikasi)
+        </summary>
         <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 rounded bg-zinc-50 p-2">
           <dt>Subtotal:</dt>
-          <dd className="text-right font-mono">{formatRupiah(orderSubtotal)}</dd>
+          <dd className="text-right font-mono">
+            {formatRupiah(orderSubtotal)}
+          </dd>
           <dt>Diskon Produk:</dt>
-          <dd className="text-right font-mono">−{formatRupiah(orderProductDiscount)}</dd>
+          <dd className="text-right font-mono">
+            −{formatRupiah(orderProductDiscount)}
+          </dd>
           <dt>Ongkir:</dt>
-          <dd className="text-right font-mono">{formatRupiah(orderShippingFee)}</dd>
+          <dd className="text-right font-mono">
+            {formatRupiah(orderShippingFee)}
+          </dd>
           <dt>Diskon Ongkir:</dt>
-          <dd className="text-right font-mono">−{formatRupiah(orderShippingDiscount)}</dd>
+          <dd className="text-right font-mono">
+            −{formatRupiah(orderShippingDiscount)}
+          </dd>
           {hasProductVoucher && (
             <>
               <dt className="text-amber-700">Voucher ratio:</dt>

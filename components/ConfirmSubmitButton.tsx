@@ -11,6 +11,8 @@ interface Props {
   title?: string;
   /** Label tombol konfirmasi (opsional, default "Ya, lanjut"). */
   confirmLabel?: string;
+  disabled?: boolean;
+  ariaLabel?: string;
 }
 
 /**
@@ -27,6 +29,8 @@ export function ConfirmSubmitButton({
   children,
   title,
   confirmLabel,
+  disabled,
+  ariaLabel,
 }: Props) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -36,6 +40,8 @@ export function ConfirmSubmitButton({
       <button
         ref={btnRef}
         type="submit"
+        disabled={disabled}
+        aria-label={ariaLabel}
         className={className}
         onClick={(e) => {
           e.preventDefault();

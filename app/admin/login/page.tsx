@@ -35,8 +35,8 @@ export default function AdminLoginPage() {
         err instanceof SyntaxError
           ? "Server mengembalikan response tidak valid. Cek koneksi database / log server."
           : err instanceof Error
-            ? err.message
-            : "Login gagal. Coba lagi.",
+          ? err.message
+          : "Login gagal. Coba lagi."
       );
     } finally {
       setLoading(false);
@@ -51,8 +51,10 @@ export default function AdminLoginPage() {
           <span className="text-2xl" aria-hidden="true">
             🐾
           </span>
-          <span className="text-base font-semibold text-zinc-900">Natalo Petshop</span>
-          <span className="ml-auto rounded-full bg-zinc-900 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+          <span className="text-base font-semibold text-zinc-900">
+            Natalo Petshop
+          </span>
+          <span className="ml-auto rounded-full bg-zinc-900 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-white">
             Admin
           </span>
         </div>
@@ -81,7 +83,9 @@ export default function AdminLoginPage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-zinc-700">Password</label>
+            <label className="text-sm font-medium text-zinc-700">
+              Password
+            </label>
             <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}

@@ -1,7 +1,9 @@
 "use client";
 
+import { useAdminConfirm } from "@/components/admin/ui/useAdminConfirm";
+
 /**
- * Tombol "Batalkan order" + native confirm dialog.
+ * Tombol "Batalkan order" dengan dialog konfirmasi admin.
  *
  * Kenapa wrapper client component:
  * - Server action `markAsCancelled` sekarang otomatis kredit refund ke
@@ -11,9 +13,6 @@
  *   sebelum eksekusi. Dipre-compute dari order.total − totalRefunded yg
  *   passed dari server component.
  *
- * Pakai window.confirm() (native) supaya tidak butuh modal library —
- * keep dependency minimal. Kalau nanti mau styled modal, ganti tinggal
- * import komponen Dialog.
  */
 import { useState } from "react";
 import { Button } from "@/components/admin/ui";
@@ -46,41 +45,50 @@ export default function CancelOrderButton({
   paymentStatus,
   orderNumber,
 }: Props) {
+  const { confirm, confirmation } = useAdminConfirm();
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Pre-compute estimasi nominal yang akan di-refund. Logic mirror dengan
   // markAsCancelled server action — kalau di sini meleset 1-2 rupiah dgn
   // server, gpp karena server-side yang otoritatif. Tujuan dialog cuma
   // kasih order of magnitude ke admin.
-  const willAutoRefund = paymentStatus === "PAID"
-    ? Math.max(0, orderTotal - alreadyRefunded)
-    : 0;
+  const willAutoRefund =
+    paymentStatus === "PAID" ? Math.max(0, orderTotal - alreadyRefunded) : 0;
 
   async function handleClick() {
-    const parts: string[] = [
-      `Batalkan order #${orderNumber}?`,
-      "",
-    ];
+    setError(null);
+    const parts: string[] = [`Batalkan order #${orderNumber}?`, ""];
 
     if (willAutoRefund > 0) {
       parts.push(
-        `• ${formatRp(willAutoRefund)} akan OTOMATIS dikembalikan ke Saldo Refund customer`,
+        `• ${formatRp(
+          willAutoRefund
+        )} akan OTOMATIS dikembalikan ke Saldo Refund customer`
       );
     } else if (paymentStatus === "PAID") {
-      parts.push("• Tidak ada nominal yang akan di-refund (sudah full-refund sebelumnya)");
+      parts.push(
+        "• Tidak ada nominal yang akan di-refund (sudah full-refund sebelumnya)"
+      );
     } else {
-      parts.push("• Customer belum bayar — tidak ada refund yang perlu diproses");
+      parts.push(
+        "• Customer belum bayar — tidak ada refund yang perlu diproses"
+      );
     }
 
     if (refundBalanceUsed > 0) {
-      parts.push(`• ${formatRp(refundBalanceUsed)} saldo yang dipakai bayar akan dibalikin ke wallet`);
+      parts.push(
+        `• ${formatRp(
+          refundBalanceUsed
+        )} saldo yang dipakai bayar akan dibalikin ke wallet`
+      );
     }
     parts.push("• Stock produk akan dikembalikan");
     parts.push("• Voucher (kalau ada) akan dibebaskan");
     parts.push("");
     parts.push("Aksi ini TIDAK BISA DI-UNDO. Lanjutkan?");
 
-    const ok = window.confirm(parts.join("\n"));
+    const ok = await confirm(parts.join("\n"));
     if (!ok) return;
 
     setSubmitting(true);
@@ -89,22 +97,31 @@ export default function CancelOrderButton({
     } catch (err) {
       // Server action throw → biasanya status guard (SHIPPED/DELIVERED).
       // Tampilkan ke admin supaya tahu kenapa gagal.
-      const msg = err instanceof Error ? err.message : "Gagal membatalkan order.";
-      window.alert(msg);
+      const msg =
+        err instanceof Error ? err.message : "Gagal membatalkan order.";
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Button
-      type="button"
-      onClick={handleClick}
-      disabled={submitting}
-      variant="dangerSoft"
-      fullWidth
-    >
-      {submitting ? "Membatalkan..." : "Batalkan order"}
-    </Button>
+    <>
+      {confirmation}
+      {error && (
+        <p role="alert" className="mb-3 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+      <Button
+        type="button"
+        onClick={handleClick}
+        disabled={submitting}
+        variant="dangerSoft"
+        fullWidth
+      >
+        {submitting ? "Membatalkan..." : "Batalkan order"}
+      </Button>
+    </>
   );
 }

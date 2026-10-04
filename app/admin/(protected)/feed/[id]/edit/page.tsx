@@ -63,7 +63,7 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
     }));
 
   return (
-    <AdminPage maxWidth="lg">
+    <AdminPage maxWidth="lg" className="admin-operational-page">
       <AdminEditFeedPostClient
         postId={post.id}
         initialTitle={post.title}
@@ -72,7 +72,7 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
         thumbnailUrl={
           signBunnyUrl(
             post.thumbnailUrl ??
-              (post.videoGuid ? bunnyThumbnailUrl(post.videoGuid) : null),
+              (post.videoGuid ? bunnyThumbnailUrl(post.videoGuid) : null)
           ) ?? null
         }
         videoDurationSec={post.videoDurationSec}

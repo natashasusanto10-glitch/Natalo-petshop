@@ -1,0 +1,601 @@
+{
+  "date": "2026-10-04",
+  "baseline": [
+    {
+      "route": "dashboard",
+      "width": 1365,
+      "heading": "Selamat pagi, Leonardi",
+      "pageWidth": 1350,
+      "smallTargets": 5,
+      "smallText": 20,
+      "viewport": 1365
+    },
+    {
+      "route": "products",
+      "width": 1365,
+      "heading": "Produk",
+      "pageWidth": 1350,
+      "smallTargets": 29,
+      "smallText": 15,
+      "viewport": 1365
+    },
+    {
+      "route": "orders",
+      "width": 1365,
+      "heading": "Pesanan",
+      "pageWidth": 1350,
+      "smallTargets": 5,
+      "smallText": 25,
+      "viewport": 1365
+    },
+    {
+      "route": "order-ORD-261004-081",
+      "width": 1365,
+      "heading": "ORD-261004-081",
+      "pageWidth": 1365,
+      "smallTargets": 1,
+      "smallText": 4,
+      "viewport": 1365
+    },
+    {
+      "route": "promos",
+      "width": 1365,
+      "heading": "Promosi",
+      "pageWidth": 1365,
+      "smallTargets": 0,
+      "smallText": 7,
+      "viewport": 1365
+    },
+    {
+      "route": "content",
+      "width": 1365,
+      "heading": "Konten toko",
+      "pageWidth": 1365,
+      "smallTargets": 0,
+      "smallText": 6,
+      "viewport": 1365
+    },
+    {
+      "route": "customers",
+      "width": 1365,
+      "heading": "Pelanggan",
+      "pageWidth": 1365,
+      "smallTargets": 5,
+      "smallText": 6,
+      "viewport": 1365
+    },
+    {
+      "route": "reports",
+      "width": 1365,
+      "heading": "Laporan penjualan",
+      "pageWidth": 1350,
+      "smallTargets": 0,
+      "smallText": 13,
+      "viewport": 1365
+    },
+    {
+      "route": "settings",
+      "width": 1365,
+      "heading": "Pengaturan toko",
+      "pageWidth": 1365,
+      "smallTargets": 0,
+      "smallText": 5,
+      "viewport": 1365
+    },
+    {
+      "route": "form-new",
+      "width": 1365,
+      "heading": "Tambah produk",
+      "pageWidth": 1350,
+      "smallTargets": 3,
+      "smallText": 18,
+      "viewport": 1365
+    },
+    {
+      "route": "edit-6",
+      "width": 1365,
+      "heading": "Edit produk",
+      "pageWidth": 1350,
+      "smallTargets": 3,
+      "smallText": 19,
+      "viewport": 1365
+    },
+    {
+      "route": "dashboard",
+      "width": 375,
+      "heading": "Selamat pagi, Leonardi",
+      "pageWidth": 360,
+      "smallTargets": 10,
+      "smallText": 22,
+      "viewport": 375
+    },
+    {
+      "route": "products",
+      "width": 375,
+      "heading": "Produk",
+      "pageWidth": 360,
+      "smallTargets": 42,
+      "smallText": 4,
+      "viewport": 375
+    },
+    {
+      "route": "orders",
+      "width": 375,
+      "heading": "Pesanan",
+      "pageWidth": 360,
+      "smallTargets": 12,
+      "smallText": 21,
+      "viewport": 375
+    },
+    {
+      "route": "order-ORD-261004-081",
+      "width": 375,
+      "heading": "ORD-261004-081",
+      "pageWidth": 360,
+      "smallTargets": 2,
+      "smallText": 5,
+      "viewport": 375
+    },
+    {
+      "route": "promos",
+      "width": 375,
+      "heading": "Promosi",
+      "pageWidth": 360,
+      "smallTargets": 4,
+      "smallText": 8,
+      "viewport": 375
+    },
+    {
+      "route": "content",
+      "width": 375,
+      "heading": "Konten toko",
+      "pageWidth": 360,
+      "smallTargets": 6,
+      "smallText": 7,
+      "viewport": 375
+    },
+    {
+      "route": "customers",
+      "width": 375,
+      "heading": "Pelanggan",
+      "pageWidth": 375,
+      "smallTargets": 5,
+      "smallText": 7,
+      "viewport": 375
+    },
+    {
+      "route": "reports",
+      "width": 375,
+      "heading": "Laporan penjualan",
+      "pageWidth": 360,
+      "smallTargets": 2,
+      "smallText": 14,
+      "viewport": 375
+    },
+    {
+      "route": "settings",
+      "width": 375,
+      "heading": "Pengaturan toko",
+      "pageWidth": 360,
+      "smallTargets": 4,
+      "smallText": 6,
+      "viewport": 375
+    },
+    {
+      "route": "form-new",
+      "width": 375,
+      "heading": "Tambah produk",
+      "pageWidth": 360,
+      "smallTargets": 7,
+      "smallText": 17,
+      "viewport": 375
+    },
+    {
+      "route": "edit-6",
+      "width": 375,
+      "heading": "Edit produk",
+      "pageWidth": 360,
+      "smallTargets": 8,
+      "smallText": 18,
+      "viewport": 375
+    }
+  ],
+  "after": [
+    {
+      "route": "dashboard",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "Selamat pagi, Leonardi",
+      "pageWidth": 1350,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "products",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "Produk",
+      "pageWidth": 1350,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "orders",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "Pesanan",
+      "pageWidth": 1350,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "order-ORD-261004-081",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "ORD-261004-081",
+      "pageWidth": 1365,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "promos",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "Promosi",
+      "pageWidth": 1365,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "content",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "Konten toko",
+      "pageWidth": 1365,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "customers",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "Pelanggan",
+      "pageWidth": 1365,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "reports",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "Laporan penjualan",
+      "pageWidth": 1350,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "settings",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "Pengaturan toko",
+      "pageWidth": 1365,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "form-new",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "Tambah produk",
+      "pageWidth": 1350,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "edit-6",
+      "size": {
+        "width": 1365,
+        "height": 900
+      },
+      "heading": "Edit produk",
+      "pageWidth": 1350,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 1365
+    },
+    {
+      "route": "dashboard",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "Selamat pagi, Leonardi",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "products",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "Produk",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "orders",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "Pesanan",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "order-ORD-261004-081",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "ORD-261004-081",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "promos",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "Promosi",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "content",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "Konten toko",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "customers",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "Pelanggan",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "reports",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "Laporan penjualan",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "settings",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "Pengaturan toko",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "form-new",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "Tambah produk",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "edit-6",
+      "size": {
+        "width": 375,
+        "height": 812
+      },
+      "heading": "Edit produk",
+      "pageWidth": 360,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 375
+    },
+    {
+      "route": "dashboard",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "Selamat pagi, Leonardi",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    },
+    {
+      "route": "products",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "Produk",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    },
+    {
+      "route": "orders",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "Pesanan",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    },
+    {
+      "route": "order-ORD-261004-081",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "ORD-261004-081",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    },
+    {
+      "route": "promos",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "Promosi",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    },
+    {
+      "route": "content",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "Konten toko",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    },
+    {
+      "route": "customers",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "Pelanggan",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    },
+    {
+      "route": "reports",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "Laporan penjualan",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    },
+    {
+      "route": "settings",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "Pengaturan toko",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    },
+    {
+      "route": "form-new",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "Tambah produk",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    },
+    {
+      "route": "edit-6",
+      "size": {
+        "width": 812,
+        "height": 375
+      },
+      "heading": "Edit produk",
+      "pageWidth": 797,
+      "smallControls": [],
+      "smallSupportText": 0,
+      "viewport": 812
+    }
+  ]
+}

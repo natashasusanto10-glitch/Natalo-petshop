@@ -1,356 +1,310 @@
 "use client";
-
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { formatRupiah } from "@/lib/format";
-
-type Field = "price" | "stock";
-
-type VariantOption = {
-  id: string;
-  value: string;
-  attributeId: string;
-};
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AdminDialog } from "./ui/AdminDialog";
+import { NumberInput } from "./ui/NumberInput";
+import { Button, useAdminToast } from "./ui";
+import { QuickEditPencil } from "./InlineEditCell";
+import { formatAdminNumber, parseAdminInteger } from "@/lib/admin/number-input";
 
 type VariantAttribute = {
   id: string;
   name: string;
-  options: VariantOption[];
+  options: Array<{ id: string; value: string }>;
 };
-
 type Variant = {
   id: string;
   sku: string | null;
   price: number;
   stock: number;
+  isActive?: boolean;
   options: Array<{ optionId: string }>;
 };
-
 type Props = {
   productId: string;
   productName: string;
-  field: Field;
+  field: "price" | "stock";
   initialValue: number;
+  variantId?: string;
 };
-
-function formatNumber(n: number) {
-  return Math.round(n).toLocaleString("id-ID");
-}
-
-function parseNumber(value: string) {
-  const clean = value.replace(/\./g, "").replace(/[^\d]/g, "");
-  return clean === "" ? 0 : Number(clean);
-}
-
 function variantLabel(variant: Variant, attributes: VariantAttribute[]) {
-  const optionMap = new Map<string, { attr: string; value: string }>();
-  for (const attr of attributes) {
-    for (const option of attr.options) {
-      optionMap.set(option.id, { attr: attr.name, value: option.value });
-    }
-  }
-
-  const labels = variant.options
-    .map((ref) => optionMap.get(ref.optionId))
-    .filter((item): item is { attr: string; value: string } => Boolean(item))
-    .map((item) => `${item.attr}: ${item.value}`);
-
-  return labels.join(" / ") || variant.sku || "Varian";
+  return (
+    attributes
+      .flatMap((attr) =>
+        attr.options
+          .filter((option) =>
+            variant.options.some((ref) => ref.optionId === option.id)
+          )
+          .map((option) => option.value)
+      )
+      .join(" / ") ||
+    variant.sku ||
+    "Varian"
+  );
 }
-
 export function VariantInlineEditCell({
   productId,
   productName,
   field,
   initialValue,
+  variantId,
 }: Props) {
-  const [value, setValue] = useState(initialValue);
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [attributes, setAttributes] = useState<VariantAttribute[]>([]);
-  const [variants, setVariants] = useState<Variant[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  /**
-   * Nilai "Ubah Massal" — diterapkan ke SEMUA varian sekaligus.
-   *
-   * Restock 12 varian ke angka yang sama sebelumnya berarti mengetik 12
-   * kali. Ini cuma mengisi draft; tidak menyimpan apa pun sampai tombol
-   * Simpan ditekan, jadi admin masih bisa mengoreksi satu-dua varian
-   * setelah menerapkan, atau membatalkan seluruhnya lewat Tutup.
-   */
-  const [bulkValue, setBulkValue] = useState("");
-  // ROOT CAUSE bug "modal blur/transparan" yg user lapor di tab Arsip:
-  // row produk archived punya className `opacity-70` (lihat
-  // app/admin/(protected)/products/page.tsx:475). CSS opacity CASCADES
-  // ke semua descendants — termasuk `fixed` modal anak komponen ini —
-  // walau `position: fixed` lepas dari layout flow. Fix: portal modal
-  // ke document.body, lepas dari row's opacity cascade.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
+  const formRef = useRef<HTMLFormElement>(null);
+  const router = useRouter();
+  const { show } = useAdminToast();
+  const [value, setValue] = useState(initialValue),
+    [open, setOpen] = useState(false),
+    [loading, setLoading] = useState(false),
+    [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null),
+    [attributes, setAttributes] = useState<VariantAttribute[]>([]),
+    [variants, setVariants] = useState<Variant[]>([]),
+    [drafts, setDrafts] = useState<Record<string, string>>({}),
+    [bulkValue, setBulkValue] = useState("");
+  const [reload, setReload] = useState(0),
+    [message, setMessage] = useState("");
+  const label = field === "price" ? "harga" : "stok";
+  useEffect(() => setValue(initialValue), [initialValue]);
   useEffect(() => {
-    setValue(initialValue);
-  }, [initialValue]);
-
-  useEffect(() => {
-    if (!savedAt) return;
-    const t = setTimeout(() => setSavedAt(0), 2000);
-    return () => clearTimeout(t);
-  }, [savedAt]);
-
-  async function openEditor() {
-    setOpen(true);
-    setError(null);
-    // Reset supaya nilai massal dari sesi edit sebelumnya tidak nyangkut
-    // dan tak sengaja diterapkan ke produk lain.
-    setBulkValue("");
+    if (!open) return;
+    const controller = new AbortController();
     setLoading(true);
-    try {
-      const res = await fetch(`/api/admin/products/${productId}/variants`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Gagal memuat varian");
-
-      const nextVariants: Variant[] = data.variants || [];
-      setAttributes(data.attributes || []);
-      setVariants(nextVariants);
-      setDrafts(
-        Object.fromEntries(
-          nextVariants.map((variant) => [
-            variant.id,
-            field === "price" ? formatNumber(variant.price) : String(variant.stock),
-          ])
-        )
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat varian");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  /** Normalisasi input angka — sama untuk field per-varian maupun massal. */
-  function formatDraftValue(raw: string) {
-    const clean = raw.replace(/\./g, "").replace(/[^\d]/g, "");
-    return field === "price" && clean
-      ? Number(clean).toLocaleString("id-ID")
-      : clean;
-  }
-
-  function updateDraft(id: string, raw: string) {
-    setDrafts((current) => ({ ...current, [id]: formatDraftValue(raw) }));
-  }
-
-  /** Isi draft SEMUA varian dengan nilai massal. Belum menyimpan. */
-  function applyBulkToAll() {
-    const next = formatDraftValue(bulkValue);
-    if (next === "") return;
-    setDrafts(Object.fromEntries(variants.map((variant) => [variant.id, next])));
-  }
-
+    setError(null);
+    setVariants([]);
+    setDrafts({});
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/admin/products/${productId}/variants`,
+          { signal: controller.signal }
+        );
+        const data = await response.json();
+        if (!response.ok)
+          throw new Error(data?.error ?? "Varian gagal dimuat.");
+        if (controller.signal.aborted) return;
+        const next: Variant[] = (data.variants ?? []).filter(
+          (row: Variant) => !variantId || row.id === variantId
+        );
+        if (!next.length)
+          throw new Error("Tidak ada varian yang dapat diedit.");
+        setAttributes(data.attributes ?? []);
+        setVariants(next);
+        setDrafts(
+          Object.fromEntries(next.map((row) => [row.id, String(row[field])]))
+        );
+      } catch (err) {
+        if (!controller.signal.aborted)
+          setError(err instanceof Error ? err.message : "Varian gagal dimuat.");
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [open, productId, field, variantId, reload]);
+  useEffect(() => {
+    if (open && !loading && variants.length)
+      formRef.current
+        ?.querySelector<HTMLInputElement>("input:not([disabled])")
+        ?.focus();
+  }, [open, loading, variants.length]);
+  const valid = (raw: string) => {
+    const number = parseAdminInteger(raw);
+    return (
+      Number.isSafeInteger(number) &&
+      number >= (field === "price" ? 1 : 0) &&
+      number <= (field === "price" ? 999999999 : 999999)
+    );
+  };
   async function save() {
+    if (
+      !variants.length ||
+      variants.some((row) => !valid(drafts[row.id] ?? ""))
+    ) {
+      setError(`Isi ${label} setiap varian dengan bilangan bulat yang valid.`);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      const updates = variants.map((variant) => ({
-        id: variant.id,
-        [field]: parseNumber(drafts[variant.id] ?? "0"),
-      }));
-      const res = await fetch(`/api/admin/products/${productId}/variants/bulk`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ updates }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Gagal menyimpan varian");
-
-      const aggregateValue = field === "price" ? data.aggregate?.price : data.aggregate?.stock;
-      if (typeof aggregateValue === "number") setValue(aggregateValue);
-      setSavedAt(Date.now());
+      const updates = variants
+        .filter((row) => parseAdminInteger(drafts[row.id]) !== row[field])
+        .map((row) => ({
+          id: row.id,
+          [field]: parseAdminInteger(drafts[row.id]),
+        }));
+      if (updates.length) {
+        const response = await fetch(
+          `/api/admin/products/${productId}/variants/bulk`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ updates }),
+          }
+        );
+        const data = await response.json().catch(() => null);
+        if (!response.ok)
+          throw new Error(
+            data?.error ?? "Perubahan gagal disimpan. Coba lagi."
+          );
+        const next = variantId
+          ? parseAdminInteger(drafts[variantId])
+          : data.aggregate?.[field];
+        if (typeof next === "number") setValue(next);
+        show(
+          `${field === "price" ? "Harga" : "Stok"} varian berhasil diperbarui.`
+        );
+        router.refresh();
+      }
       setOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan varian");
+      setError(
+        err instanceof Error ? err.message : "Perubahan gagal disimpan."
+      );
     } finally {
       setSaving(false);
     }
   }
-
-  const isStockEmpty = field === "stock" && value === 0;
-  const isStockLow = field === "stock" && value > 0 && value < 5;
-
   return (
     <>
       <button
         type="button"
-        onClick={openEditor}
-        className={`w-full rounded-lg border px-2 py-1 text-left text-sm transition ${
-          savedAt
-            ? "border-green-300 bg-green-50"
-            : isStockEmpty
-            ? "border-red-200 bg-red-50/50"
-            : isStockLow
-            ? "border-amber-200 bg-amber-50/50"
-            : "border-transparent hover:border-zinc-200"
-        }`}
-        title="Klik untuk edit varian"
+        className="admin-quick-value"
+        aria-label={`Atur ${label} ${productName}`}
+        onClick={() => {
+          setBulkValue("");
+          setMessage("");
+          setOpen(true);
+        }}
       >
-        {field === "price" ? (
-          <span className="font-medium text-zinc-950">{formatRupiah(value)}</span>
-        ) : (
-          <span className="inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-bold text-zinc-700">
-            {value}
-          </span>
-        )}
-        <p className="mt-0.5 text-[10px] font-semibold text-natalo-600">
-          edit varian
-          {savedAt ? " ✓" : ""}
-        </p>
+        <span>{formatAdminNumber(value)}</span>
+        <QuickEditPencil />
       </button>
-
-      {open && mounted && createPortal(
-        <>
-          {/* Portal'd ke document.body — lepas dari row produk archived yg
-              punya `opacity-70` cascade. Backdrop solid `bg-black/50` tanpa
-              backdrop-filter (history: backdrop-filter sempat dicurigai
-              tapi bukan akar; akar = opacity cascade dari parent row). */}
-          <div
-            className="fixed inset-0 z-50 bg-black/50"
-            onClick={() => !saving && setOpen(false)}
-          />
-          <div
-            className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4"
-          >
-            <div
-              // Inline backgroundColor + isolation sebagai double-guarantee
-              // solid putih walau ada CSS cascade aneh di future.
-              className="pointer-events-auto w-full max-w-lg rounded-2xl p-5 shadow-2xl ring-1 ring-black/10"
-              style={{
-                backgroundColor: "#ffffff",
-                isolation: "isolate",
-                backdropFilter: "none",
-                WebkitBackdropFilter: "none",
-              }}
-              onClick={(e) => e.stopPropagation()}
+      <AdminDialog
+        open={open}
+        title={`Atur ${label} variasi`}
+        busy={saving}
+        onClose={() => setOpen(false)}
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={saving}
+              onClick={() => setOpen(false)}
             >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-black text-zinc-950">
-                  Edit {field === "price" ? "Harga" : "Stok"} Varian
-                </h3>
-                <p className="mt-1 line-clamp-1 text-sm text-zinc-500">{productName}</p>
-              </div>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => setOpen(false)}
-                className="rounded-full border border-zinc-200 px-3 py-1 text-sm font-bold text-zinc-500 hover:border-zinc-400 disabled:opacity-50"
-              >
-                Tutup
-              </button>
-            </div>
-
-            {loading ? (
-              <p className="mt-6 rounded-lg bg-zinc-50 p-4 text-sm text-zinc-500">
-                Memuat varian...
-              </p>
-            ) : variants.length === 0 ? (
-              <p className="mt-6 rounded-lg bg-zinc-50 p-4 text-sm text-zinc-500">
-                Varian tidak ditemukan.
-              </p>
-            ) : (
-              <>
-              {/* Ubah Massal — isi semua varian sekaligus. Sengaja hanya
-                  mengisi draft, bukan langsung menyimpan, supaya admin bisa
-                  mengoreksi satu-dua varian sesudahnya. */}
-              <div className="mt-5 flex items-center gap-2 rounded-xl bg-zinc-50 p-3">
-                <label
-                  htmlFor={`bulk-${productId}-${field}`}
-                  className="shrink-0 text-xs font-bold text-zinc-700"
-                >
-                  Ubah massal
+              Batal
+            </Button>
+            <Button
+              type="submit"
+              form={`variants-${field}-${productId}-${variantId ?? "all"}`}
+              disabled={loading || saving || !variants.length}
+            >
+              {saving ? "Menyimpan…" : "Simpan"}
+            </Button>
+          </>
+        }
+      >
+        <p className="mb-5 text-sm text-slate-600">{productName}</p>
+        {loading ? (
+          <p role="status" className="text-sm text-slate-500">
+            Memuat varian…
+          </p>
+        ) : (
+          <form
+            ref={formRef}
+            id={`variants-${field}-${productId}-${variantId ?? "all"}`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!saving) void save();
+            }}
+          >
+            {!variantId && variants.length > 1 && (
+              <div className="mb-5 flex flex-wrap items-end gap-3 rounded-lg bg-slate-50 p-4">
+                <label className="min-w-0 flex-1">
+                  <span className="admin-field-label">Ubah semua variasi</span>
+                  <NumberInput
+                    aria-label={`Ubah semua ${label} variasi`}
+                    value={bulkValue}
+                    thousands={field === "price"}
+                    onValueChange={setBulkValue}
+                    disabled={saving}
+                    className="admin-field-control"
+                  />
                 </label>
-                <input
-                  id={`bulk-${productId}-${field}`}
-                  type="text"
-                  inputMode="numeric"
-                  value={bulkValue}
-                  disabled={saving}
-                  placeholder={field === "price" ? "Harga" : "Stok"}
-                  onChange={(e) => setBulkValue(formatDraftValue(e.target.value))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      applyBulkToAll();
-                    }
-                  }}
-                  className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-right text-sm font-semibold outline-none focus:border-zinc-950 disabled:opacity-50"
-                />
-                <button
+                <Button
                   type="button"
-                  disabled={saving || bulkValue.trim() === ""}
-                  onClick={applyBulkToAll}
-                  className="shrink-0 rounded-full bg-natalo-600 px-3 py-2 text-xs font-bold text-white hover:bg-natalo-700 disabled:opacity-40"
+                  variant="secondary"
+                  disabled={saving || !bulkValue}
+                  onClick={() => {
+                    if (!valid(bulkValue)) {
+                      setError(`Nilai ${label} tidak valid.`);
+                      return;
+                    }
+                    setDrafts(
+                      Object.fromEntries(
+                        variants.map((row) => [row.id, bulkValue])
+                      )
+                    );
+                    setError(null);
+                    setMessage(
+                      `Diterapkan ke ${variants.length} varian. Klik Simpan untuk menyimpan perubahan.`
+                    );
+                  }}
                 >
                   Terapkan ke semua
-                </button>
+                </Button>
               </div>
-
-              <div className="mt-3 max-h-[55vh] space-y-2 overflow-y-auto pr-1">
-                {variants.map((variant) => (
-                  <div
-                    key={variant.id}
-                    className="grid grid-cols-[1fr_130px] items-center gap-3 rounded-lg border border-zinc-100 p-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-zinc-950">
-                        {variantLabel(variant, attributes)}
-                      </p>
-                      {variant.sku && (
-                        <p className="mt-0.5 truncate font-mono text-[11px] text-zinc-400">
-                          {variant.sku}
-                        </p>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={drafts[variant.id] ?? ""}
-                      onChange={(e) => updateDraft(variant.id, e.target.value)}
-                      className="rounded-lg border border-zinc-300 px-3 py-2 text-right text-sm font-semibold outline-none focus:border-zinc-950"
-                    />
-                  </div>
-                ))}
-              </div>
-              </>
             )}
-
-            {error && <p className="mt-3 text-sm font-semibold text-red-600">{error}</p>}
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => setOpen(false)}
-                className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-bold text-zinc-700 hover:border-zinc-500 disabled:opacity-50"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                disabled={saving || loading || variants.length === 0}
-                onClick={save}
-                className="rounded-full bg-zinc-950 px-5 py-2 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
-              >
-                {saving ? "Menyimpan..." : "Simpan"}
-              </button>
+            {message && (
+              <p role="status" className="mb-3 text-xs text-blue-700">
+                {message}
+              </p>
+            )}
+            <div className="space-y-3">
+              {variants.map((row) => (
+                <label
+                  key={row.id}
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(110px,1fr)] items-center gap-4 border-b border-slate-100 pb-3"
+                >
+                  <span className="text-sm">
+                    {variantLabel(row, attributes)}
+                    {row.isActive === false && (
+                      <span className="mt-1 block text-xs text-slate-500">
+                        Tidak aktif
+                      </span>
+                    )}
+                  </span>
+                  <NumberInput
+                    aria-label={`${label} ${variantLabel(row, attributes)}`}
+                    value={drafts[row.id] ?? ""}
+                    thousands={field === "price"}
+                    onValueChange={(next) =>
+                      setDrafts((current) => ({ ...current, [row.id]: next }))
+                    }
+                    disabled={saving}
+                    className="admin-field-control"
+                  />
+                </label>
+              ))}
             </div>
-            </div>
+          </form>
+        )}
+        {error && (
+          <div role="alert" className="mt-4 text-sm text-red-700">
+            <p>{error}</p>
+            {!variants.length && !loading && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setReload((count) => count + 1)}
+                className="mt-3"
+              >
+                Coba lagi
+              </Button>
+            )}
           </div>
-        </>,
-        document.body,
-      )}
+        )}
+      </AdminDialog>
     </>
   );
 }

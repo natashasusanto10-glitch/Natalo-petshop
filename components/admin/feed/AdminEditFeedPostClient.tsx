@@ -78,8 +78,8 @@ export function AdminEditFeedPostClient({
         initialProducts.map((p) => [
           p.productId,
           p.promoPrice != null ? String(p.promoPrice) : "",
-        ]),
-      ),
+        ])
+      )
   );
   const [selectedProducts, setSelectedProducts] =
     useState<TaggedProduct[]>(initialProducts);
@@ -121,7 +121,9 @@ export function AdminEditFeedPostClient({
     };
   }, [searchQuery]);
 
-  const selectedProductIdSet = new Set(selectedProducts.map((p) => p.productId));
+  const selectedProductIdSet = new Set(
+    selectedProducts.map((p) => p.productId)
+  );
 
   function toggleProduct(product: AdminProduct) {
     const selected = selectedProductIdSet.has(product.id);
@@ -212,7 +214,7 @@ export function AdminEditFeedPostClient({
           >
             ← Feed
           </Link>
-          <h1 className="mt-0.5 text-xl font-black text-zinc-950 md:text-2xl">
+          <h1 className="mt-0.5 text-xl font-semibold text-zinc-950 md:text-2xl">
             Edit postingan
           </h1>
           <p className="mt-0.5 text-xs text-zinc-500">{kindTabLabel}</p>
@@ -242,7 +244,7 @@ export function AdminEditFeedPostClient({
               />
             ) : null}
             {videoDurationSec ? (
-              <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-black text-white">
+              <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-xs font-semibold text-white">
                 {Math.floor(videoDurationSec / 60)}:
                 {String(videoDurationSec % 60).padStart(2, "0")}
               </span>
@@ -250,7 +252,7 @@ export function AdminEditFeedPostClient({
           </div>
           <div className="flex flex-1 flex-col gap-2">
             <label className="block">
-              <span className="text-[11px] font-bold text-zinc-600">Judul</span>
+              <span className="text-xs font-bold text-zinc-600">Judul</span>
               <input
                 type="text"
                 value={title}
@@ -260,7 +262,7 @@ export function AdminEditFeedPostClient({
                 disabled={busy}
                 className="mt-0.5 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none disabled:opacity-50"
               />
-              <p className="mt-1 text-right text-[10px] font-bold text-zinc-400">
+              <p className="mt-1 text-right text-xs font-bold text-zinc-400">
                 {title.length}/{MAX_TITLE_LENGTH}
               </p>
             </label>
@@ -268,7 +270,7 @@ export function AdminEditFeedPostClient({
         </div>
 
         <label className="mt-3 block">
-          <span className="text-[11px] font-bold text-zinc-600">Deskripsi</span>
+          <span className="text-xs font-bold text-zinc-600">Deskripsi</span>
           <textarea
             value={description}
             onChange={(e) =>
@@ -279,7 +281,7 @@ export function AdminEditFeedPostClient({
             placeholder="Deskripsi (opsional)"
             className="mt-0.5 w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none disabled:opacity-50"
           />
-          <p className="mt-1 text-right text-[10px] font-bold text-zinc-400">
+          <p className="mt-1 text-right text-xs font-bold text-zinc-400">
             {description.length}/{MAX_DESC_LENGTH}
           </p>
         </label>
@@ -288,13 +290,11 @@ export function AdminEditFeedPostClient({
       <SectionCard
         title="Produk terkait"
         subtitle={
-          kind === "PROMO"
-            ? "Set harga promo per-produk di bawah"
-            : undefined
+          kind === "PROMO" ? "Set harga promo per-produk di bawah" : undefined
         }
       >
         <div className="mb-3 flex items-center justify-end">
-          <span className="text-[11px] font-extrabold text-zinc-400">
+          <span className="text-xs font-semibold text-zinc-400">
             {selectedProducts.length}/{MAX_PRODUCTS}
           </span>
         </div>
@@ -319,10 +319,10 @@ export function AdminEditFeedPostClient({
                       <FiPackage className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="line-clamp-2 text-[13px] font-extrabold text-zinc-900">
+                      <p className="line-clamp-2 text-[13px] font-semibold text-zinc-900">
                         {p.name}
                       </p>
-                      <p className="text-[11px] font-semibold text-zinc-500">
+                      <p className="text-xs font-semibold text-zinc-500">
                         Tag #{idx + 1} · Harga normal {formatRupiah(p.price)}
                       </p>
                     </div>
@@ -339,7 +339,7 @@ export function AdminEditFeedPostClient({
                   {kind === "PROMO" && (
                     <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/60 p-2.5">
                       <label className="block">
-                        <span className="text-[11px] font-bold text-rose-800">
+                        <span className="text-xs font-bold text-rose-800">
                           Harga Promo (Rp) — kosongkan kalau tidak diskon
                         </span>
                         <input
@@ -358,14 +358,14 @@ export function AdminEditFeedPostClient({
                         />
                       </label>
                       {hasValidPromo ? (
-                        <p className="mt-1.5 text-[11px] font-bold text-rose-800">
+                        <p className="mt-1.5 text-xs font-bold text-rose-800">
                           Hemat {formatRupiah(p.price - promoNum)} ·{" "}
                           {discountPct}% off
                         </p>
                       ) : promoRaw.trim() !== "" &&
                         Number.isFinite(promoNum) &&
                         promoNum >= p.price ? (
-                        <p className="mt-1.5 text-[11px] font-bold text-amber-700">
+                        <p className="mt-1.5 text-xs font-bold text-amber-700">
                           Harga promo harus lebih kecil dari harga normal.
                         </p>
                       ) : null}
@@ -378,7 +378,7 @@ export function AdminEditFeedPostClient({
         )}
 
         {selectedProducts.length >= MAX_PRODUCTS ? (
-          <p className="rounded-xl bg-zinc-50 px-3 py-2 text-[11px] font-bold text-zinc-500">
+          <p className="rounded-xl bg-zinc-50 px-3 py-2 text-xs font-bold text-zinc-500">
             Maksimal {MAX_PRODUCTS} produk terkait sudah dipilih.
           </p>
         ) : (
@@ -396,14 +396,14 @@ export function AdminEditFeedPostClient({
               className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none disabled:opacity-50"
             />
             {searchLoading && (
-              <p className="mt-2 text-center text-[11px] font-bold text-zinc-400">
+              <p className="mt-2 text-center text-xs font-bold text-zinc-400">
                 Mencari...
               </p>
             )}
             {!searchLoading &&
               searchResults.length === 0 &&
               searchQuery.trim().length >= 2 && (
-                <p className="mt-2 rounded-xl bg-zinc-50 px-3 py-2 text-center text-[11px] font-bold text-zinc-500">
+                <p className="mt-2 rounded-xl bg-zinc-50 px-3 py-2 text-center text-xs font-bold text-zinc-500">
                   Tidak ada produk match
                 </p>
               )}
@@ -442,7 +442,7 @@ export function AdminEditFeedPostClient({
                 })}
               </ul>
             )}
-            <p className="mt-2 text-[11px] font-semibold text-zinc-400">
+            <p className="mt-2 text-xs font-semibold text-zinc-400">
               Hasil pencarian muncul langsung di sini.
             </p>
           </>

@@ -1,159 +1,165 @@
 "use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AdminDialog } from "./ui/AdminDialog";
+import { NumberInput } from "./ui/NumberInput";
+import { Button, useAdminToast } from "./ui";
+import { formatAdminNumber, parseAdminInteger } from "@/lib/admin/number-input";
 
-import { useState, useRef, useEffect } from "react";
-import { formatRupiah } from "@/lib/format";
-
-type Field = "price" | "stock";
-
-interface Props {
+type Props = {
   productId: string;
-  field: Field;
+  field: "price" | "stock";
   initialValue: number;
-  /** Jika true, cell ditampilkan read-only (mis. produk dengan varian) */
+  productName?: string;
   readOnly?: boolean;
-  /** Hint tooltip saat readOnly */
   readOnlyHint?: string;
+};
+export function QuickEditPencil() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+    >
+      <path d="m16 3 5 5-12 12-6 1 1-6ZM14 5l5 5" />
+    </svg>
+  );
 }
-
-function formatPrice(n: number) {
-  if (!n && n !== 0) return "";
-  return Math.round(n).toLocaleString("id-ID");
-}
-
-function parsePrice(s: string) {
-  const clean = s.replace(/\./g, "").replace(/[^\d]/g, "");
-  return clean === "" ? 0 : parseInt(clean, 10);
-}
-
 export function InlineEditCell({
   productId,
+  productName,
   field,
   initialValue,
   readOnly,
   readOnlyHint,
 }: Props) {
-  const [value, setValue] = useState(initialValue);
-  const [draft, setDraft] = useState(
-    field === "price" ? formatPrice(initialValue) : String(initialValue)
-  );
-  const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState<number>(0);
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Sync ketika initialValue berubah (mis. setelah revalidate)
-  useEffect(() => {
-    setValue(initialValue);
-    setDraft(field === "price" ? formatPrice(initialValue) : String(initialValue));
-  }, [initialValue, field]);
-
-  // Hilangkan flash "tersimpan" setelah 2 detik
-  useEffect(() => {
-    if (savedAt === 0) return;
-    const t = setTimeout(() => setSavedAt(0), 2000);
-    return () => clearTimeout(t);
-  }, [savedAt]);
-
-  if (readOnly) {
-    return (
-      <div title={readOnlyHint} className="cursor-help text-sm">
-        {field === "price" ? (
-          <span className="text-zinc-500">{formatRupiah(value)}</span>
-        ) : (
-          <span className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-bold text-zinc-500">
-            {value}
-          </span>
-        )}
-        <p className="mt-0.5 text-[10px] italic text-zinc-400">via varian</p>
-      </div>
-    );
-  }
-
-  async function save(newVal: number) {
-    if (newVal === value) return;
+  const router = useRouter();
+  const { show } = useAdminToast();
+  const [value, setValue] = useState(initialValue),
+    [draft, setDraft] = useState(String(initialValue));
+  const [open, setOpen] = useState(false),
+    [saving, setSaving] = useState(false),
+    [error, setError] = useState<string | null>(null);
+  const label = field === "price" ? "harga" : "stok";
+  useEffect(() => setValue(initialValue), [initialValue]);
+  async function save() {
+    const next = parseAdminInteger(draft),
+      min = field === "price" ? 1 : 0,
+      max = field === "price" ? 999999999 : 999999;
+    if (!Number.isSafeInteger(next) || next < min || next > max) {
+      setError(
+        `Isi ${label} dengan bilangan bulat antara ${formatAdminNumber(
+          min
+        )} dan ${formatAdminNumber(max)}.`
+      );
+      return;
+    }
+    if (next === value) {
+      setOpen(false);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/products/bulk", {
+      const response = await fetch("/api/admin/products/bulk", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          updates: [{ id: productId, [field]: newVal }],
-        }),
+        body: JSON.stringify({ updates: [{ id: productId, [field]: next }] }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Gagal simpan");
-      setValue(newVal);
-      setSavedAt(Date.now());
+      const data = await response.json().catch(() => null);
+      if (!response.ok)
+        throw new Error(data?.error ?? "Perubahan gagal disimpan. Coba lagi.");
+      setValue(next);
+      setOpen(false);
+      show(`${field === "price" ? "Harga" : "Stok"} berhasil diperbarui.`);
+      router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal");
-      // Revert ke nilai terakhir yang valid
-      setDraft(field === "price" ? formatPrice(value) : String(value));
+      setError(
+        err instanceof Error ? err.message : "Perubahan gagal disimpan."
+      );
     } finally {
       setSaving(false);
     }
   }
-
-  function handleBlur() {
-    const num = field === "price" ? parsePrice(draft) : Number(draft);
-    if (!Number.isFinite(num) || num < 0) {
-      setDraft(field === "price" ? formatPrice(value) : String(value));
-      return;
-    }
-    save(num);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      inputRef.current?.blur();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      setDraft(field === "price" ? formatPrice(value) : String(value));
-      inputRef.current?.blur();
-    }
-  }
-
-  const isStockEmpty = field === "stock" && value === 0;
-  const isStockLow = field === "stock" && value > 0 && value < 5;
-
+  if (readOnly)
+    return (
+      <span title={readOnlyHint} className="text-sm text-slate-500">
+        {formatAdminNumber(value)}
+      </span>
+    );
   return (
-    <div className="relative">
-      <div
-        className={`flex items-center gap-1 rounded-lg border px-2 py-1 transition focus-within:border-zinc-950 ${
-          error
-            ? "border-red-300 bg-red-50"
-            : savedAt > 0
-            ? "border-green-300 bg-green-50"
-            : isStockEmpty
-            ? "border-red-200 bg-red-50/50"
-            : isStockLow
-            ? "border-amber-200 bg-amber-50/50"
-            : "border-transparent hover:border-zinc-200 bg-transparent"
-        }`}
+    <>
+      <button
+        type="button"
+        className="admin-quick-value"
+        aria-label={`Atur ${label}${productName ? ` ${productName}` : ""}`}
+        onClick={() => {
+          setDraft(String(value));
+          setError(null);
+          setOpen(true);
+        }}
       >
-        {field === "price" && <span className="text-xs text-zinc-400">Rp</span>}
-        <input
-          ref={inputRef}
-          type={field === "stock" ? "number" : "text"}
-          inputMode="numeric"
-          min={field === "stock" ? 0 : undefined}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          onFocus={(e) => e.target.select()}
-          disabled={saving}
-          className={`w-full bg-transparent text-sm font-medium text-zinc-950 outline-none disabled:opacity-50 ${
-            field === "price" ? "text-right" : ""
-          }`}
-        />
-        {saving && <span className="text-xs text-zinc-400">…</span>}
-        {!saving && savedAt > 0 && <span className="text-xs text-green-600">✓</span>}
-      </div>
-      {error && (
-        <p className="mt-1 text-[10px] font-semibold text-red-600">{error}</p>
-      )}
-    </div>
+        <span>{formatAdminNumber(value)}</span>
+        <QuickEditPencil />
+      </button>
+      <AdminDialog
+        open={open}
+        title={`Atur ${label}`}
+        busy={saving}
+        onClose={() => setOpen(false)}
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={saving}
+              onClick={() => setOpen(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              type="submit"
+              form={`quick-${field}-${productId}`}
+              disabled={saving}
+            >
+              {saving ? "Menyimpan…" : "Simpan"}
+            </Button>
+          </>
+        }
+      >
+        {productName && (
+          <p className="mb-5 text-sm text-slate-600">{productName}</p>
+        )}
+        <form
+          id={`quick-${field}-${productId}`}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!saving) void save();
+          }}
+        >
+          <label>
+            <span className="admin-field-label">
+              {field === "price" ? "Harga" : "Stok"}
+            </span>
+            <NumberInput
+              autoFocus
+              aria-invalid={Boolean(error)}
+              value={draft}
+              thousands={field === "price"}
+              onValueChange={setDraft}
+              disabled={saving}
+              className="admin-field-control"
+            />
+          </label>
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-red-700">
+              {error}
+            </p>
+          )}
+        </form>
+      </AdminDialog>
+    </>
   );
 }

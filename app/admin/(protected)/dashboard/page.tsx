@@ -1,50 +1,14 @@
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { formatRupiah, jakartaTodayRange } from "@/lib/format";
+import { formatRupiah, jakartaTodayRange, jakartaDayRange } from "@/lib/format";
 import { getSession } from "@/lib/auth";
 import {
-  StatCard,
-  SectionCard,
-  EmptyState,
-  PageHeader,
-  Badge,
-  Button,
-  AdminPage,
-  STATUS_BADGE_VARIANT,
-  PAY_BADGE_VARIANT,
-} from "@/components/admin/ui";
+  buildDashboardRevenue,
+  type RevenueBucket,
+} from "@/lib/admin/dashboard-revenue";
+import { DashboardView } from "@/components/admin/views/DashboardView";
 // Ambang menipis + filter stok dibagi dengan halaman /admin/stock supaya dua
 // tempat tidak pernah memberi angka berbeda untuk produk yang sama.
 import { LOW_STOCK_LIMIT, productStockWhere } from "@/lib/admin/stock-filters";
-
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: "Order Baru",
-  PAID: "Sudah Dibayar",
-  PROCESSING: "Diproses",
-  SHIPPED: "Dikirim",
-  DELIVERED: "Selesai",
-  CANCELLED: "Dibatalkan",
-  REFUNDED: "Refund",
-};
-
-const PAY_LABELS: Record<string, string> = {
-  UNPAID: "Belum bayar",
-  PENDING: "Menunggu bayar",
-  PAID: "Lunas",
-  FAILED: "Gagal",
-  EXPIRED: "Kedaluwarsa",
-  REFUNDED: "Refund",
-};
-
-function formatDateTime(date: Date) {
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Asia/Jakarta",
-  }).format(date);
-}
 
 /** Simple greeting based on Jakarta hour. */
 function getGreeting() {
@@ -60,41 +24,28 @@ function getGreeting() {
   return "Selamat malam";
 }
 
-/** Inline SVG icon helper — 14×14, currentColor. */
-function Icon({ d }: { d: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-3.5 w-3.5"
-    >
-      <path d={d} />
-    </svg>
-  );
-}
-
 const ICONS = {
-  newOrder: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 3h6v4H9z",
-  wallet: "M21 12V7H5a2 2 0 0 1 0-4h14v4M3 5v14a2 2 0 0 0 2 2h16v-5M18 12a2 2 0 0 0 0 4h4v-4Z",
+  newOrder:
+    "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 3h6v4H9z",
+  wallet:
+    "M21 12V7H5a2 2 0 0 1 0-4h14v4M3 5v14a2 2 0 0 0 2 2h16v-5M18 12a2 2 0 0 0 0 4h4v-4Z",
   check: "M20 6 9 17l-5-5",
-  truck: "M16 3h-2v9.5l-1.5-1.5L11 12.5l3 3 3-3-1.5-1.5L14 12.5V3h2M3 7v10a2 2 0 0 0 2 2h11M3 7l5-4h4",
+  truck:
+    "M3 5h11v12H3zM14 9h4l3 4v4h-7M7 16a2 2 0 1 0 0 4a2 2 0 1 0 0-4M18 16a2 2 0 1 0 0 4a2 2 0 1 0 0-4",
   sales: "M3 3v18h18M7 15l4-4 3 3 5-5",
-  stock: "M20 7H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1ZM16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2",
+  stock: "M3 7l9-4 9 4v10l-9 4-9-4V7Zm0 0 9 4 9-4M12 11v10M7 5l9 4",
   alert: "M12 9v4M12 17h.01M3 12 12 3l9 9-9 9-9-9Z",
   variant: "M3 7h18M3 12h18M3 17h12",
-  voucher: "M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01",
+  voucher:
+    "M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01",
   clock: "M12 6v6l4 2M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z",
 };
 
 export default async function AdminDashboardPage() {
   const session = await getSession("ADMIN");
-  const { start: todayStart, end: todayEnd } = jakartaTodayRange();
-
   const now = new Date();
+  const { start: todayStart, end: todayEnd } = jakartaTodayRange(now);
+  const revenueStart = jakartaDayRange(13, now).start;
   const expiringSoonCutoff = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const usableVoucherWhere = {
     isActive: true,
@@ -113,7 +64,6 @@ export default async function AdminDashboardPage() {
   const [
     orderStatusCounts,
     waitingPaymentCount,
-    todaySales,
     paidUnshippedCount,
     actionOrders,
     lowStockCount,
@@ -125,18 +75,17 @@ export default async function AdminDashboardPage() {
     voucherActiveCount,
     voucherExpiringCount,
     expiringVouchers,
+    todayOrderCount,
+    verificationCount,
+    pickupCount,
+    revenueBuckets,
   ] = await Promise.all([
     prisma.order.groupBy({ by: ["status"], _count: true }),
     prisma.order.count({
-      where: { paymentStatus: { in: ["UNPAID", "PENDING"] }, status: { notIn: ["CANCELLED", "REFUNDED"] } },
-    }),
-    prisma.order.aggregate({
       where: {
-        createdAt: { gte: todayStart, lte: todayEnd },
-        paymentStatus: "PAID",
+        paymentStatus: { in: ["UNPAID", "PENDING"] },
         status: { notIn: ["CANCELLED", "REFUNDED"] },
       },
-      _sum: { total: true },
     }),
     prisma.order.count({
       where: {
@@ -145,17 +94,8 @@ export default async function AdminDashboardPage() {
       },
     }),
     prisma.order.findMany({
-      where: {
-        OR: [
-          { status: "PENDING" },
-          { status: "PAID" },
-          { status: "PROCESSING" },
-          { status: "SHIPPED" },
-          { paymentStatus: { in: ["UNPAID", "PENDING"] }, status: { notIn: ["CANCELLED", "DELIVERED", "REFUNDED"] } },
-        ],
-      },
       orderBy: { createdAt: "desc" },
-      take: 8,
+      take: 4,
       include: { items: { select: { quantity: true } } },
     }),
     // `productStockWhere` membatasi hasVariants:false. Tanpa itu, stok induk
@@ -216,10 +156,45 @@ export default async function AdminDashboardPage() {
       },
       orderBy: { expiresAt: "asc" },
       take: 5,
-      select: { id: true, code: true, expiresAt: true, usedCount: true, maxUsage: true },
+      select: {
+        id: true,
+        code: true,
+        expiresAt: true,
+        usedCount: true,
+        maxUsage: true,
+      },
     }),
+    prisma.order.count({
+      where: { createdAt: { gte: todayStart, lte: todayEnd } },
+    }),
+    prisma.order.count({
+      where: {
+        paymentProofStatus: "PENDING_REVIEW",
+        paymentStatus: { in: ["UNPAID", "PENDING"] },
+        status: { notIn: ["CANCELLED", "REFUNDED"] },
+      },
+    }),
+    prisma.order.count({
+      where: {
+        orderType: "SELF_PICKUP",
+        status: "READY_FOR_PICKUP",
+        paymentStatus: "PAID",
+      },
+    }),
+    // Database aggregation returns hourly totals only, never individual order data.
+    // Prisma DateTime columns are UTC timestamps without time zone.
+    prisma.$queryRaw<RevenueBucket[]>`
+      SELECT to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM-DD') AS day,
+        extract(hour FROM ("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jakarta')::int AS hour,
+        sum(total)::float8 AS total
+      FROM "Order"
+      WHERE "createdAt" >= ${revenueStart} AND "createdAt" <= ${now}
+        AND "paymentStatus" = 'PAID' AND status NOT IN ('CANCELLED', 'REFUNDED')
+      GROUP BY 1, 2 ORDER BY 1, 2
+    `,
   ]);
 
+  const revenue = buildDashboardRevenue(revenueBuckets, now);
   const countMap: Record<string, number> = {};
   for (const row of orderStatusCounts) countMap[row.status] = row._count;
 
@@ -234,14 +209,20 @@ export default async function AdminDashboardPage() {
     value: string | number;
     helper: string;
     href: string;
-    variant: "default" | "primary" | "success" | "warning" | "danger" | "accent";
+    variant:
+      | "default"
+      | "primary"
+      | "success"
+      | "warning"
+      | "danger"
+      | "accent";
     iconPath: string;
   }> = [
     {
-      label: "Total Penjualan Hari Ini",
-      value: formatRupiah(todaySales._sum.total ?? 0),
+      label: "Penjualan hari ini",
+      value: formatRupiah(revenue.todayTotal),
       helper: "Order lunas hari ini",
-      href: "/admin/orders?pay=PAID",
+      href: "/admin/orders?date=TODAY&pay=PAID",
       variant: "accent",
       iconPath: ICONS.sales,
     },
@@ -297,7 +278,7 @@ export default async function AdminDashboardPage() {
       label: "Produk Stok Menipis",
       value: lowStockCount,
       helper: `Stok 1-${LOW_STOCK_LIMIT}`,
-      href: "/admin/products",
+      href: "/admin/stock?filter=menipis",
       variant: "warning",
       iconPath: ICONS.stock,
     },
@@ -305,7 +286,7 @@ export default async function AdminDashboardPage() {
       label: "Produk Habis",
       value: outOfStockCount,
       helper: "Stok 0",
-      href: "/admin/products",
+      href: "/admin/stock?filter=habis",
       variant: "danger",
       iconPath: ICONS.alert,
     },
@@ -326,7 +307,7 @@ export default async function AdminDashboardPage() {
       iconPath: ICONS.voucher,
     },
     {
-      label: "Voucher Expiring",
+      label: "Voucher segera berakhir",
       value: voucherExpiringCount,
       helper: "Habis dalam 7 hari",
       href: "/admin/vouchers",
@@ -336,322 +317,64 @@ export default async function AdminDashboardPage() {
   ];
 
   return (
-    <AdminPage maxWidth="xl">
-      <PageHeader
-        title="Dashboard Admin"
-        subtitle={`${getGreeting()}, ${session?.name ?? "Admin"}. Fokus: order masuk & stok kritis.`}
-        actions={
-          <>
-            <Button href="/admin/abuse-flags" variant="dangerSoft" size="sm">
-              🚨 Abuse Flags
-            </Button>
-            <Button href="/admin/audit-log" variant="secondary" size="sm">
-              📋 Audit Log
-            </Button>
-          </>
-        }
-      />
-
-      {/* Hero CTA — gradient orange/amber untuk warm "action perlu" feel.
-          Beda dari card lain supaya kelihatan jelas dari kejauhan saat
-          admin first-open dashboard. */}
-      {paidUnshippedCount > 0 && (
-        <Link
-          href="/admin/orders?status=NEED_PACKING"
-          className="group mt-6 flex items-center gap-4 overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-emerald-50 to-white p-4 transition hover:-translate-y-0.5 hover:border-emerald-400 hover:shadow-[0_10px_30px_-12px_rgba(16,185,129,0.4)] md:p-5"
-        >
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-2xl text-white shadow-sm md:h-14 md:w-14">
-            📦
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-black text-emerald-900 md:text-base">
-              {paidUnshippedCount} order lunas siap dipacking
-            </p>
-            <p className="mt-0.5 text-xs font-medium text-emerald-700 md:text-sm">
-              Pembayaran sudah masuk. Klik untuk buka daftar dan mulai packing.
-            </p>
-          </div>
-          <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-xs font-bold text-white shadow-sm group-hover:bg-emerald-600 md:inline-flex">
-            Lihat daftar →
-          </span>
-        </Link>
-      )}
-
-      {/* Stats grid — 2 col mobile, 4 col desktop. Tile pertama (sales)
-          highlighted dengan accent orange, lainnya semantic per status. */}
-      <section className="mt-6 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <StatCard
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            helper={stat.helper}
-            href={stat.href}
-            variant={stat.variant}
-            icon={<Icon d={stat.iconPath} />}
-          />
-        ))}
-      </section>
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
-        <SectionCard
-          title="Order Perlu Diproses"
-          subtitle="Prioritas: pembayaran menunggu, order baru, packing, dan pengiriman."
-          action={{ label: "Semua order", href: "/admin/orders" }}
-          density="tight"
-        >
-          {actionOrders.length > 0 ? (
-            <div className="divide-y divide-zinc-100">
-              {actionOrders.map((order) => {
-                const itemCount = order.items.reduce(
-                  (sum, item) => sum + item.quantity,
-                  0,
-                );
-                const initial = order.customerName?.[0]?.toUpperCase() ?? "?";
-                return (
-                  <Link
-                    key={order.id}
-                    href={`/admin/orders/${order.id}`}
-                    className="grid items-center gap-3 px-4 py-3.5 text-sm transition hover:bg-zinc-50 md:grid-cols-[1.4fr_1fr_auto] md:px-5"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-natalo-50 text-sm font-black text-natalo-700">
-                        {initial}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate font-black text-zinc-950">
-                          {order.orderNumber}
-                        </p>
-                        <p className="mt-0.5 truncate text-xs text-zinc-600">
-                          {order.customerName} · {formatDateTime(order.createdAt)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge
-                        variant={
-                          STATUS_BADGE_VARIANT[order.status] ?? "neutral"
-                        }
-                      >
-                        {STATUS_LABELS[order.status] ?? order.status}
-                      </Badge>
-                      <Badge
-                        variant={
-                          PAY_BADGE_VARIANT[order.paymentStatus] ?? "neutral"
-                        }
-                      >
-                        {PAY_LABELS[order.paymentStatus] ?? order.paymentStatus}
-                      </Badge>
-                      <Badge variant="neutral">{itemCount} item</Badge>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-black text-zinc-950">
-                        {formatRupiah(order.total)}
-                      </p>
-                      <p className="mt-0.5 text-[11px] font-bold text-natalo-600">
-                        Buka detail →
-                      </p>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState
-              icon="🎉"
-              title="Semua order sudah ditangani"
-              description="Tidak ada order yang perlu di-process sekarang. Take a breather!"
-            />
-          )}
-        </SectionCard>
-
-        <aside className="space-y-5">
-          <StockPanel
-            title="Produk Stok Menipis"
-            emoji="⚠️"
-            emptyText="Tidak ada stok menipis."
-            products={lowStockProducts}
-          />
-
-          <StockPanel
-            title="Produk Habis"
-            emoji="🚫"
-            emptyText="Tidak ada produk habis."
-            products={outOfStockProducts}
-            danger
-          />
-
-          <VariantStockPanel variants={outOfStockVariants} />
-
-          <ExpiringVoucherPanel vouchers={expiringVouchers} now={now} />
-        </aside>
-      </div>
-
-      {/* Danger zone link — subtle styling supaya tidak accidentally
-          tapped tapi findable kalau admin perlu wipe data sebelum launch. */}
-      <div className="mt-12 border-t border-zinc-100 pt-6 text-center">
-        <Button href="/admin/danger-zone" variant="dangerSoft" size="sm">
-          ⚠️ Danger Zone — Reset Database
-        </Button>
-      </div>
-    </AdminPage>
-  );
-}
-
-function StockPanel({
-  title,
-  emoji,
-  emptyText,
-  products,
-  danger = false,
-}: {
-  title: string;
-  emoji: string;
-  emptyText: string;
-  products: Array<{ id: string; name: string; stock: number; price: number }>;
-  danger?: boolean;
-}) {
-  return (
-    <SectionCard
-      title={title}
-      action={{ label: "Kelola", href: "/admin/products" }}
-      density="tight"
-    >
-      {products.length > 0 ? (
-        <div className="space-y-2 p-3 md:p-4">
-          {products.map((product) => (
-            <Link
-              key={product.id}
-              href={`/admin/products/${product.id}/edit`}
-              className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 p-3 text-sm transition hover:bg-zinc-100"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-bold text-zinc-950">{product.name}</p>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  {formatRupiah(product.price)}
-                </p>
-              </div>
-              <Badge variant={danger ? "danger" : "warning"} size="md">
-                Stok {product.stock}
-              </Badge>
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <EmptyState icon={emoji} title={emptyText} />
-      )}
-    </SectionCard>
-  );
-}
-
-function VariantStockPanel({
-  variants,
-}: {
-  variants: Array<{
-    id: string;
-    sku: string | null;
-    product: { id: string; name: string };
-    options: Array<{ option: { value: string } }>;
-  }>;
-}) {
-  return (
-    <SectionCard
-      title="Varian Habis"
-      action={{ label: "Kelola", href: "/admin/stock" }}
-      density="tight"
-    >
-      {variants.length > 0 ? (
-        <div className="space-y-2 p-3 md:p-4">
-          {variants.map((variant) => {
-            const optionLabel = variant.options
-              .map((o) => o.option.value)
-              .join(" / ");
-            return (
-              <Link
-                key={variant.id}
-                href={`/admin/products/${variant.product.id}/edit`}
-                className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 p-3 text-sm transition hover:bg-zinc-100"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-bold text-zinc-950">
-                    {variant.product.name}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-zinc-500">
-                    {optionLabel || variant.sku || "Varian"}
-                  </p>
-                </div>
-                <Badge variant="danger" size="md">
-                  Stok 0
-                </Badge>
-              </Link>
-            );
-          })}
-        </div>
-      ) : (
-        <EmptyState icon="✅" title="Tidak ada varian yang habis." />
-      )}
-    </SectionCard>
-  );
-}
-
-function ExpiringVoucherPanel({
-  vouchers,
-  now,
-}: {
-  vouchers: Array<{
-    id: string;
-    code: string;
-    expiresAt: Date | null;
-    usedCount: number;
-    maxUsage: number | null;
-  }>;
-  now: Date;
-}) {
-  return (
-    <SectionCard
-      title="Voucher Expiring"
-      action={{ label: "Kelola", href: "/admin/vouchers" }}
-      density="tight"
-    >
-      {vouchers.length > 0 ? (
-        <div className="space-y-2 p-3 md:p-4">
-          {vouchers.map((voucher) => {
-            const daysLeft = voucher.expiresAt
-              ? Math.max(
-                  0,
-                  Math.ceil(
-                    (voucher.expiresAt.getTime() - now.getTime()) /
-                      (24 * 60 * 60 * 1000),
-                  ),
-                )
-              : null;
-            const usageLabel =
-              voucher.maxUsage != null
-                ? `${voucher.usedCount}/${voucher.maxUsage} dipakai`
-                : `${voucher.usedCount} dipakai`;
-            return (
-              <div
-                key={voucher.id}
-                className="flex items-center justify-between gap-3 rounded-xl bg-zinc-50 p-3 text-sm"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-bold text-zinc-950">
-                    {voucher.code}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-zinc-500">
-                    {usageLabel}
-                  </p>
-                </div>
-                <Badge variant="warning" size="md">
-                  {daysLeft != null ? `${daysLeft} hari` : "—"}
-                </Badge>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <EmptyState icon="🎟️" title="Tidak ada voucher expiring." />
-      )}
-    </SectionCard>
+    <DashboardView
+      greeting={getGreeting()}
+      adminName={session?.name ?? "Admin"}
+      now={now}
+      paidUnshippedCount={paidUnshippedCount}
+      stats={[
+        {
+          ...stats[0],
+          value: formatRupiah(revenue.todayTotal),
+          helper:
+            revenue.yesterdayTotal > 0
+              ? "dibanding total kemarin"
+              : "Pesanan lunas hari ini (WIB)",
+          trend:
+            revenue.yesterdayTotal > 0
+              ? {
+                  value:
+                    Math.round(
+                      ((revenue.todayTotal - revenue.yesterdayTotal) /
+                        revenue.yesterdayTotal) *
+                        1000
+                    ) / 10,
+                }
+              : undefined,
+        },
+        {
+          label: "Pesanan hari ini",
+          value: todayOrderCount,
+          helper: "Pesanan yang masuk hari ini (WIB)",
+          href: "/admin/orders?date=TODAY",
+          variant: "default",
+          iconPath: ICONS.newOrder,
+        },
+        {
+          label: "Perlu dikemas",
+          value: paidUnshippedCount,
+          helper: "Pembayaran sudah terverifikasi",
+          href: "/admin/orders?status=NEED_PACKING",
+          variant: "default",
+          iconPath: ICONS.stock,
+        },
+        {
+          ...stats[7],
+          label: "Stok menipis",
+          variant: "default",
+          iconPath: ICONS.alert,
+        },
+        ...stats.slice(1, 7),
+        ...stats.slice(8),
+      ]}
+      verificationCount={verificationCount}
+      pickupCount={pickupCount}
+      revenue={revenue}
+      actionOrders={actionOrders}
+      lowStockProducts={lowStockProducts}
+      outOfStockProducts={outOfStockProducts}
+      outOfStockVariants={outOfStockVariants}
+      expiringVouchers={expiringVouchers}
+    />
   );
 }

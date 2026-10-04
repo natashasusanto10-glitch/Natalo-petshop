@@ -1,3 +1,4 @@
+import { ProductVariantsDisclosure } from "@/components/admin/ProductVariantsDisclosure";
 import Image from "next/image";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
@@ -10,7 +11,13 @@ import { resolveActiveDiscount } from "@/lib/product-pricing";
 import { InlineEditCell } from "@/components/admin/InlineEditCell";
 import { VariantInlineEditCell } from "@/components/admin/VariantInlineEditCell";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
-import { PageHeader, EmptyState, AdminPage, Button, Pagination } from "@/components/admin/ui";
+import {
+  PageHeader,
+  EmptyState,
+  AdminPage,
+  Button,
+  Pagination,
+} from "@/components/admin/ui";
 import {
   ProductSelectionProvider,
   ProductSelectAll,
@@ -32,14 +39,23 @@ type StockFilter = "all" | "ready" | "out" | "archived";
 export default async function AdminProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ stock?: string; page?: string; q?: string; cat?: string; brand?: string }>;
+  searchParams: Promise<{
+    stock?: string;
+    page?: string;
+    q?: string;
+    cat?: string;
+    brand?: string;
+  }>;
 }) {
   const { stock, page, q, cat, brand } = await searchParams;
   const stockFilter: StockFilter =
-    stock === "ready" ? "ready"
-    : stock === "out" ? "out"
-    : stock === "archived" ? "archived"
-    : "all";
+    stock === "ready"
+      ? "ready"
+      : stock === "out"
+      ? "out"
+      : stock === "archived"
+      ? "archived"
+      : "all";
   const currentPage = Math.max(1, Number(page) || 1);
   const search = (q ?? "").trim();
   const catSlug = (cat ?? "").trim();
@@ -53,17 +69,22 @@ export default async function AdminProductsPage({
   const activeCategory = categories.find((c) => c.slug === catSlug) ?? null;
   // Special: brand=none → produk tanpa brand
   const isNoBrand = brandSlug === "none";
-  const activeBrand = isNoBrand ? null : brands.find((b) => b.slug === brandSlug) ?? null;
+  const activeBrand = isNoBrand
+    ? null
+    : brands.find((b) => b.slug === brandSlug) ?? null;
 
   // ── Build where clause ──────────────────────────────────────
   // - "out" hanya produk aktif yg habis (yg perlu di-restock).
   // - "archived" semua produk non-aktif (termasuk soft-archive hasil reset
   //   yg di-set stock=0).
   const stockWhere =
-    stockFilter === "ready"    ? { isActive: true, stock: { gt: 0 } }
-    : stockFilter === "out"    ? { isActive: true, stock: { equals: 0 } }
-    : stockFilter === "archived" ? { isActive: false }
-    : {};
+    stockFilter === "ready"
+      ? { isActive: true, stock: { gt: 0 } }
+      : stockFilter === "out"
+      ? { isActive: true, stock: { equals: 0 } }
+      : stockFilter === "archived"
+      ? { isActive: false }
+      : {};
 
   // Pakai matcher yang SAMA dengan katalog storefront/app (lib/search.ts):
   // query dipecah jadi token, tiap token dicocokkan ke nama produk, nama
@@ -72,9 +93,7 @@ export default async function AdminProductsPage({
   // walau produknya ada.
   const searchWhere = (search ? productSearchWhere(search) : undefined) ?? {};
 
-  const categoryWhere = activeCategory
-    ? { categoryId: activeCategory.id }
-    : {};
+  const categoryWhere = activeCategory ? { categoryId: activeCategory.id } : {};
 
   const brandWhere = isNoBrand
     ? { brandId: null }
@@ -82,7 +101,12 @@ export default async function AdminProductsPage({
     ? { brandId: activeBrand.id }
     : {};
 
-  const baseWhere = { ...searchWhere, ...categoryWhere, ...brandWhere, ...productIsVisibleWhere() };
+  const baseWhere = {
+    ...searchWhere,
+    ...categoryWhere,
+    ...brandWhere,
+    ...productIsVisibleWhere(),
+  };
   const where = { ...stockWhere, ...baseWhere };
 
   // Satu titik waktu untuk seluruh render: dipakai filter promo di query
@@ -92,40 +116,53 @@ export default async function AdminProductsPage({
   const now = new Date();
 
   // ── Fetch counts + produk ────────────────────────────────────
-  const [totalAll, totalReady, totalOut, totalArchived, filtered, products] = await Promise.all([
-    prisma.product.count({ where: baseWhere }),
-    prisma.product.count({ where: { ...baseWhere, isActive: true, stock: { gt: 0 } } }),
-    prisma.product.count({ where: { ...baseWhere, isActive: true, stock: { equals: 0 } } }),
-    prisma.product.count({ where: { ...baseWhere, isActive: false } }),
-    prisma.product.count({ where }),
-    prisma.product.findMany({
-      where,
-      // "Baru diedit/dibuat" ke atas: urut lastEditedAt desc (produk lama yang
-      // belum pernah diedit = null → nulls last), lalu createdAt desc.
-      orderBy: [
-        { lastEditedAt: { sort: "desc", nulls: "last" } },
-        { createdAt: "desc" },
-      ],
-      include: {
-        category: true,
-        brand: true,
-        // Promo Toko yang sedang berjalan. WAJIB ikut: badge "Diskon" di
-        // bawah memakai resolveActiveDiscount — aturan yang SAMA dengan
-        // yang dilihat pelanggan — dan Flash Sale bukan satu-satunya
-        // sumber diskon. Tanpa ini, produk yang sedang promo toko akan
-        // tampil polos di admin padahal pelanggan melihat harga coret.
-        discountItems: {
-          where: {
-            isItemActive: true,
-            discount: { isActive: true, startsAt: { lte: now }, endsAt: { gt: now } },
+  const [totalAll, totalReady, totalOut, totalArchived, filtered, products] =
+    await Promise.all([
+      prisma.product.count({ where: baseWhere }),
+      prisma.product.count({
+        where: { ...baseWhere, isActive: true, stock: { gt: 0 } },
+      }),
+      prisma.product.count({
+        where: { ...baseWhere, isActive: true, stock: { equals: 0 } },
+      }),
+      prisma.product.count({ where: { ...baseWhere, isActive: false } }),
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where,
+        // "Baru diedit/dibuat" ke atas: urut lastEditedAt desc (produk lama yang
+        // belum pernah diedit = null → nulls last), lalu createdAt desc.
+        orderBy: [
+          { lastEditedAt: { sort: "desc", nulls: "last" } },
+          { createdAt: "desc" },
+        ],
+        include: {
+          category: true,
+          brand: true,
+          // Promo Toko yang sedang berjalan. WAJIB ikut: badge "Diskon" di
+          // bawah memakai resolveActiveDiscount — aturan yang SAMA dengan
+          // yang dilihat pelanggan — dan Flash Sale bukan satu-satunya
+          // sumber diskon. Tanpa ini, produk yang sedang promo toko akan
+          // tampil polos di admin padahal pelanggan melihat harga coret.
+          discountItems: {
+            where: {
+              isItemActive: true,
+              discount: {
+                isActive: true,
+                startsAt: { lte: now },
+                endsAt: { gt: now },
+              },
+            },
+            select: {
+              variantId: true,
+              discountedPrice: true,
+              discount: { select: { endsAt: true } },
+            },
           },
-          select: { variantId: true, discountedPrice: true, discount: { select: { endsAt: true } } },
         },
-      },
-      skip: (currentPage - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
-  ]);
+        skip: (currentPage - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+      }),
+    ]);
 
   const totalPages = Math.max(1, Math.ceil(filtered / PAGE_SIZE));
   const pageIds = products.map((p) => p.id);
@@ -134,7 +171,10 @@ export default async function AdminProductsPage({
     "use server";
     const id = String(formData.get("id"));
     const current = formData.get("isActive") === "true";
-    await prisma.product.update({ where: { id }, data: { isActive: !current } });
+    await prisma.product.update({
+      where: { id },
+      data: { isActive: !current },
+    });
     // Sync ke search index (is_active berubah → harus update)
     const { syncProduct } = await import("@/lib/search");
     await syncProduct(id).catch(() => {});
@@ -148,7 +188,9 @@ export default async function AdminProductsPage({
     const id = String(formData.get("id"));
 
     // Cek apakah produk pernah dipesan — kalau iya, refuse
-    const orderCount = await prisma.orderItem.count({ where: { productId: id } });
+    const orderCount = await prisma.orderItem.count({
+      where: { productId: id },
+    });
     if (orderCount > 0) {
       throw new Error(
         `Produk pernah dipesan (${orderCount}× di order). Tidak bisa dihapus permanen — gunakan tombol Arsipkan/Nonaktifkan.`
@@ -183,7 +225,12 @@ export default async function AdminProductsPage({
   }
 
   // ── Helper: build URL preserving semua filter aktif ──────────
-  const buildHref = (overrides: { stock?: string; page?: number; cat?: string; brand?: string }) => {
+  const buildHref = (overrides: {
+    stock?: string;
+    page?: number;
+    cat?: string;
+    brand?: string;
+  }) => {
     const sp = new URLSearchParams();
     const s = overrides.stock ?? stockFilter;
     if (s !== "all") sp.set("stock", s);
@@ -198,11 +245,36 @@ export default async function AdminProductsPage({
     return `/admin/products${qs ? `?${qs}` : ""}`;
   };
 
-  const tabs: { key: StockFilter; label: string; count: number; color: string }[] = [
-    { key: "all",      label: "Semua",      count: totalAll,      color: "bg-zinc-100 text-zinc-700" },
-    { key: "ready",    label: "Stok Ready", count: totalReady,    color: "bg-green-100 text-green-700" },
-    { key: "out",      label: "Stok Habis", count: totalOut,      color: "bg-red-100 text-red-700" },
-    { key: "archived", label: "📦 Arsip",   count: totalArchived, color: "bg-amber-100 text-amber-700" },
+  const tabs: {
+    key: StockFilter;
+    label: string;
+    count: number;
+    color: string;
+  }[] = [
+    {
+      key: "all",
+      label: "Semua",
+      count: totalAll,
+      color: "bg-zinc-100 text-zinc-700",
+    },
+    {
+      key: "ready",
+      label: "Siap dijual",
+      count: totalReady,
+      color: "bg-green-100 text-green-700",
+    },
+    {
+      key: "out",
+      label: "Stok Habis",
+      count: totalOut,
+      color: "bg-red-100 text-red-700",
+    },
+    {
+      key: "archived",
+      label: "Arsip",
+      count: totalArchived,
+      color: "bg-amber-100 text-amber-700",
+    },
   ];
 
   const hasActiveFilter = search || catSlug || brandSlug;
@@ -211,7 +283,9 @@ export default async function AdminProductsPage({
     <AdminPage maxWidth="xl">
       <PageHeader
         title="Produk"
-        subtitle={`${totalAll} total · ${totalReady} ready · ${totalOut} habis · ${totalArchived} arsip${activeCategory ? ` · ${activeCategory.name}` : ""}`}
+        subtitle={`${totalAll} total · ${totalReady} ready · ${totalOut} habis · ${totalArchived} arsip${
+          activeCategory ? ` · ${activeCategory.name}` : ""
+        }`}
         actions={
           <>
             {/* SENGAJA <a> polos, BUKAN Button ber-href: Button merender
@@ -222,7 +296,7 @@ export default async function AdminProductsPage({
             <a
               href="/api/admin/products/export"
               download
-              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full border border-zinc-300 bg-white px-3.5 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-natalo-400 focus-visible:ring-offset-2"
+              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3.5 text-xs font-bold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-natalo-400 focus-visible:ring-offset-2"
             >
               ↥ Ekspor Excel
             </a>
@@ -237,7 +311,11 @@ export default async function AdminProductsPage({
       />
 
       {/* Search & Filter bar */}
-      <form action="/admin/products" method="get" className="mt-5 space-y-3 md:mt-6">
+      <form
+        action="/admin/products"
+        method="get"
+        className="mt-5 space-y-3 md:mt-6"
+      >
         {/* Hidden: pertahankan stock filter */}
         {stockFilter !== "all" && (
           <input type="hidden" name="stock" value={stockFilter} />
@@ -249,16 +327,18 @@ export default async function AdminProductsPage({
             type="text"
             name="q"
             defaultValue={search}
-            placeholder="Cari nama produk..."
-            className="min-w-0 flex-1 rounded-full border border-zinc-300 px-4 py-2.5 text-sm outline-none focus:border-zinc-950"
+            aria-label="Cari produk"
+            placeholder="Cari nama, SKU, atau brand…"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-300 px-4 py-2.5 text-sm outline-none focus:border-zinc-950"
           />
 
           <div className="grid grid-cols-2 gap-2 md:flex md:gap-2">
             {/* Kategori dropdown */}
             <select
               name="cat"
+              aria-label="Filter kategori"
               defaultValue={catSlug}
-              className="min-w-0 rounded-full border border-zinc-300 bg-white px-3 py-2.5 text-sm font-medium text-zinc-700 outline-none focus:border-zinc-950 md:px-4"
+              className="min-w-0 rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm font-medium text-zinc-700 outline-none focus:border-zinc-950 md:px-4"
             >
               <option value="">Semua Kategori</option>
               {categories.map((c) => (
@@ -271,8 +351,9 @@ export default async function AdminProductsPage({
             {/* Brand dropdown */}
             <select
               name="brand"
+              aria-label="Filter brand"
               defaultValue={brandSlug}
-              className="min-w-0 rounded-full border border-zinc-300 bg-white px-3 py-2.5 text-sm font-medium text-zinc-700 outline-none focus:border-zinc-950 md:px-4"
+              className="min-w-0 rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm font-medium text-zinc-700 outline-none focus:border-zinc-950 md:px-4"
             >
               <option value="">Semua Brand</option>
               <option value="none">— Tanpa brand —</option>
@@ -288,7 +369,7 @@ export default async function AdminProductsPage({
             {/* Tombol Cari */}
             <button
               type="submit"
-              className="flex-1 rounded-full bg-zinc-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-zinc-800 md:flex-none"
+              className="flex-1 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700 md:flex-none"
             >
               Cari
             </button>
@@ -296,8 +377,12 @@ export default async function AdminProductsPage({
             {/* Reset (tampil kalau ada filter aktif) */}
             {hasActiveFilter && (
               <Link
-                href={stockFilter !== "all" ? `/admin/products?stock=${stockFilter}` : "/admin/products"}
-                className="flex-1 rounded-full border border-zinc-300 px-5 py-2.5 text-center text-sm font-semibold text-zinc-600 hover:bg-zinc-50 md:flex-none"
+                href={
+                  stockFilter !== "all"
+                    ? `/admin/products?stock=${stockFilter}`
+                    : "/admin/products"
+                }
+                className="flex-1 rounded-lg border border-zinc-300 px-5 py-2.5 text-center text-sm font-semibold text-zinc-600 hover:bg-zinc-50 md:flex-none"
               >
                 ✕ Reset
               </Link>
@@ -310,10 +395,13 @@ export default async function AdminProductsPage({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-zinc-600">Filter aktif:</span>
             {search && (
-              <span className="flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
-                🔍 "{search}"
+              <span className="flex items-center gap-1 rounded-lg bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
+                "{search}"
                 <Link
-                  href={buildHref({ page: 1 }).replace(/[&?]q=[^&]*/g, "").replace(/&&/g, "&").replace(/^\?&/, "?")}
+                  href={buildHref({ page: 1 })
+                    .replace(/[&?]q=[^&]*/g, "")
+                    .replace(/&&/g, "&")
+                    .replace(/^\?&/, "?")}
                   className="ml-1 text-zinc-400 hover:text-zinc-950"
                 >
                   ×
@@ -321,8 +409,8 @@ export default async function AdminProductsPage({
               </span>
             )}
             {activeCategory && (
-              <span className="flex items-center gap-1 rounded-full bg-natalo-100 px-3 py-1 text-xs font-semibold text-natalo-800">
-                🏷️ {activeCategory.name}
+              <span className="flex items-center gap-1 rounded-lg bg-natalo-100 px-3 py-1 text-xs font-semibold text-natalo-800">
+                {activeCategory.name}
                 <Link
                   href={buildHref({ page: 1, cat: "" })}
                   className="ml-1 text-natalo-400 hover:text-natalo-800"
@@ -332,8 +420,8 @@ export default async function AdminProductsPage({
               </span>
             )}
             {(activeBrand || isNoBrand) && (
-              <span className="flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700">
-                🏭 {activeBrand?.name ?? "Tanpa brand"}
+              <span className="flex items-center gap-1 rounded-lg bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700">
+                {activeBrand?.name ?? "Tanpa brand"}
                 <Link
                   href={buildHref({ page: 1, brand: "" })}
                   className="ml-1 text-purple-400 hover:text-purple-700"
@@ -354,15 +442,15 @@ export default async function AdminProductsPage({
             <Link
               key={tab.key}
               href={buildHref({ stock: tab.key, page: 1 })}
-              className={`flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              className={`flex shrink-0 items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition ${
                 active
-                  ? "border-zinc-950 bg-zinc-950 text-white"
+                  ? "border-blue-600 bg-blue-600 text-white"
                   : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
               }`}
             >
               {tab.label}
               <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                className={`rounded-lg px-2 py-0.5 text-[11px] font-bold ${
                   active ? "bg-white/20 text-white" : tab.color
                 }`}
               >
@@ -375,347 +463,327 @@ export default async function AdminProductsPage({
 
       {/* Product list */}
       <ProductSelectionProvider allIds={pageIds}>
-      <div className="mt-5 overflow-hidden rounded-2xl border border-zinc-200 bg-white md:mt-6">
-        <div className="hidden grid-cols-[28px_minmax(300px,1fr)_160px_120px_120px] items-center gap-4 border-b border-zinc-100 bg-zinc-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-zinc-400 lg:grid">
-          <ProductSelectAll />
-          <span>Produk</span>
-          <span>Harga</span>
-          <span>Stok</span>
-          <span className="text-center">Aksi</span>
-        </div>
+        <div className="mt-5 rounded-xl border border-slate-200 bg-white md:mt-6">
+          <div className="admin-product-list-row admin-product-list-header bg-slate-50 text-xs font-semibold text-slate-500">
+            <ProductSelectAll />
+            <span>Produk</span>
+            <span>Harga</span>
+            <span>Stok</span>
+            <span className="text-center">Aksi</span>
+          </div>
 
-        {products.length === 0 ? (
-          <EmptyState
-            icon={
-              stockFilter === "out"
-                ? "📭"
-                : stockFilter === "ready"
+          {products.length === 0 ? (
+            <EmptyState
+              icon={
+                stockFilter === "out"
+                  ? "📭"
+                  : stockFilter === "ready"
                   ? "✨"
                   : stockFilter === "archived"
-                    ? "🗄️"
-                    : "🐾"
-            }
-            title={
-              stockFilter === "out"
-                ? "Tidak ada produk dengan stok habis"
-                : stockFilter === "ready"
+                  ? "🗄️"
+                  : "🐾"
+              }
+              title={
+                stockFilter === "out"
+                  ? "Tidak ada produk dengan stok habis"
+                  : stockFilter === "ready"
                   ? "Tidak ada produk yang siap dijual"
                   : stockFilter === "archived"
-                    ? "Tidak ada produk di arsip"
-                    : hasActiveFilter
-                      ? "Tidak ada produk cocok dengan filter"
-                      : "Belum ada produk"
-            }
-            description={
-              hasActiveFilter
-                ? "Coba reset filter atau ubah kriteria pencarian."
-                : stockFilter === "all"
+                  ? "Tidak ada produk di arsip"
+                  : hasActiveFilter
+                  ? "Tidak ada produk cocok dengan filter"
+                  : "Belum ada produk"
+              }
+              description={
+                hasActiveFilter
+                  ? "Coba reset filter atau ubah kriteria pencarian."
+                  : stockFilter === "all"
                   ? "Tambahkan produk pertama untuk mulai jualan."
                   : undefined
-            }
-            action={
-              hasActiveFilter
-                ? { label: "Reset semua filter", href: "/admin/products" }
-                : !hasActiveFilter && stockFilter === "all"
-                  ? { label: "Tambah produk pertama", href: "/admin/products/new" }
+              }
+              action={
+                hasActiveFilter
+                  ? { label: "Reset semua filter", href: "/admin/products" }
+                  : !hasActiveFilter && stockFilter === "all"
+                  ? {
+                      label: "Tambah produk pertama",
+                      href: "/admin/products/new",
+                    }
                   : undefined
-            }
-            size="full"
-          />
-        ) : (
-          products.map((product) => {
-            // Aturan yang SAMA dengan yang dilihat pelanggan. Dulu di sini
-            // cuma `discountPrice !== null && discountPrice < price` —
-            // tanpa cek tanggal sama sekali, jadi Flash Sale yang sudah
-            // lewat berbulan-bulan tetap tampil "Diskon" di admin padahal
-            // pelanggan melihat harga normal. Kalau ada beda antara apa
-            // yang dilihat admin dan pelanggan, yang salah admin-nya.
-            const activeDiscount = resolveActiveDiscount(
-              product.price,
-              { discountPrice: product.discountPrice, endsAt: product.flashSaleEndsAt },
-              product.discountItems
-                .filter((it) => it.variantId === null)
-                .map((it) => ({ discountedPrice: it.discountedPrice, endsAt: it.discount.endsAt })),
-              now,
-            );
-            const isOut = product.stock === 0;
-            const isArchived = !product.isActive && product.stock > 0;
-            const isRecentlyEdited =
-              product.lastEditedAt != null &&
-              Date.now() - product.lastEditedAt.getTime() < RECENTLY_EDITED_WINDOW_MS;
+              }
+              size="full"
+            />
+          ) : (
+            products.map((product) => {
+              // Aturan yang SAMA dengan yang dilihat pelanggan. Dulu di sini
+              // cuma `discountPrice !== null && discountPrice < price` —
+              // tanpa cek tanggal sama sekali, jadi Flash Sale yang sudah
+              // lewat berbulan-bulan tetap tampil "Diskon" di admin padahal
+              // pelanggan melihat harga normal. Kalau ada beda antara apa
+              // yang dilihat admin dan pelanggan, yang salah admin-nya.
+              const activeDiscount = resolveActiveDiscount(
+                product.price,
+                {
+                  discountPrice: product.discountPrice,
+                  endsAt: product.flashSaleEndsAt,
+                },
+                product.discountItems
+                  .filter((it) => it.variantId === null)
+                  .map((it) => ({
+                    discountedPrice: it.discountedPrice,
+                    endsAt: it.discount.endsAt,
+                  })),
+                now
+              );
+              const isOut = product.stock === 0;
+              const isArchived = !product.isActive;
+              const isRecentlyEdited =
+                product.lastEditedAt != null &&
+                Date.now() - product.lastEditedAt.getTime() <
+                  RECENTLY_EDITED_WINDOW_MS;
 
-            const productMeta = (
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                {/* SKU Induk — Product.sku, sudah ikut ter-fetch (Prisma
+              const productMeta = (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                  {/* SKU Induk — Product.sku, sudah ikut ter-fetch (Prisma
                     mengembalikan semua field scalar) jadi tidak menambah
                     query. Ditampilkan walau kosong (sebagai "—") supaya
                     produk yang SKU-nya belum diisi langsung kelihatan.
                     SKU per varian ada di ProductVariant.sku — tampil di
                     modal "Edit Stok/Harga Varian", bukan di baris ini. */}
-                <span className="text-zinc-400">
-                  SKU{" "}
-                  {product.sku ? (
-                    <span className="font-mono text-zinc-600">{product.sku}</span>
-                  ) : (
-                    <span className="text-zinc-300">—</span>
-                  )}
-                </span>
-                <span className="text-zinc-300">·</span>
-                {isRecentlyEdited && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-natalo-50 px-2 py-0.5 text-[10px] font-semibold text-natalo-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-natalo-500" aria-hidden="true" />
-                    Baru diedit
-                  </span>
-                )}
-                {product.category ? (
-                  <Link
-                    href={buildHref({ page: 1, cat: product.category.slug })}
-                    className="font-medium text-natalo-600 hover:underline"
-                  >
-                    {product.category.name}
-                  </Link>
-                ) : (
-                  <span className="text-zinc-300">Tanpa kategori</span>
-                )}
-                <span className="text-zinc-300">·</span>
-                {product.brand ? (
-                  <Link
-                    href={buildHref({ page: 1, brand: product.brand.slug })}
-                    className="flex items-center gap-1 font-medium text-purple-600 hover:underline"
-                  >
-                    🏭 {product.brand.name}
-                    {product.brandAutoAssigned && (
-                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
-                        auto
+                  <span className="text-zinc-400">
+                    SKU{" "}
+                    {product.sku ? (
+                      <span className="font-mono text-zinc-600">
+                        {product.sku}
                       </span>
+                    ) : (
+                      <span className="text-zinc-300">—</span>
                     )}
-                  </Link>
-                ) : (
-                  <Link
-                    href={`/admin/products/${product.id}/edit`}
-                    className="text-zinc-400 italic hover:text-zinc-700 hover:underline"
+                  </span>
+                  <span className="text-zinc-300">·</span>
+                  {isRecentlyEdited && (
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-natalo-50 px-2 py-0.5 text-[10px] font-semibold text-natalo-700">
+                      <span
+                        className="h-1.5 w-1.5 rounded-lg bg-natalo-500"
+                        aria-hidden="true"
+                      />
+                      Baru diedit
+                    </span>
+                  )}
+                  {product.category ? (
+                    <Link
+                      href={buildHref({ page: 1, cat: product.category.slug })}
+                      className="font-medium text-natalo-600 hover:underline"
+                    >
+                      {product.category.name}
+                    </Link>
+                  ) : (
+                    <span className="text-zinc-300">Tanpa kategori</span>
+                  )}
+                  <span className="text-zinc-300">·</span>
+                  {product.brand ? (
+                    <Link
+                      href={buildHref({ page: 1, brand: product.brand.slug })}
+                      className="flex items-center gap-1 font-medium text-purple-600 hover:underline"
+                    >
+                      {product.brand.name}
+                      {product.brandAutoAssigned && (
+                        <span className="rounded-lg bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                          auto
+                        </span>
+                      )}
+                    </Link>
+                  ) : (
+                    <Link
+                      href={`/admin/products/${product.id}/edit`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-zinc-400 italic hover:text-zinc-700 hover:underline"
+                    >
+                      + brand
+                    </Link>
+                  )}
+                </div>
+              );
+
+              const priceCell = product.hasVariants ? (
+                <VariantInlineEditCell
+                  productId={product.id}
+                  productName={product.name}
+                  field="price"
+                  initialValue={product.price}
+                />
+              ) : (
+                <InlineEditCell
+                  productId={product.id}
+                  productName={product.name}
+                  field="price"
+                  initialValue={product.price}
+                />
+              );
+
+              const stockCell = product.hasVariants ? (
+                <VariantInlineEditCell
+                  productId={product.id}
+                  productName={product.name}
+                  field="stock"
+                  initialValue={product.stock}
+                />
+              ) : (
+                <InlineEditCell
+                  productId={product.id}
+                  productName={product.name}
+                  field="stock"
+                  initialValue={product.stock}
+                />
+              );
+
+              const editLink = (
+                <Button
+                  href={`/admin/products/${product.id}/edit`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="secondary"
+                  size="sm"
+                >
+                  Edit produk
+                </Button>
+              );
+
+              const toggleForm = (
+                <form action={toggleActive}>
+                  <input type="hidden" name="id" value={product.id} />
+                  <input
+                    type="hidden"
+                    name="isActive"
+                    value={String(product.isActive)}
+                  />
+                  <button
+                    type="submit"
+                    className={`w-full rounded-lg border px-3 py-2 text-xs font-bold transition ${
+                      isArchived
+                        ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                        : "border-zinc-300 hover:bg-zinc-50"
+                    }`}
                   >
-                    + brand
-                  </Link>
-                )}
-              </div>
-            );
+                    {isArchived
+                      ? "Keluarkan arsip"
+                      : product.isActive
+                      ? product.stock > 0
+                        ? "Arsipkan"
+                        : "Nonaktifkan"
+                      : "Aktifkan"}
+                  </button>
+                </form>
+              );
 
-            const priceCell = product.hasVariants ? (
-              <VariantInlineEditCell
-                productId={product.id}
-                productName={product.name}
-                field="price"
-                initialValue={product.price}
-              />
-            ) : (
-              <InlineEditCell
-                productId={product.id}
-                field="price"
-                initialValue={product.price}
-              />
-            );
+              const deleteForm = (
+                <form action={deleteProduct}>
+                  <input type="hidden" name="id" value={product.id} />
+                  <ConfirmSubmitButton
+                    className="w-full rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                    message={`Hapus permanen produk "${product.name}"? Tindakan ini tidak bisa dibatalkan. Jika produk pernah dipesan, gunakan Arsipkan saja.`}
+                  >
+                    Hapus permanen
+                  </ConfirmSubmitButton>
+                </form>
+              );
 
-            const stockCell = product.hasVariants ? (
-              <VariantInlineEditCell
-                productId={product.id}
-                productName={product.name}
-                field="stock"
-                initialValue={product.stock}
-              />
-            ) : (
-              <InlineEditCell
-                productId={product.id}
-                field="stock"
-                initialValue={product.stock}
-              />
-            );
-
-            const editLink = (
-              <Button
-                href={`/admin/products/${product.id}/edit`}
-                variant="secondary"
-                size="sm"
-                fullWidth
-              >
-                Edit
-              </Button>
-            );
-
-            const toggleForm = (
-              <form action={toggleActive}>
-                <input type="hidden" name="id" value={product.id} />
-                <input type="hidden" name="isActive" value={String(product.isActive)} />
-                <button
-                  type="submit"
-                  className={`w-full rounded-full border px-3 py-2 text-xs font-bold transition ${
-                    isArchived
-                      ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                      : "border-zinc-300 hover:bg-zinc-50"
+              return (
+                <div
+                  key={product.id}
+                  className={`border-b border-slate-100 last:border-b-0 ${
+                    product.isActive ? "bg-white" : "bg-slate-50"
                   }`}
                 >
-                  {isArchived
-                    ? "Keluarkan arsip"
-                    : product.isActive
-                    ? (product.stock > 0 ? "Arsipkan" : "Nonaktifkan")
-                    : "Aktifkan"}
-                </button>
-              </form>
-            );
-
-            const deleteForm = (
-              <form action={deleteProduct}>
-                <input type="hidden" name="id" value={product.id} />
-                <ConfirmSubmitButton
-                  className="w-full rounded-full border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
-                  message={`Hapus permanen produk "${product.name}"? Tindakan ini tidak bisa dibatalkan. Jika produk pernah dipesan, gunakan Arsipkan saja.`}
-                >
-                  🗑️ Hapus
-                </ConfirmSubmitButton>
-              </form>
-            );
-
-            return (
-              <div
-                key={product.id}
-                className={`border-b border-zinc-100 last:border-b-0 ${
-                  product.isActive ? "bg-white" : "bg-zinc-50 opacity-70"
-                }`}
-              >
-                {/* Mobile card */}
-                <div className="p-4 lg:hidden">
-                  <div className="flex gap-3">
-                    <div className="flex items-center pt-1">
-                      <ProductRowCheckbox id={product.id} />
-                    </div>
-                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
-                      {product.imageUrl ? (
-                        <Image
-                          src={product.imageUrl}
-                          alt={product.name}
-                          fill
-                          sizes="64px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-xs font-bold text-zinc-300">
-                          IMG
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start gap-2">
+                  <div className="admin-product-list-row">
+                    <ProductRowCheckbox id={product.id} />
+                    <div className="flex min-w-0 gap-3">
+                      <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-slate-100 bg-white">
+                        {product.imageUrl ? (
+                          <Image
+                            src={product.imageUrl}
+                            alt={product.name}
+                            fill
+                            sizes="56px"
+                            className="object-contain"
+                          />
+                        ) : (
+                          <span className="flex h-full items-center justify-center text-xs text-slate-400">
+                            Foto
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
                         <Link
                           href={`/admin/products/${product.id}/edit`}
-                          className="line-clamp-2 flex-1 font-semibold leading-snug text-zinc-950"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="line-clamp-2 text-sm font-semibold leading-snug text-slate-800 hover:text-blue-700"
                         >
                           {product.name}
                         </Link>
-                        {isArchived ? (
-                          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                            📦 Arsip
+                        {isArchived && (
+                          <span className="mt-1 inline-flex rounded bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-800">
+                            Arsip
                           </span>
-                        ) : !product.isActive ? (
-                          <span className="shrink-0 rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-semibold text-zinc-600">
-                            Nonaktif
-                          </span>
-                        ) : null}
+                        )}
+                        {productMeta}
                       </div>
-                      {productMeta}
                     </div>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2 border-t border-zinc-100 pt-3">
-                    <div>
-                      <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Harga</p>
-                      <div className="mt-1">{priceCell}</div>
+                    <div className="admin-price-column">
+                      <span className="mb-1 block text-xs text-slate-500 md:hidden">
+                        Harga
+                      </span>
+                      {priceCell}
                       {activeDiscount && !product.hasVariants && (
-                        <p className="mt-1 px-2 text-[11px] text-natalo-700">
-                          {activeDiscount.source === "FLASH_SALE" ? "Flash Sale" : "Promo Toko"}:{" "}
-                          {formatRupiah(activeDiscount.effectivePrice)}
+                        <p className="mt-1 px-2 text-xs text-blue-700">
+                          {activeDiscount.source === "FLASH_SALE"
+                            ? "Flash Sale"
+                            : "Promo Toko"}
+                          : {formatRupiah(activeDiscount.effectivePrice)}
                         </p>
                       )}
                     </div>
-                    <div>
-                      <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400">Stok</p>
-                      <div className="mt-1">{stockCell}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    {editLink}
-                    {toggleForm}
-                    {deleteForm}
-                  </div>
-                </div>
-
-                {/* Desktop grid row */}
-                <div className="hidden grid-cols-[28px_minmax(300px,1fr)_160px_120px_120px] items-start gap-4 px-4 py-5 lg:grid">
-                  <div className="flex items-center pt-1">
-                    <ProductRowCheckbox id={product.id} />
-                  </div>
-                  <div className="flex min-w-0 gap-3">
-                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
-                      {product.imageUrl ? (
-                        <Image
-                          src={product.imageUrl}
-                          alt={product.name}
-                          fill
-                          sizes="56px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-xs font-bold text-zinc-300">
-                          IMG
-                        </div>
+                    <div className="admin-stock-column">
+                      <span className="mb-1 block text-xs text-slate-500 md:hidden">
+                        Stok
+                      </span>
+                      {stockCell}
+                      {isOut && (
+                        <span className="ml-2 text-xs text-red-600">Habis</span>
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-start gap-2">
-                        <Link
-                          href={`/admin/products/${product.id}/edit`}
-                          className="line-clamp-2 font-semibold leading-snug text-zinc-950 hover:text-natalo-700"
+                    <div className="admin-product-row-actions">
+                      {editLink}
+                      <details className="admin-product-more">
+                        <summary
+                          aria-label={`Aksi lainnya untuk ${product.name}`}
+                          className="admin-icon-button cursor-pointer"
                         >
-                          {product.name}
-                        </Link>
-                        {isArchived ? (
-                          <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                            📦 Arsip
-                          </span>
-                        ) : !product.isActive ? (
-                          <span className="shrink-0 rounded-full bg-zinc-200 px-2 py-0.5 text-[11px] font-semibold text-zinc-600">
-                            Nonaktif
-                          </span>
-                        ) : null}
-                      </div>
-                      {productMeta}
+                          •••
+                        </summary>
+                        <div className="admin-product-more-menu">
+                          {toggleForm}
+                          {deleteForm}
+                        </div>
+                      </details>
                     </div>
                   </div>
-
-                  <div className="pt-1">
-                    {priceCell}
-                    {activeDiscount && !product.hasVariants && (
-                      <p className="mt-1 px-2 text-xs text-natalo-700">
-                        {activeDiscount.source === "FLASH_SALE" ? "Flash Sale" : "Promo Toko"}:{" "}
-                        {formatRupiah(activeDiscount.effectivePrice)}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="pt-1">{stockCell}</div>
-
-                  <div className="flex flex-col items-stretch gap-2">
-                    {editLink}
-                    {toggleForm}
-                    {deleteForm}
-                  </div>
+                  {product.hasVariants && (
+                    <ProductVariantsDisclosure
+                      productId={product.id}
+                      productName={product.name}
+                      price={product.price}
+                      stock={product.stock}
+                    />
+                  )}
                 </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-      <ProductBulkBar />
+              );
+            })
+          )}
+        </div>
+        <ProductBulkBar />
       </ProductSelectionProvider>
 
       <Pagination

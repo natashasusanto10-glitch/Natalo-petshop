@@ -21,13 +21,13 @@ export default async function AdminBannersPage() {
   ]);
 
   return (
-    <AdminPage maxWidth="lg">
+    <AdminPage maxWidth="lg" className="admin-operational-page">
       <PageHeader
         title="Banner Beranda"
-        subtitle={`${banners.length} banner. Slider di halaman Beranda app customer.`}
+        subtitle={`${banners.length} banner untuk slider beranda pelanggan.`}
         actions={
           <Button href="/admin/dashboard" variant="secondary" size="sm">
-            ← Dashboard
+            Kembali ke ringkasan
           </Button>
         }
       />

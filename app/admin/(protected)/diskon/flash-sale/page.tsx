@@ -58,8 +58,8 @@ export default async function FlashSaleListPage({
     status === "ongoing"
       ? { flashSaleEndsAt: { gt: now } }
       : status === "expired"
-        ? { flashSaleEndsAt: { lt: now, gt: thirtyDaysAgo } }
-        : { flashSaleEndsAt: { gt: sevenDaysAgo } }; // "all" default — active + recent 7d
+      ? { flashSaleEndsAt: { lt: now, gt: thirtyDaysAgo } }
+      : { flashSaleEndsAt: { gt: sevenDaysAgo } }; // "all" default — active + recent 7d
 
   // Satu objek `where` dipakai bersama oleh daftar DAN penghitungnya, supaya
   // angka "menampilkan N dari M" tidak bisa lepas dari filter yang aktif.
@@ -85,17 +85,18 @@ export default async function FlashSaleListPage({
     },
   });
 
-  const [matchingCount, ongoingCount, expiredCount, totalCount] = await Promise.all([
-    prisma.product.count({ where: listWhere }),
-    prisma.product.count({ where: { flashSaleEndsAt: { gt: now } } }),
-    prisma.product.count({
-      where: { flashSaleEndsAt: { lt: now, gt: thirtyDaysAgo } },
-    }),
-    prisma.product.count({ where: { flashSaleEndsAt: { not: null } } }),
-  ]);
+  const [matchingCount, ongoingCount, expiredCount, totalCount] =
+    await Promise.all([
+      prisma.product.count({ where: listWhere }),
+      prisma.product.count({ where: { flashSaleEndsAt: { gt: now } } }),
+      prisma.product.count({
+        where: { flashSaleEndsAt: { lt: now, gt: thirtyDaysAgo } },
+      }),
+      prisma.product.count({ where: { flashSaleEndsAt: { not: null } } }),
+    ]);
 
   return (
-    <AdminPage>
+    <AdminPage className="admin-operational-page">
       <Link
         href="/admin/diskon"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
@@ -104,7 +105,7 @@ export default async function FlashSaleListPage({
       </Link>
       <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
             ⚡ Flash Sale
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -147,7 +148,7 @@ export default async function FlashSaleListPage({
           type="text"
           name="q"
           defaultValue={search}
-          placeholder="🔍 Cari nama produk..."
+          placeholder="Cari nama produk..."
           className="flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
         />
         <Button type="submit">Cari</Button>
@@ -169,10 +170,10 @@ export default async function FlashSaleListPage({
               {search
                 ? "Tidak ada produk Flash Sale cocok dengan pencarian."
                 : status === "ongoing"
-                  ? "Belum ada Flash Sale yang sedang berjalan."
-                  : status === "expired"
-                    ? "Belum ada Flash Sale yang kedaluwarsa."
-                    : "Belum ada Flash Sale."}
+                ? "Belum ada Flash Sale yang sedang berjalan."
+                : status === "expired"
+                ? "Belum ada Flash Sale yang kedaluwarsa."
+                : "Belum ada Flash Sale."}
             </p>
             {!search && status === "all" && (
               <Link
@@ -189,9 +190,7 @@ export default async function FlashSaleListPage({
               const promoStatus = statusOf(p.flashSaleEndsAt);
               const discountPercent =
                 p.discountPrice && p.price > 0
-                  ? Math.round(
-                      ((p.price - p.discountPrice) / p.price) * 100,
-                    )
+                  ? Math.round(((p.price - p.discountPrice) / p.price) * 100)
                   : 0;
               return (
                 <div
@@ -200,7 +199,6 @@ export default async function FlashSaleListPage({
                 >
                   {/* Image */}
                   {p.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={p.imageUrl}
                       alt={p.name}
@@ -227,7 +225,7 @@ export default async function FlashSaleListPage({
                             {formatRupiah(p.discountPrice)}
                           </span>
                           {discountPercent > 0 && (
-                            <span className="ml-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-600">
+                            <span className="ml-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">
                               -{discountPercent}%
                             </span>
                           )}
@@ -305,7 +303,7 @@ function StatusBadge({ status }: { status: "ongoing" | "expired" }) {
   };
   return (
     <span
-      className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold ${styles[status]}`}
+      className={`inline-block rounded-md px-2 py-0.5 text-xs font-bold ${styles[status]}`}
     >
       {labels[status]}
     </span>

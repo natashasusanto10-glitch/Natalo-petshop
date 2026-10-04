@@ -1,4 +1,4 @@
-import { getFFmpeg, fetchVideoFile } from "./ffmpeg";
+import { getFFmpeg, fetchVideoFile, resetFFmpeg } from "./ffmpeg";
 import type { FeedVideoConfig } from "./video-config";
 import { CompressionFailedError } from "./video-errors";
 
@@ -25,31 +25,47 @@ function getInputName(file: File) {
   return "input.mp4";
 }
 
-export async function compressVideo(file: File, options: CompressOptions): Promise<File> {
+// The WASM instance has one filesystem: queue jobs to prevent concurrent uploads
+// from overwriting one another's input or deleting files still being encoded.
+let compressionQueue: Promise<unknown> = Promise.resolve();
+export function compressVideo(
+  file: File,
+  options: CompressOptions
+): Promise<File> {
+  const result = compressionQueue.then(() => compressVideoJob(file, options));
+  compressionQueue = result.catch(() => undefined);
+  return result;
+}
+async function compressVideoJob(
+  file: File,
+  options: CompressOptions
+): Promise<File> {
   const { config, onProgress, trimStartSec, trimDurationSec } = options;
   const inputName = getInputName(file);
   const outputName = `output-${Date.now()}.mp4`;
-  const ffmpeg = await getFFmpeg();
-
-  const handleProgress = ({ progress }: { progress: number }) => {
-    if (!Number.isFinite(progress)) return;
-    onProgress?.(Math.max(0, Math.min(100, Math.round(progress * 100))));
-  };
-
-  // Race the actual compression against a timeout. Whichever finishes
+  // Include runtime loading, file reads, and encoding in the timeout. Whichever finishes
   // first wins; on timeout we throw so runUpload can emit an error event
   // instead of leaving the upload stalled forever.
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
+    timeout = setTimeout(() => {
+      resetFFmpeg();
       reject(
         new CompressionFailedError(
-          "Kompres video terlalu lama (>90 detik). Coba video lebih pendek atau resolusi lebih rendah.",
-        ),
+          "Kompres video terlalu lama (>90 detik). Coba video lebih pendek atau resolusi lebih rendah."
+        )
       );
     }, COMPRESSION_TIMEOUT_MS);
   });
 
   const compressPromise = (async () => {
+    const ffmpeg = await getFFmpeg();
+
+    const handleProgress = ({ progress }: { progress: number }) => {
+      if (!Number.isFinite(progress)) return;
+      onProgress?.(Math.max(0, Math.min(100, Math.round(progress * 100))));
+    };
+
     ffmpeg.on("progress", handleProgress);
     try {
       await ffmpeg.writeFile(inputName, await fetchVideoFile(file));
@@ -64,7 +80,7 @@ export async function compressVideo(file: File, options: CompressOptions): Promi
             ]
           : [];
 
-      await ffmpeg.exec([
+      const exitCode = await ffmpeg.exec([
         ...trimArgs,
         "-i",
         inputName,
@@ -97,11 +113,19 @@ export async function compressVideo(file: File, options: CompressOptions): Promi
         outputName,
       ]);
 
+      if (exitCode !== 0)
+        throw new CompressionFailedError(
+          "Video tidak dapat dikompresi. Pilih file lain atau coba kembali."
+        );
       const data = await ffmpeg.readFile(outputName);
       const bytes =
-        typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
+        typeof data === "string"
+          ? new TextEncoder().encode(data)
+          : new Uint8Array(data);
 
-      return new File([bytes], `feed-video-${Date.now()}.mp4`, { type: "video/mp4" });
+      return new File([bytes], `feed-video-${Date.now()}.mp4`, {
+        type: "video/mp4",
+      });
     } finally {
       ffmpeg.off("progress", handleProgress);
       await Promise.allSettled([
@@ -115,6 +139,10 @@ export async function compressVideo(file: File, options: CompressOptions): Promi
     return await Promise.race([compressPromise, timeoutPromise]);
   } catch (err) {
     if (err instanceof CompressionFailedError) throw err;
-    throw new CompressionFailedError(err instanceof Error ? err.message : undefined);
+    throw new CompressionFailedError(
+      err instanceof Error ? err.message : undefined
+    );
+  } finally {
+    clearTimeout(timeout);
   }
 }

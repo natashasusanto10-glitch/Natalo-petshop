@@ -188,14 +188,14 @@ export default async function AdminVoucherEditPage({
     : "";
 
   return (
-    <AdminPage maxWidth="md">
+    <AdminPage maxWidth="md" className="admin-operational-page">
       <Link
         href="/admin/vouchers"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
       >
         ← Kembali ke voucher
       </Link>
-      <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
         Edit Voucher
       </h1>
       <p className="mt-1 text-sm text-zinc-500">
@@ -222,7 +222,10 @@ export default async function AdminVoucherEditPage({
         </div>
       )}
 
-      <form action={updateVoucher} className="mt-5 space-y-5 md:mt-8">
+      <form
+        action={updateVoucher}
+        className="admin-operational-form mt-5 space-y-5 md:mt-8"
+      >
         <Field
           label="Nama voucher"
           name="name"
@@ -431,11 +434,15 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-zinc-700">
+      <label
+        htmlFor={`voucher-${name}`}
+        className="block text-sm font-medium text-zinc-700"
+      >
         {label}
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>
       <input
+        id={`voucher-${name}`}
         type={type}
         name={name}
         required={required}

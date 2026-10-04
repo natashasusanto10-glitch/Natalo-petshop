@@ -102,13 +102,18 @@ export default async function AdminOrderDetailPage({
 
   const waText = encodeURIComponent(
     `Halo ${order.customerName}, kami dari Natalo Petshop & Aquarium. ` +
-      `Order ${order.orderNumber} sudah kami terima dengan total ${formatRupiah(order.total)}.`
+      `Order ${order.orderNumber} sudah kami terima dengan total ${formatRupiah(
+        order.total
+      )}.`
   );
 
-  const isDone = order.status === "DELIVERED" || order.status === "CANCELLED" || order.status === "REFUNDED";
+  const isDone =
+    order.status === "DELIVERED" ||
+    order.status === "CANCELLED" ||
+    order.status === "REFUNDED";
 
   return (
-    <AdminPage maxWidth="xl">
+    <AdminPage maxWidth="xl" className="admin-operational-page">
       <Link
         href="/admin/orders"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
@@ -118,14 +123,22 @@ export default async function AdminOrderDetailPage({
 
       <div className="mt-4 flex flex-wrap items-start justify-between gap-3 md:mt-6 md:gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Detail Order</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
+            Detail pesanan
+          </h1>
           <p className="mt-1 truncate text-zinc-500">{order.orderNumber}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          <Badge variant={PAY_BADGE_VARIANT[order.paymentStatus] ?? "neutral"} size="md">
+          <Badge
+            variant={PAY_BADGE_VARIANT[order.paymentStatus] ?? "neutral"}
+            size="md"
+          >
             {paymentStatusLabel(order.paymentStatus)}
           </Badge>
-          <Badge variant={STATUS_BADGE_VARIANT[order.status] ?? "neutral"} size="md">
+          <Badge
+            variant={STATUS_BADGE_VARIANT[order.status] ?? "neutral"}
+            size="md"
+          >
             {orderStatusLabel(order.status)}
           </Badge>
           <Button
@@ -134,7 +147,13 @@ export default async function AdminOrderDetailPage({
             variant="secondary"
             size="sm"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              className="h-4 w-4"
+            >
               <path d="M6 9V2h12v7" />
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
               <rect x="6" y="14" width="12" height="8" />
@@ -150,7 +169,12 @@ export default async function AdminOrderDetailPage({
           tampil actionable dengan tombol Setujui/Tolak. */}
       {order.cancellationRequestStatus && (
         <CancellationRequestBanner
-          status={order.cancellationRequestStatus as "PENDING" | "APPROVED" | "REJECTED"}
+          status={
+            order.cancellationRequestStatus as
+              | "PENDING"
+              | "APPROVED"
+              | "REJECTED"
+          }
           reason={order.cancellationReason}
           requestedAt={order.cancellationRequestedAt?.toISOString() ?? null}
           respondedAt={order.cancellationRespondedAt?.toISOString() ?? null}
@@ -160,18 +184,15 @@ export default async function AdminOrderDetailPage({
         />
       )}
 
-      <div className="mt-5 grid gap-4 md:mt-8 md:gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="mt-5 grid gap-4 md:mt-8 md:gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         {/* ── Produk ── */}
-        <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
+        <section className="admin-detail-section rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
           <h2 className="font-bold text-zinc-950">Produk dibeli</h2>
 
           <div className="mt-4 space-y-3">
             {order.items.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-2xl bg-zinc-50 p-4 text-sm"
-              >
-                <div className="flex justify-between gap-4">
+              <div key={item.id} className="rounded-2xl bg-zinc-50 p-4 text-sm">
+                <div className="flex flex-wrap justify-between gap-4">
                   <div>
                     <p className="font-semibold text-zinc-950">{item.name}</p>
                     <p className="mt-1 text-zinc-500">
@@ -261,7 +282,8 @@ export default async function AdminOrderDetailPage({
                 product/shipping (legacy order pre-refactor), tampilkan
                 aggregate supaya admin tetap lihat. */}
             {order.discount > 0 &&
-              order.discount > order.productDiscount + order.shippingDiscount && (
+              order.discount >
+                order.productDiscount + order.shippingDiscount && (
                 <div className="flex justify-between text-zinc-600">
                   <span>Diskon Lainnya</span>
                   <span className="text-red-600">
@@ -269,7 +291,7 @@ export default async function AdminOrderDetailPage({
                     {formatRupiah(
                       order.discount -
                         order.productDiscount -
-                        order.shippingDiscount,
+                        order.shippingDiscount
                     )}
                   </span>
                 </div>
@@ -290,7 +312,7 @@ export default async function AdminOrderDetailPage({
                 langsung paham ini nominal yang user beneran bayar via
                 transfer/Midtrans/dst. Kalau 0, admin tahu order full
                 ke-cover saldo refund + voucher, gak ada yang nunggu. */}
-            <div className="flex justify-between border-t border-zinc-200 pt-3 mt-2 text-lg font-black text-zinc-950">
+            <div className="flex justify-between border-t border-zinc-200 pt-3 mt-2 text-lg font-semibold text-zinc-950">
               <span>Total Bayar Tunai</span>
               <span
                 className={
@@ -302,8 +324,8 @@ export default async function AdminOrderDetailPage({
             </div>
             {order.total === 0 && order.refundBalanceUsed > 0 && (
               <p className="text-xs font-semibold text-emerald-700 -mt-1">
-                ✓ Order ke-cover full oleh saldo + voucher — tidak ada
-                yang perlu di-transfer
+                ✓ Order ke-cover full oleh saldo + voucher — tidak ada yang
+                perlu di-transfer
               </p>
             )}
 
@@ -319,14 +341,12 @@ export default async function AdminOrderDetailPage({
                 <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
                   <div className="flex justify-between text-sm font-bold text-blue-900">
                     <span>Total transfer yang harus masuk</span>
-                    <span>
-                      {formatRupiah(order.total + order.uniqueCode)}
-                    </span>
+                    <span>{formatRupiah(order.total + order.uniqueCode)}</span>
                   </div>
                   <p className="mt-0.5 text-xs font-medium text-blue-700">
                     Termasuk kode unik{" "}
-                    <span className="font-black">{order.uniqueCode}</span>{" "}
-                    — cocokkan nominal ini dengan bukti transfer customer.
+                    <span className="font-semibold">{order.uniqueCode}</span> —
+                    cocokkan nominal ini dengan bukti transfer customer.
                   </p>
                 </div>
               )}
@@ -365,9 +385,9 @@ export default async function AdminOrderDetailPage({
                 </span>
               </summary>
               <p className="mt-3 text-xs text-zinc-600">
-                Kredit Saldo Refund user untuk kasus yang tidak ke-cover
-                tombol &quot;Tandai kosong&quot; per-item. Saldo masuk
-                instant dan bisa user pakai di checkout berikutnya.
+                Kredit Saldo Refund user untuk kasus yang tidak ke-cover tombol
+                &quot;Tandai kosong&quot; per-item. Saldo masuk instant dan bisa
+                user pakai di checkout berikutnya.
               </p>
               <RefundFormClient
                 items={order.items.map((it) => ({
@@ -397,12 +417,12 @@ export default async function AdminOrderDetailPage({
                       >
                         <span>
                           <span
-                            className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                            className={`mr-2 inline-block rounded px-1.5 py-0.5 text-xs font-bold ${
                               rc.status === "CREDITED"
                                 ? "bg-emerald-100 text-emerald-700"
                                 : rc.status === "REJECTED"
-                                  ? "bg-red-100 text-red-700"
-                                  : "bg-amber-100 text-amber-700"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-amber-100 text-amber-700"
                             }`}
                           >
                             {rc.status}
@@ -424,9 +444,14 @@ export default async function AdminOrderDetailPage({
                 <p className="text-xs font-semibold text-zinc-700">
                   Riwayat refund order ini ({order.refundCases.length})
                 </p>
-                <p className="mt-1 text-[11px] text-zinc-500">
-                  Order sudah {order.status === "CANCELLED" ? "dibatalkan" : order.status === "REFUNDED" ? "di-refund penuh" : "selesai"} —
-                  refund baru tidak bisa dilakukan dari sini.
+                <p className="mt-1 text-xs text-zinc-500">
+                  Order sudah{" "}
+                  {order.status === "CANCELLED"
+                    ? "dibatalkan"
+                    : order.status === "REFUNDED"
+                    ? "di-refund penuh"
+                    : "selesai"}{" "}
+                  — refund baru tidak bisa dilakukan dari sini.
                 </p>
                 <ul className="mt-3 space-y-1.5 text-xs">
                   {order.refundCases.map((rc) => (
@@ -436,12 +461,12 @@ export default async function AdminOrderDetailPage({
                     >
                       <span>
                         <span
-                          className={`mr-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                          className={`mr-2 inline-block rounded px-1.5 py-0.5 text-xs font-bold ${
                             rc.status === "CREDITED"
                               ? "bg-emerald-100 text-emerald-700"
                               : rc.status === "REJECTED"
-                                ? "bg-red-100 text-red-700"
-                                : "bg-amber-100 text-amber-700"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-amber-100 text-amber-700"
                           }`}
                         >
                           {rc.status}
@@ -462,19 +487,23 @@ export default async function AdminOrderDetailPage({
         {/* ── Sidebar ── */}
         <aside className="flex flex-col gap-5">
           {/* Customer */}
-          <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
+          <section className="admin-detail-section rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
             <h2 className="font-bold text-zinc-950">Customer</h2>
             <div className="mt-4 space-y-2 text-sm text-zinc-700">
               <p>
-                <span className="font-semibold">Nama:</span> {order.customerName}
+                <span className="font-semibold">Nama:</span>{" "}
+                {order.customerName}
               </p>
               <p>
                 <span className="font-semibold">WhatsApp:</span>{" "}
-                {order.customerPhone || <span className="text-zinc-600 italic">tidak diisi</span>}
+                {order.customerPhone || (
+                  <span className="text-zinc-600 italic">tidak diisi</span>
+                )}
               </p>
               {order.customerEmail && (
                 <p>
-                  <span className="font-semibold">Email:</span> {order.customerEmail}
+                  <span className="font-semibold">Email:</span>{" "}
+                  {order.customerEmail}
                 </p>
               )}
             </div>
@@ -499,7 +528,8 @@ export default async function AdminOrderDetailPage({
               <h2 className="font-bold text-zinc-950">Metode Pengambilan</h2>
               <div className="mt-4 space-y-2 text-sm text-zinc-700">
                 <p>
-                  <span className="font-semibold">Metode:</span> Ambil Sendiri di Toko
+                  <span className="font-semibold">Metode:</span> Ambil Sendiri
+                  di Toko
                 </p>
                 <p>
                   <span className="font-semibold">Lokasi:</span>{" "}
@@ -517,7 +547,9 @@ export default async function AdminOrderDetailPage({
                 {order.pickupCode && (
                   <p>
                     <span className="font-semibold">Kode pickup:</span>{" "}
-                    <span className="font-mono font-black">{order.pickupCode}</span>
+                    <span className="font-mono font-semibold">
+                      {order.pickupCode}
+                    </span>
                   </p>
                 )}
               </div>
@@ -525,34 +557,42 @@ export default async function AdminOrderDetailPage({
           )}
 
           {/* Pengiriman */}
-          <section className={`rounded-3xl border border-zinc-200 p-5 ${isSelfPickup ? "hidden" : ""}`}>
+          <section
+            className={`rounded-3xl border border-zinc-200 p-5 ${
+              isSelfPickup ? "hidden" : ""
+            }`}
+          >
             <h2 className="font-bold text-zinc-950">Pengiriman</h2>
             <div className="mt-4 space-y-2 text-sm text-zinc-700">
               <p>
-                <span className="font-semibold">Alamat:</span> {order.shippingAddress}
+                <span className="font-semibold">Alamat:</span>{" "}
+                {order.shippingAddress}
               </p>
               {order.shippingCity && (
                 <p>
-                  <span className="font-semibold">Kota:</span> {order.shippingCity}
+                  <span className="font-semibold">Kota:</span>{" "}
+                  {order.shippingCity}
                 </p>
               )}
               {order.shippingPostalCode && (
                 <p>
-                  <span className="font-semibold">Kode pos:</span> {order.shippingPostalCode}
+                  <span className="font-semibold">Kode pos:</span>{" "}
+                  {order.shippingPostalCode}
                 </p>
               )}
               {order.courierCode && (
                 <p>
-                  <span className="font-semibold">Kurir:</span> {order.courierCode}{" "}
-                  {order.courierService}
+                  <span className="font-semibold">Kurir:</span>{" "}
+                  {order.courierCode} {order.courierService}
                 </p>
               )}
-              {order.shippingLatitude !== null && order.shippingLongitude !== null && (
-                <p>
-                  <span className="font-semibold">Titik tujuan:</span>{" "}
-                  {order.shippingLatitude}, {order.shippingLongitude}
-                </p>
-              )}
+              {order.shippingLatitude !== null &&
+                order.shippingLongitude !== null && (
+                  <p>
+                    <span className="font-semibold">Titik tujuan:</span>{" "}
+                    {order.shippingLatitude}, {order.shippingLongitude}
+                  </p>
+                )}
               <p>
                 <span className="font-semibold">No. Resi:</span>{" "}
                 {order.trackingNumber ? (
@@ -606,7 +646,7 @@ export default async function AdminOrderDetailPage({
 
           {/* Bukti transfer */}
           {order.paymentProofUrl && (
-            <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
+            <section className="admin-detail-section rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
               <h2 className="font-bold text-zinc-950">Bukti Transfer</h2>
               <div className="mt-3 overflow-hidden rounded-2xl border border-zinc-100">
                 <Image
@@ -641,7 +681,7 @@ export default async function AdminOrderDetailPage({
             order.manualVoucherCode ||
             order.privateVoucherCode ||
             order.notes) && (
-            <section className="rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5">
+            <section className="admin-detail-section rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
               <h2 className="font-bold text-zinc-950">Info tambahan</h2>
               <div className="mt-4 space-y-2 text-sm text-zinc-700">
                 {/* Metode bayar — conditional render berdasarkan komposisi
@@ -671,14 +711,12 @@ export default async function AdminOrderDetailPage({
                     order.voucherUsages.map((u) => [
                       u.voucher.code,
                       u.discountAmount,
-                    ]),
+                    ])
                   );
                   const formatAmount = (code: string | null) => {
                     if (!code) return null;
                     const amt = usageByCode.get(code) ?? null;
-                    return amt && amt > 0
-                      ? ` (-${formatRupiah(amt)})`
-                      : "";
+                    return amt && amt > 0 ? ` (-${formatRupiah(amt)})` : "";
                   };
                   // Fallback chain per kategori — pakai field yang aktif
                   // diisi backend, fallback ke legacy field kalau ada.
@@ -744,7 +782,8 @@ export default async function AdminOrderDetailPage({
 
                 {order.notes && (
                   <p>
-                    <span className="font-semibold">Catatan:</span> {order.notes}
+                    <span className="font-semibold">Catatan:</span>{" "}
+                    {order.notes}
                   </p>
                 )}
               </div>
@@ -756,7 +795,7 @@ export default async function AdminOrderDetailPage({
               tidak terkubur di bawah info Customer/Pengiriman. Di lg reset ke
               urutan DOM (order-none) — layout desktop tidak berubah. */}
           {!isDone && (
-            <section className="order-first rounded-2xl border border-zinc-200 p-4 md:rounded-3xl md:p-5 lg:order-none">
+            <section className="order-first admin-detail-section rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5 lg:order-none">
               <h2 className="font-bold text-zinc-950">Aksi</h2>
 
               <div className="mt-5 space-y-3">
@@ -770,21 +809,25 @@ export default async function AdminOrderDetailPage({
                 )}
 
                 {/* 2. Proses packing (setelah bayar) */}
-                {order.paymentStatus === "PAID" && (order.status === "PENDING" || order.status === "PAID") && (
-                  <form action={markAsProcessingAction}>
-                    <Button type="submit" fullWidth>
-                      📦 Mulai packing
-                    </Button>
-                  </form>
-                )}
+                {order.paymentStatus === "PAID" &&
+                  (order.status === "PENDING" || order.status === "PAID") && (
+                    <form action={markAsProcessingAction}>
+                      <Button type="submit" fullWidth>
+                        📦 Mulai packing
+                      </Button>
+                    </form>
+                  )}
 
-                {order.paymentStatus === "PAID" && !isSelfPickup && order.courierCode && !order.biteshipOrderId && (
-                  <form action={createShipmentAction}>
-                    <Button type="submit" variant="secondary" fullWidth>
-                      🚚 Booking kurir Biteship
-                    </Button>
-                  </form>
-                )}
+                {order.paymentStatus === "PAID" &&
+                  !isSelfPickup &&
+                  order.courierCode &&
+                  !order.biteshipOrderId && (
+                    <form action={createShipmentAction}>
+                      <Button type="submit" variant="secondary" fullWidth>
+                        🚚 Booking kurir Biteship
+                      </Button>
+                    </form>
+                  )}
 
                 {/* 3. Tandai sudah dikirim (PROCESSING → SHIPPED)
                     Pakai ShippingForm dengan toggle Regular / Instant supaya
@@ -828,27 +871,34 @@ export default async function AdminOrderDetailPage({
                       Override: tandai selesai manual
                     </summary>
                     <p className="mt-2 text-xs text-zinc-600">
-                      Sebaiknya customer yang tap &quot;Pesanan Sudah Diterima&quot; di
-                      app. Pakai tombol ini hanya kalau customer tidak bisa
-                      konfirmasi sendiri (offline, gak pakai app, dll).
-                      Setelah selesai, refund/komplain tidak bisa dilakukan
-                      lagi.
+                      Sebaiknya customer yang tap &quot;Pesanan Sudah
+                      Diterima&quot; di app. Pakai tombol ini hanya kalau
+                      customer tidak bisa konfirmasi sendiri (offline, gak pakai
+                      app, dll). Setelah selesai, refund/komplain tidak bisa
+                      dilakukan lagi.
                     </p>
                     <form action={markAsDeliveredAction} className="mt-2">
-                      <Button type="submit" variant="secondary" size="sm" fullWidth>
+                      <Button
+                        type="submit"
+                        variant="secondary"
+                        size="sm"
+                        fullWidth
+                      >
                         Tandai selesai (override)
                       </Button>
                     </form>
                   </details>
                 )}
 
-                {isSelfPickup && order.paymentStatus === "PAID" && order.status === "PROCESSING" && (
-                  <form action={markAsReadyForPickupAction}>
-                    <Button type="submit" fullWidth>
-                      Siap Diambil
-                    </Button>
-                  </form>
-                )}
+                {isSelfPickup &&
+                  order.paymentStatus === "PAID" &&
+                  order.status === "PROCESSING" && (
+                    <form action={markAsReadyForPickupAction}>
+                      <Button type="submit" fullWidth>
+                        Siap Diambil
+                      </Button>
+                    </form>
+                  )}
 
                 {isSelfPickup && order.status === "READY_FOR_PICKUP" && (
                   <form action={markAsPickedUpAction}>
@@ -921,8 +971,7 @@ function PaymentMethodLine({
     MIDTRANS: "Midtrans Gateway",
     XENDIT: "Xendit Gateway",
   };
-  const friendlyProvider =
-    providerLabel[paymentProvider] ?? paymentProvider;
+  const friendlyProvider = providerLabel[paymentProvider] ?? paymentProvider;
 
   // Skenario 1: Full saldo refund cover order.
   if (cashTotal === 0 && refundBalanceUsed > 0) {
@@ -984,4 +1033,3 @@ function PaymentMethodLine({
     </p>
   );
 }
-

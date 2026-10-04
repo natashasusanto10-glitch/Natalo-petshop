@@ -35,8 +35,9 @@ export function Pagination({
       className="mt-6 flex flex-wrap items-center justify-between gap-3"
     >
       <p className="text-sm text-zinc-500">
-        Halaman <span className="font-black text-zinc-950">{currentPage}</span> dari{" "}
-        <span className="font-black text-zinc-950">{totalPages}</span>
+        Halaman{" "}
+        <span className="font-semibold text-zinc-950">{currentPage}</span> dari{" "}
+        <span className="font-semibold text-zinc-950">{totalPages}</span>
         {summary ? ` · ${summary}` : ""}
       </p>
 
@@ -45,7 +46,7 @@ export function Pagination({
           <Link
             href={hrefFor(currentPage - 1)}
             aria-label="Halaman sebelumnya"
-            className="inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-zinc-300 px-3 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50"
+            className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
           >
             ←
           </Link>
@@ -57,7 +58,7 @@ export function Pagination({
               // Dua "gap" bisa muncul bersamaan, jadi kuncinya pakai posisi.
               key={`gap-${i}`}
               aria-hidden="true"
-              className="px-1 text-sm font-bold text-zinc-400"
+              className="px-1 text-sm font-medium text-zinc-400"
             >
               …
             </span>
@@ -65,7 +66,7 @@ export function Pagination({
             <span
               key={slot}
               aria-current="page"
-              className="inline-flex h-11 min-w-11 items-center justify-center rounded-full bg-natalo-600 px-3 text-sm font-black text-white"
+              className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg bg-natalo-600 px-3 text-sm font-semibold text-white"
             >
               {slot}
             </span>
@@ -74,18 +75,18 @@ export function Pagination({
               key={slot}
               href={hrefFor(slot)}
               aria-label={`Halaman ${slot}`}
-              className="inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-zinc-300 px-3 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50"
+              className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
             >
               {slot}
             </Link>
-          ),
+          )
         )}
 
         {currentPage < totalPages && (
           <Link
             href={hrefFor(currentPage + 1)}
             aria-label="Halaman berikutnya"
-            className="inline-flex h-11 min-w-11 items-center justify-center rounded-full border border-zinc-300 px-3 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50"
+            className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg border border-zinc-300 px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
           >
             →
           </Link>

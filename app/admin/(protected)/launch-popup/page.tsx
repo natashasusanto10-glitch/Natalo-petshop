@@ -21,13 +21,13 @@ export default async function AdminLaunchPopupPage() {
   ]);
 
   return (
-    <AdminPage maxWidth="lg">
+    <AdminPage maxWidth="lg" className="admin-operational-page">
       <PageHeader
         title="Popup Promo"
-        subtitle={`${popups.length} popup. Muncul fullscreen saat user buka app (cold start).`}
+        subtitle={`${popups.length} popup yang tampil saat pelanggan membuka aplikasi.`}
         actions={
           <Button href="/admin/dashboard" variant="secondary" size="sm">
-            ← Dashboard
+            Kembali ke ringkasan
           </Button>
         }
       />

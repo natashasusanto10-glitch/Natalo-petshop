@@ -81,7 +81,10 @@ export default async function AdminVouchersPage({
     "use server";
     const id = String(formData.get("id"));
     const current = formData.get("isActive") === "true";
-    await prisma.voucher.update({ where: { id }, data: { isActive: !current } });
+    await prisma.voucher.update({
+      where: { id },
+      data: { isActive: !current },
+    });
     revalidatePath("/admin/vouchers");
   }
 
@@ -108,11 +111,11 @@ export default async function AdminVouchersPage({
       kind: g.kind,
       sourceType: g.sourceType,
       _count: g._count._all,
-    })),
+    }))
   );
 
   return (
-    <AdminPage maxWidth="xl">
+    <AdminPage maxWidth="xl" className="admin-operational-page">
       <PageHeader
         title="Voucher"
         subtitle={
@@ -157,13 +160,17 @@ export default async function AdminVouchersPage({
       {/* Kotak cari — kode atau nama campaign. Wajib ada begitu daftarnya
           dipaginasi: tanpa ini, mencari satu voucher berarti menggulir
           halaman demi halaman. */}
-      <form className="mt-5 flex gap-2 md:mt-8" method="GET" action="/admin/vouchers">
+      <form
+        className="mt-5 flex gap-2 md:mt-8"
+        method="GET"
+        action="/admin/vouchers"
+      >
         <input
           type="search"
           name="q"
           defaultValue={search}
           aria-label="Cari kode atau nama voucher"
-          placeholder="🔍 Cari kode / nama voucher..."
+          placeholder="Cari kode / nama voucher..."
           className="min-w-0 flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
         />
         <Button type="submit">Cari</Button>
@@ -186,7 +193,11 @@ export default async function AdminVouchersPage({
         ) : vouchers.length === 0 ? (
           <EmptyState
             icon={search ? "🔍" : "🎟️"}
-            title={search ? `Tidak ada voucher cocok "${search}"` : "Belum ada voucher"}
+            title={
+              search
+                ? `Tidak ada voucher cocok "${search}"`
+                : "Belum ada voucher"
+            }
             description={
               search
                 ? "Coba kata kunci lain — pencarian mencakup kode dan nama voucher."
@@ -207,44 +218,51 @@ export default async function AdminVouchersPage({
               const statusOk = v.isActive && !expired && !maxed;
 
               const discountParts: string[] = [];
-              if (v.discountPercent) discountParts.push(`${v.discountPercent}%`);
-              if (v.discountAmount) discountParts.push(formatRupiah(v.discountAmount));
+              if (v.discountPercent)
+                discountParts.push(`${v.discountPercent}%`);
+              if (v.discountAmount)
+                discountParts.push(formatRupiah(v.discountAmount));
               const typeLabel =
                 v.type === "PUBLIC_FREE_SHIPPING"
                   ? "Public Gratis Ongkir"
                   : v.type === "PUBLIC_PRODUCT_DISCOUNT"
-                    ? "Public Diskon Produk"
-                    : v.type === "LOYALTY_POINT_CLAIM"
-                      ? "Loyalty Reward"
-                      : "Private Manual";
+                  ? "Public Diskon Produk"
+                  : v.type === "LOYALTY_POINT_CLAIM"
+                  ? "Loyalty Reward"
+                  : "Private Manual";
               const kindLabel = voucherKindLabel(v.kind);
               const scopeLabel =
                 v.discountScope === "SHIPPING" ? "Ongkir" : "Produk";
 
               return (
-                <div key={v.id} className="flex flex-col gap-4 p-4 transition hover:bg-zinc-50/60 md:flex-row md:flex-wrap md:items-start md:justify-between md:p-5">
+                <div
+                  key={v.id}
+                  className="flex flex-col gap-4 p-4 transition hover:bg-zinc-50/60 md:flex-row md:flex-wrap md:items-start md:justify-between md:p-5"
+                >
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-base font-black text-zinc-950">{v.code}</span>
+                      <span className="font-mono text-base font-semibold text-zinc-950">
+                        {v.code}
+                      </span>
                       <Badge variant="info">{typeLabel}</Badge>
                       <Badge
                         variant={
                           statusOk
                             ? "success"
                             : expired
-                              ? "neutral"
-                              : maxed
-                                ? "warning"
-                                : "danger"
+                            ? "neutral"
+                            : maxed
+                            ? "warning"
+                            : "danger"
                         }
                       >
                         {statusOk
                           ? "Aktif"
                           : expired
-                            ? "Kedaluwarsa"
-                            : maxed
-                              ? "Habis"
-                              : "Nonaktif"}
+                          ? "Kedaluwarsa"
+                          : maxed
+                          ? "Habis"
+                          : "Nonaktif"}
                       </Badge>
                       <Badge variant="info">{kindLabel}</Badge>
                       {v.kind === "PRODUCT_DISCOUNT" && (
@@ -255,44 +273,96 @@ export default async function AdminVouchersPage({
                     </div>
 
                     {v.description && (
-                      <p className="mt-1 text-sm text-zinc-500">{v.description}</p>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        {v.description}
+                      </p>
                     )}
 
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
-                      <span>Scope: <strong className="text-zinc-700">{scopeLabel}</strong></span>
-                      <span>Diskon: <strong className="text-zinc-700">{discountParts.join(" + ") || "-"}</strong></span>
+                      <span>
+                        Scope:{" "}
+                        <strong className="text-zinc-700">{scopeLabel}</strong>
+                      </span>
+                      <span>
+                        Diskon:{" "}
+                        <strong className="text-zinc-700">
+                          {discountParts.join(" + ") || "-"}
+                        </strong>
+                      </span>
                       {v.maxDiscountAmount !== null && (
-                        <span>Maks. potongan: <strong className="text-zinc-700">{formatRupiah(v.maxDiscountAmount)}</strong></span>
-                      )}
-                      {v.minimumOrder > 0 && (
-                        <span>Min. belanja: <strong className="text-zinc-700">{formatRupiah(v.minimumOrder)}</strong></span>
-                      )}
-                      {v.kind === "PRODUCT_DISCOUNT" && v.targetUser === "NEW_MEMBER" && (
                         <span>
-                          Rule: <strong className="text-zinc-700">
-                            ≤{v.newMemberMaxAccountAgeDays ?? "-"} hari
-                            {v.newMemberRequireNoSuccessfulOrder ? " · belum checkout" : ""}
+                          Maks. potongan:{" "}
+                          <strong className="text-zinc-700">
+                            {formatRupiah(v.maxDiscountAmount)}
                           </strong>
                         </span>
                       )}
-                      <span>Batas per user: <strong className="text-zinc-700">{voucherUsageLimitLabel(v)}</strong></span>
+                      {v.minimumOrder > 0 && (
+                        <span>
+                          Min. belanja:{" "}
+                          <strong className="text-zinc-700">
+                            {formatRupiah(v.minimumOrder)}
+                          </strong>
+                        </span>
+                      )}
+                      {v.kind === "PRODUCT_DISCOUNT" &&
+                        v.targetUser === "NEW_MEMBER" && (
+                          <span>
+                            Rule:{" "}
+                            <strong className="text-zinc-700">
+                              ≤{v.newMemberMaxAccountAgeDays ?? "-"} hari
+                              {v.newMemberRequireNoSuccessfulOrder
+                                ? " · belum checkout"
+                                : ""}
+                            </strong>
+                          </span>
+                        )}
                       <span>
-                        Digunakan: <strong className="text-zinc-700">{v.usedCount}
-                        {v.maxUsage !== null ? `/${v.maxUsage}` : ""}</strong>
+                        Batas per user:{" "}
+                        <strong className="text-zinc-700">
+                          {voucherUsageLimitLabel(v)}
+                        </strong>
+                      </span>
+                      <span>
+                        Digunakan:{" "}
+                        <strong className="text-zinc-700">
+                          {v.usedCount}
+                          {v.maxUsage !== null ? `/${v.maxUsage}` : ""}
+                        </strong>
                       </span>
                       {v.eligibleUserIds.length > 0 && (
-                        <span>Eligible user: <strong className="text-zinc-700">{v.eligibleUserIds.length}</strong></span>
+                        <span>
+                          Eligible user:{" "}
+                          <strong className="text-zinc-700">
+                            {v.eligibleUserIds.length}
+                          </strong>
+                        </span>
                       )}
                       {v.eligibleProductIds.length > 0 && (
-                        <span>Target produk: <strong className="text-zinc-700">{v.eligibleProductIds.length}</strong></span>
+                        <span>
+                          Target produk:{" "}
+                          <strong className="text-zinc-700">
+                            {v.eligibleProductIds.length}
+                          </strong>
+                        </span>
                       )}
                       {v.eligibleCategoryIds.length > 0 && (
-                        <span>Target kategori: <strong className="text-zinc-700">{v.eligibleCategoryIds.length}</strong></span>
+                        <span>
+                          Target kategori:{" "}
+                          <strong className="text-zinc-700">
+                            {v.eligibleCategoryIds.length}
+                          </strong>
+                        </span>
                       )}
                       {v.expiresAt && (
                         <span>
-                          Berlaku s/d: <strong className="text-zinc-700">
-                            {v.expiresAt.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                          Berlaku s/d:{" "}
+                          <strong className="text-zinc-700">
+                            {v.expiresAt.toLocaleDateString("id-ID", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })}
                           </strong>
                         </span>
                       )}
@@ -312,7 +382,11 @@ export default async function AdminVouchersPage({
                     {/* Toggle aktif/nonaktif */}
                     <form action={toggleVoucher}>
                       <input type="hidden" name="id" value={v.id} />
-                      <input type="hidden" name="isActive" value={String(v.isActive)} />
+                      <input
+                        type="hidden"
+                        name="isActive"
+                        value={String(v.isActive)}
+                      />
                       <Button type="submit" variant="secondary" size="md">
                         {v.isActive ? "Nonaktifkan" : "Aktifkan"}
                       </Button>

@@ -1,0 +1,49 @@
+[
+  {
+    "check": "harga manual",
+    "preview": "Rp 365.000",
+    "value": "880.000"
+  },
+  {
+    "check": "harga massal",
+    "preview": "Rp 400.000",
+    "values": [
+      "400.000",
+      "400.000"
+    ]
+  },
+  {
+    "check": "validasi harga negatif",
+    "result": "ditolak; dialog tetap terbuka dengan pesan jelas"
+  },
+  {
+    "check": "simpan harga cepat",
+    "value": "289.000"
+  },
+  {
+    "check": "nama produk membuka edit",
+    "url": "http://127.0.0.1:8765/admin-premium.html#edit-6",
+    "harga": "400.000 diteruskan pada dua varian",
+    "note": "Form edit produk yang benar terbuka; parent tab tidak tersedia dalam sesi pemeriksaan sesudah pembukaan."
+  },
+  {
+    "check": "foto keyboard dan pointer",
+    "result": "foto pertama berpindah; preview ikut berubah; overlay setelah drag = 0"
+  },
+  {
+    "check": "video",
+    "result": "simulasi selesai; thumbnail 76 × 76; bukan kompresi berkas sungguhan"
+  },
+  {
+    "check": "panel opsional",
+    "result": "buka tutup berfungsi"
+  },
+  {
+    "check": "motion nonaktif",
+    "result": "data-motion off; transition 0s"
+  },
+  {
+    "check": "menu mobile",
+    "result": "buka: fokus ke Tutup menu dan background inert; Escape: kembali ke Buka menu"
+  }
+]

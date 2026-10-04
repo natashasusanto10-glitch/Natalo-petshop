@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminConfirm } from "@/components/admin/ui/useAdminConfirm";
+
 /**
  * Moderasi Laporan — antrean report UGC (post/komentar feed) dari user.
  *
@@ -21,7 +23,12 @@ import { Badge, Button, EmptyState, PageHeader } from "@/components/admin/ui";
 import type { BadgeVariant } from "@/components/admin/ui";
 
 type ReportStatus = "PENDING" | "RESOLVED" | "DISMISSED";
-type ReportReason = "SPAM" | "INAPPROPRIATE" | "MISLEADING" | "COPYRIGHT" | "OTHER";
+type ReportReason =
+  | "SPAM"
+  | "INAPPROPRIATE"
+  | "MISLEADING"
+  | "COPYRIGHT"
+  | "OTHER";
 
 type ReportItem = {
   id: string;
@@ -65,7 +72,10 @@ const TABS: { value: TabValue; label: string }[] = [
   { value: "all", label: "Semua" },
 ];
 
-const REASON_META: Record<ReportReason, { text: string; variant: BadgeVariant }> = {
+const REASON_META: Record<
+  ReportReason,
+  { text: string; variant: BadgeVariant }
+> = {
   SPAM: { text: "Spam", variant: "neutral" },
   INAPPROPRIATE: { text: "Tidak pantas", variant: "danger" },
   MISLEADING: { text: "Menyesatkan", variant: "warning" },
@@ -74,13 +84,17 @@ const REASON_META: Record<ReportReason, { text: string; variant: BadgeVariant }>
 };
 
 /** Pisahkan "flutter_reason: xxx" + "note: yyy" dari field detail mentah. */
-function parseDetail(detail: string | null): { subReason: string | null; note: string | null } {
+function parseDetail(detail: string | null): {
+  subReason: string | null;
+  note: string | null;
+} {
   if (!detail) return { subReason: null, note: null };
   const lines = detail.split("\n");
   let subReason: string | null = null;
   let note: string | null = null;
   for (const line of lines) {
-    if (line.startsWith("flutter_reason:")) subReason = line.replace("flutter_reason:", "").trim();
+    if (line.startsWith("flutter_reason:"))
+      subReason = line.replace("flutter_reason:", "").trim();
     if (line.startsWith("note:")) note = line.replace("note:", "").trim();
   }
   return { subReason, note };
@@ -95,10 +109,15 @@ function timeAgo(iso: string): string {
   if (hr < 24) return `${hr} jam lalu`;
   const day = Math.floor(hr / 24);
   if (day < 30) return `${day} hari lalu`;
-  return new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  return new Date(iso).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 export function AdminReportsClient() {
+  const { confirm, confirmation } = useAdminConfirm();
   const [tab, setTab] = useState<TabValue>("pending");
   const [items, setItems] = useState<ReportItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -106,7 +125,11 @@ export function AdminReportsClient() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [counts, setCounts] = useState({ pending: 0, resolved: 0, dismissed: 0 });
+  const [counts, setCounts] = useState({
+    pending: 0,
+    resolved: 0,
+    dismissed: 0,
+  });
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async (status: TabValue, nextCursor?: string) => {
@@ -168,7 +191,10 @@ export function AdminReportsClient() {
     }
   }, [tab, load]);
 
-  async function setReportStatus(reportId: string, action: "resolve" | "dismiss") {
+  async function setReportStatus(
+    reportId: string,
+    action: "resolve" | "dismiss"
+  ) {
     const res = await fetch(`/api/admin/feed/reports/${reportId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -185,29 +211,42 @@ export function AdminReportsClient() {
         const res = await fetch(`/api/admin/feed/posts/${report.post.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "hide", note: "Disembunyikan dari laporan user" }),
+          body: JSON.stringify({
+            action: "hide",
+            note: "Disembunyikan dari laporan user",
+          }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           // Kalau post sudah HIDDEN/tidak ACTIVE, tetap lanjut resolve report —
           // tujuan akhirnya (konten tidak tayang) sudah tercapai.
-          if (res.status !== 409) throw new Error(data.error ?? "Gagal menyembunyikan postingan.");
+          if (res.status !== 409)
+            throw new Error(data.error ?? "Gagal menyembunyikan postingan.");
         }
       } else if (report.comment) {
-        const res = await fetch(`/api/admin/feed/comments/${report.comment.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "hide", reason: "Disembunyikan dari laporan user" }),
-        });
+        const res = await fetch(
+          `/api/admin/feed/comments/${report.comment.id}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "hide",
+              reason: "Disembunyikan dari laporan user",
+            }),
+          }
+        );
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          if (res.status !== 409) throw new Error(data.error ?? "Gagal menyembunyikan komentar.");
+          if (res.status !== 409)
+            throw new Error(data.error ?? "Gagal menyembunyikan komentar.");
         }
       }
       await setReportStatus(report.id, "resolve");
       await refetch();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Gagal memproses laporan.");
+      window.alert(
+        err instanceof Error ? err.message : "Gagal memproses laporan."
+      );
     } finally {
       setBusyId(null);
     }
@@ -219,7 +258,9 @@ export function AdminReportsClient() {
       await setReportStatus(reportId, "resolve");
       await refetch();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Gagal memperbarui laporan.");
+      window.alert(
+        err instanceof Error ? err.message : "Gagal memperbarui laporan."
+      );
     } finally {
       setBusyId(null);
     }
@@ -231,9 +272,9 @@ export function AdminReportsClient() {
   async function deleteAndResolve(report: ReportItem) {
     const targetLabel = report.post ? "postingan" : "komentar";
     if (
-      !window.confirm(
-        `Pindahkan ${targetLabel} ini ke Sampah? Masih bisa dipulihkan dari tab Sampah selama 30 hari.`,
-      )
+      !(await confirm(
+        `Pindahkan ${targetLabel} ini ke Sampah? Masih bisa dipulihkan dari tab Sampah selama 30 hari.`
+      ))
     ) {
       return;
     }
@@ -245,34 +286,43 @@ export function AdminReportsClient() {
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          if (res.status !== 404) throw new Error(data.error ?? "Gagal menghapus postingan.");
+          if (res.status !== 404)
+            throw new Error(data.error ?? "Gagal menghapus postingan.");
         }
       } else if (report.comment) {
-        const res = await fetch(`/api/admin/feed/comments/${report.comment.id}`, {
-          method: "DELETE",
-        });
+        const res = await fetch(
+          `/api/admin/feed/comments/${report.comment.id}`,
+          {
+            method: "DELETE",
+          }
+        );
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          if (res.status !== 404) throw new Error(data.error ?? "Gagal menghapus komentar.");
+          if (res.status !== 404)
+            throw new Error(data.error ?? "Gagal menghapus komentar.");
         }
       }
       await setReportStatus(report.id, "resolve");
       await refetch();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Gagal menghapus konten.");
+      window.alert(
+        err instanceof Error ? err.message : "Gagal menghapus konten."
+      );
     } finally {
       setBusyId(null);
     }
   }
 
   async function dismiss(reportId: string) {
-    if (!window.confirm("Tandai laporan ini sebagai tidak melanggar?")) return;
+    if (!(await confirm("Tandai laporan ini sebagai tidak melanggar?"))) return;
     setBusyId(reportId);
     try {
       await setReportStatus(reportId, "dismiss");
       await refetch();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Gagal memperbarui laporan.");
+      window.alert(
+        err instanceof Error ? err.message : "Gagal memperbarui laporan."
+      );
     } finally {
       setBusyId(null);
     }
@@ -280,6 +330,7 @@ export function AdminReportsClient() {
 
   return (
     <div className="space-y-4">
+      {confirmation}
       <PageHeader
         title="Moderasi Laporan"
         subtitle={
@@ -294,10 +345,15 @@ export function AdminReportsClient() {
         }
       />
 
-      <nav role="tablist" aria-label="Filter status laporan" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 py-1">
+      <nav
+        role="tablist"
+        aria-label="Filter status laporan"
+        className="-mx-1 flex gap-1.5 overflow-x-auto px-1 py-1"
+      >
         {TABS.map((t) => {
           const active = tab === t.value;
-          const badge = t.value === "pending" && counts.pending > 0 ? counts.pending : null;
+          const badge =
+            t.value === "pending" && counts.pending > 0 ? counts.pending : null;
           return (
             <button
               key={t.value}
@@ -314,8 +370,10 @@ export function AdminReportsClient() {
               {t.label}
               {badge != null && (
                 <span
-                  className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-black ${
-                    active ? "bg-white text-natalo-700" : "bg-amber-500 text-white"
+                  className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-xs font-semibold ${
+                    active
+                      ? "bg-white text-natalo-700"
+                      : "bg-amber-500 text-white"
                   }`}
                 >
                   {badge}
@@ -326,14 +384,24 @@ export function AdminReportsClient() {
         })}
       </nav>
 
-      {loading && <p className="py-12 text-center text-xs font-bold text-zinc-400">Memuat...</p>}
+      {loading && (
+        <p className="py-12 text-center text-xs font-bold text-zinc-400">
+          Memuat...
+        </p>
+      )}
       {error && (
-        <p className="rounded-2xl bg-red-50 p-3 text-center text-sm font-bold text-red-700">{error}</p>
+        <p className="rounded-2xl bg-red-50 p-3 text-center text-sm font-bold text-red-700">
+          {error}
+        </p>
       )}
       {!loading && !error && items.length === 0 && (
         <EmptyState
           icon={tab === "pending" ? "✅" : "🗂️"}
-          title={tab === "pending" ? "Tidak ada laporan menunggu" : "Belum ada riwayat di sini"}
+          title={
+            tab === "pending"
+              ? "Tidak ada laporan menunggu"
+              : "Belum ada riwayat di sini"
+          }
           description={
             tab === "pending"
               ? "Semua laporan sudah ditinjau. Laporan baru dari user akan muncul di sini."
@@ -364,7 +432,7 @@ export function AdminReportsClient() {
           type="button"
           onClick={loadMore}
           disabled={loadingMore}
-          className="w-full rounded-full border border-zinc-200 bg-white py-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+          className="w-full rounded-full border border-zinc-200 bg-white py-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
         >
           {loadingMore ? "Memuat..." : "Muat lebih banyak"}
         </button>
@@ -373,14 +441,20 @@ export function AdminReportsClient() {
   );
 }
 
-const POST_STATUS_META: Record<string, { text: string; variant: BadgeVariant }> = {
+const POST_STATUS_META: Record<
+  string,
+  { text: string; variant: BadgeVariant }
+> = {
   PENDING_REVIEW: { text: "Menunggu review", variant: "warning" },
   ACTIVE: { text: "Tayang", variant: "success" },
   REJECTED: { text: "Ditolak", variant: "danger" },
   HIDDEN: { text: "Disembunyikan", variant: "neutral" },
 };
 
-const REPORT_STATUS_META: Record<ReportStatus, { text: string; variant: BadgeVariant }> = {
+const REPORT_STATUS_META: Record<
+  ReportStatus,
+  { text: string; variant: BadgeVariant }
+> = {
   PENDING: { text: "Menunggu", variant: "warning" },
   RESOLVED: { text: "Diselesaikan", variant: "success" },
   DISMISSED: { text: "Diabaikan", variant: "neutral" },
@@ -414,9 +488,17 @@ function ReportCard({
         {/* Target preview thumbnail */}
         <div className="relative h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
           {isPostReport && report.post?.thumbnailUrl ? (
-            <Image src={report.post.thumbnailUrl} alt="" fill sizes="52px" className="object-cover" />
+            <Image
+              src={report.post.thumbnailUrl}
+              alt=""
+              fill
+              sizes="52px"
+              className="object-cover"
+            />
           ) : (
-            <div className="grid h-full place-items-center text-lg">{isPostReport ? "🎬" : "💬"}</div>
+            <div className="grid h-full place-items-center text-lg">
+              {isPostReport ? "🎬" : "💬"}
+            </div>
           )}
         </div>
 
@@ -429,40 +511,63 @@ function ReportCard({
                 {REPORT_STATUS_META[report.status].text}
               </Badge>
             )}
-            <span className="text-[11px] text-zinc-400">{timeAgo(report.createdAt)}</span>
+            <span className="text-xs text-zinc-400">
+              {timeAgo(report.createdAt)}
+            </span>
           </div>
 
           {/* Who reported */}
           <p className="mt-1 text-xs text-zinc-500">
-            Dilaporkan oleh <span className="font-bold text-zinc-700">{report.reporter?.name ?? "Pengguna"}</span>
+            Dilaporkan oleh{" "}
+            <span className="font-bold text-zinc-700">
+              {report.reporter?.name ?? "Pengguna"}
+            </span>
             {subReason && subReason !== report.reason.toLowerCase() && (
-              <> · alasan spesifik: <span className="italic">{subReason}</span></>
+              <>
+                {" "}
+                · alasan spesifik: <span className="italic">{subReason}</span>
+              </>
             )}
           </p>
 
           {/* Target content */}
           {isPostReport && report.post && (
             <div className="mt-1.5 flex items-center gap-1.5">
-              <p className="min-w-0 truncate text-sm font-bold text-zinc-900">{report.post.title}</p>
-              <Badge variant={POST_STATUS_META[report.post.status]?.variant ?? "neutral"} size="sm">
-                {targetGone ? "Dihapus" : POST_STATUS_META[report.post.status]?.text ?? report.post.status}
+              <p className="min-w-0 truncate text-sm font-bold text-zinc-900">
+                {report.post.title}
+              </p>
+              <Badge
+                variant={
+                  POST_STATUS_META[report.post.status]?.variant ?? "neutral"
+                }
+                size="sm"
+              >
+                {targetGone
+                  ? "Dihapus"
+                  : POST_STATUS_META[report.post.status]?.text ??
+                    report.post.status}
               </Badge>
             </div>
           )}
           {isPostReport && report.post && (
-            <p className="mt-0.5 truncate text-[11px] text-zinc-400">oleh {report.post.author.name}</p>
+            <p className="mt-0.5 truncate text-xs text-zinc-400">
+              oleh {report.post.author.name}
+            </p>
           )}
           {!isPostReport && report.comment && (
             <div className="mt-1.5">
               <p className="line-clamp-2 rounded-lg bg-zinc-50 px-2.5 py-1.5 text-sm text-zinc-700">
                 "{report.comment.content}"
               </p>
-              <p className="mt-0.5 text-[11px] text-zinc-400">
+              <p className="mt-0.5 text-xs text-zinc-400">
                 komentar oleh {report.comment.author.name}
                 {report.comment.isHidden && (
                   <>
-                    {" "}·{" "}
-                    <span className="font-bold text-emerald-600">sudah disembunyikan</span>
+                    {" "}
+                    ·{" "}
+                    <span className="font-bold text-emerald-600">
+                      sudah disembunyikan
+                    </span>
                   </>
                 )}
               </p>
@@ -470,7 +575,7 @@ function ReportCard({
           )}
 
           {note && (
-            <p className="mt-1.5 line-clamp-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] italic text-amber-800">
+            <p className="mt-1.5 line-clamp-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs italic text-amber-800">
               Catatan pelapor: "{note}"
             </p>
           )}
@@ -496,7 +601,7 @@ function ReportCard({
             type="button"
             onClick={onHideAndResolve}
             disabled={busy || targetGone}
-            className="rounded-full bg-amber-500 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isPostReport ? "Sembunyikan postingan" : "Sembunyikan komentar"}
           </button>
@@ -504,7 +609,7 @@ function ReportCard({
             type="button"
             onClick={onDeleteAndResolve}
             disabled={busy || targetGone}
-            className="rounded-full bg-red-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Hapus ke Sampah
           </button>
@@ -512,7 +617,7 @@ function ReportCard({
             type="button"
             onClick={onResolveOnly}
             disabled={busy}
-            className="rounded-full bg-zinc-200 px-3 py-1.5 text-[11px] font-bold text-zinc-700 transition hover:bg-zinc-300 disabled:opacity-50"
+            className="rounded-full bg-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-700 transition hover:bg-zinc-300 disabled:opacity-50"
           >
             Selesai tanpa tindakan
           </button>
@@ -520,7 +625,7 @@ function ReportCard({
             type="button"
             onClick={onDismiss}
             disabled={busy}
-            className="rounded-full bg-zinc-100 px-3 py-1.5 text-[11px] font-bold text-zinc-500 transition hover:bg-zinc-200 disabled:opacity-50"
+            className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-bold text-zinc-500 transition hover:bg-zinc-200 disabled:opacity-50"
           >
             Bukan pelanggaran
           </button>

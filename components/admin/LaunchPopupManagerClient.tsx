@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { ConfirmDialog } from "@/components/admin/ui";
+import { LayoutMotion } from "@/components/admin/ui/Motion";
 import { uploadAdminImage } from "@/lib/admin-image-upload";
 import { ProductSlugPicker } from "@/components/admin/BannerManagerClient";
 
@@ -51,7 +53,9 @@ function isoToLocalInput(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}`;
 }
 
 function localInputToIso(value: string): string | null {
@@ -70,6 +74,7 @@ export function LaunchPopupManagerClient({
   const [popups, setPopups] = useState<Popup[]>(initialPopups);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const addFileRef = useRef<HTMLInputElement>(null);
 
   function refresh() {
@@ -111,6 +116,8 @@ export function LaunchPopupManagerClient({
       }
       setPopups((prev) => [data.popup, ...prev]);
       refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Koneksi gagal. Coba kembali.");
     } finally {
       setBusy(false);
     }
@@ -118,22 +125,33 @@ export function LaunchPopupManagerClient({
 
   async function patchPopup(id: string, patch: Record<string, unknown>) {
     setError("");
-    const res = await fetch(`/api/admin/launch-popup/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error ?? "Gagal menyimpan");
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/launch-popup/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.popup)
+        throw new Error(data?.error ?? "Gagal menyimpan. Coba kembali.");
+      setPopups((prev) =>
+        prev.map((row) => (row.id === id ? { ...row, ...data?.popup } : row))
+      );
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Koneksi gagal. Coba kembali.");
       return false;
+    } finally {
+      setBusy(false);
     }
-    setPopups((prev) => prev.map((p) => (p.id === id ? { ...p, ...data.popup } : p)));
-    return true;
   }
 
-  async function deletePopup(id: string) {
-    if (!confirm("Hapus popup ini?")) return;
+  function deletePopup(id: string) {
+    setError("");
+    setDeleteId(id);
+  }
+  async function removePopup(id: string) {
     setError("");
     setBusy(true);
     try {
@@ -146,7 +164,10 @@ export function LaunchPopupManagerClient({
         return;
       }
       setPopups((prev) => prev.filter((p) => p.id !== id));
+      setDeleteId(null);
       refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Koneksi gagal. Coba kembali.");
     } finally {
       setBusy(false);
     }
@@ -154,9 +175,22 @@ export function LaunchPopupManagerClient({
 
   return (
     <div className="mt-5 space-y-5">
+      <ConfirmDialog
+        open={deleteId !== null}
+        title="Hapus popup?"
+        message="Popup ini akan dihapus dari tampilan pelanggan. Tindakan ini tidak dapat dibatalkan."
+        confirmLabel="Hapus popup"
+        busy={busy}
+        error={deleteId ? error : undefined}
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => {
+          if (deleteId) void removePopup(deleteId);
+        }}
+      />
+
       {/* Panduan ukuran + perilaku */}
       <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-        <p className="font-black">📐 Ukuran gambar ideal</p>
+        <p className="font-semibold">Panduan gambar</p>
         <p className="mt-1 leading-relaxed">
           Rasio <strong>4:5</strong> — ukuran rekomendasi{" "}
           <strong>
@@ -171,7 +205,10 @@ export function LaunchPopupManagerClient({
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700">
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700"
+        >
           {error}
         </div>
       )}
@@ -193,7 +230,7 @@ export function LaunchPopupManagerClient({
           type="button"
           disabled={busy}
           onClick={() => addFileRef.current?.click()}
-          className="inline-flex items-center gap-2 rounded-full bg-natalo-600 px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-natalo-700 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-full bg-natalo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-natalo-700 disabled:opacity-50"
         >
           + Tambah Popup
         </button>
@@ -204,7 +241,10 @@ export function LaunchPopupManagerClient({
           Belum ada popup. App tidak menampilkan popup apa pun saat dibuka.
         </div>
       ) : (
-        <div className="space-y-4">
+        <LayoutMotion
+          className="space-y-4"
+          revision={popups.map((row) => row.id).join(",")}
+        >
           {popups.map((popup) => (
             <PopupCard
               key={popup.id}
@@ -217,7 +257,7 @@ export function LaunchPopupManagerClient({
               uploadImage={uploadImage}
             />
           ))}
-        </div>
+        </LayoutMotion>
       )}
     </div>
   );
@@ -283,9 +323,12 @@ function PopupCard({
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
-        <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-black text-zinc-600">
+    <div
+      data-motion-key={popup.id}
+      className="admin-media-card rounded-2xl border border-zinc-200 bg-white p-5"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-600">
           {popup.audience === "all" ? "Semua user" : "Member saja"}
         </span>
         <div className="flex items-center gap-1.5">
@@ -293,7 +336,10 @@ function PopupCard({
             <input
               type="checkbox"
               checked={popup.isActive}
-              onChange={(e) => onPatch(popup.id, { isActive: e.target.checked })}
+              disabled={busy || saving || replacing}
+              onChange={(e) =>
+                onPatch(popup.id, { isActive: e.target.checked })
+              }
               className="accent-natalo-600"
             />
             Aktif
@@ -321,7 +367,7 @@ function PopupCard({
           className="h-full w-full object-contain"
         />
         {!popup.isActive && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm font-black text-white">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm font-semibold text-white">
             NONAKTIF
           </div>
         )}
@@ -340,7 +386,7 @@ function PopupCard({
       />
       <button
         type="button"
-        disabled={replacing}
+        disabled={busy || replacing}
         onClick={() => fileRef.current?.click()}
         className="mt-2 rounded-full border border-zinc-300 bg-white px-4 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
       >
@@ -349,9 +395,12 @@ function PopupCard({
 
       {/* Pengaturan: link tujuan + audience + jadwal */}
       <div className="mt-4 space-y-3 rounded-xl bg-zinc-50 p-3">
-        <p className="text-xs font-black text-zinc-500">LINK TUJUAN (saat gambar di-tap)</p>
+        <p className="text-xs font-semibold text-zinc-500">
+          LINK TUJUAN (saat gambar di-tap)
+        </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <select
+            aria-label="Jenis tujuan tautan"
             value={linkType}
             onChange={(e) => {
               setLinkType(e.target.value);
@@ -368,6 +417,7 @@ function PopupCard({
 
           {linkType === "category" && (
             <select
+              aria-label="Tujuan tautan"
               value={linkValue}
               onChange={(e) => setLinkValue(e.target.value)}
               className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-950"
@@ -382,6 +432,7 @@ function PopupCard({
           )}
           {linkType === "brand" && (
             <select
+              aria-label="Tujuan tautan"
               value={linkValue}
               onChange={(e) => setLinkValue(e.target.value)}
               className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-950"
@@ -414,8 +465,8 @@ function PopupCard({
               {linkType === "promo"
                 ? "Promo/Diskon"
                 : linkType === "voucher"
-                  ? "Voucher"
-                  : "Tukar Poin"}
+                ? "Voucher"
+                : "Tukar Poin"}
               .
             </p>
           )}
@@ -465,7 +516,7 @@ function PopupCard({
 
         <button
           type="button"
-          disabled={saving}
+          disabled={busy || saving}
           onClick={saveSettings}
           className="rounded-full bg-zinc-950 px-4 py-1.5 text-xs font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
         >

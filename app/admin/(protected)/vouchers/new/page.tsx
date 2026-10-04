@@ -173,8 +173,8 @@ export default async function AdminVoucherNewPage() {
     ) {
       after(() =>
         sendVoucherPromoPush(created.id).catch((e) =>
-          console.warn("[voucher-create] promo push:", e),
-        ),
+          console.warn("[voucher-create] promo push:", e)
+        )
       );
     }
 
@@ -182,14 +182,14 @@ export default async function AdminVoucherNewPage() {
   }
 
   return (
-    <AdminPage maxWidth="md">
+    <AdminPage maxWidth="md" className="admin-operational-page">
       <Link
         href="/admin/vouchers"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
       >
         ← Kembali ke voucher
       </Link>
-      <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
         Buat Voucher
       </h1>
 
@@ -409,11 +409,15 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-zinc-700">
+      <label
+        htmlFor={`voucher-${name}`}
+        className="block text-sm font-medium text-zinc-700"
+      >
         {label}
         {required && <span className="ml-1 text-red-500">*</span>}
       </label>
       <input
+        id={`voucher-${name}`}
         type={type}
         name={name}
         required={required}

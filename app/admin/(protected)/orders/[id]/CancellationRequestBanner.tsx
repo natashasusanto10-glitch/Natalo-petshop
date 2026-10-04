@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminConfirm } from "@/components/admin/ui/useAdminConfirm";
+
 /**
  * Banner "Permintaan Pembatalan dari Customer" — muncul di atas order
  * detail saat customer sudah submit cancel request (paymentStatus=PAID
@@ -56,6 +58,7 @@ export default function CancellationRequestBanner({
   approveAction,
   rejectAction,
 }: Props) {
+  const { confirm, confirmation } = useAdminConfirm();
   const [isPending, startTransition] = useTransition();
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectInput, setRejectInput] = useState("");
@@ -110,12 +113,12 @@ export default function CancellationRequestBanner({
   // PENDING — actionable banner.
   async function handleApprove() {
     setError(null);
-    const ok = window.confirm(
+    const ok = await confirm(
       "Setujui permintaan pembatalan?\n\n" +
         "• Order akan otomatis di-CANCEL\n" +
         "• Stock dikembalikan + voucher dibebaskan\n" +
         "• Total order otomatis kredit ke Saldo Refund customer\n\n" +
-        "Lanjutkan?",
+        "Lanjutkan?"
     );
     if (!ok) return;
     startTransition(async () => {
@@ -149,6 +152,7 @@ export default function CancellationRequestBanner({
 
   return (
     <div className="mt-4 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
+      {confirmation}
       <div className="flex items-start gap-3">
         <div className="text-2xl">⚠️</div>
         <div className="flex-1">

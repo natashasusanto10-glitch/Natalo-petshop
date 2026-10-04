@@ -1,8 +1,13 @@
 "use client";
 
+import { AdminPage } from "@/components/admin/ui/AdminPage";
+
+import { NumberInput } from "@/components/admin/ui/NumberInput";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { AdminDialog } from "@/components/admin/ui/AdminDialog";
 import { formatRupiah } from "@/lib/format";
 
 // ── Types ───────────────────────────────────────────────────────
@@ -167,10 +172,10 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
     // Dedupe by productId+variantId
     setItems((prev) => {
       const existing = new Set(
-        prev.map((i) => `${i.productId}::${i.variantId ?? ""}`),
+        prev.map((i) => `${i.productId}::${i.variantId ?? ""}`)
       );
       const filtered = newItems.filter(
-        (i) => !existing.has(`${i.productId}::${i.variantId ?? ""}`),
+        (i) => !existing.has(`${i.productId}::${i.variantId ?? ""}`)
       );
       return [...prev, ...filtered];
     });
@@ -179,22 +184,22 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
   function updateItem(
     productId: string,
     variantId: string | null,
-    patch: Partial<Pick<PromoItem, "discountedPrice" | "isItemActive">>,
+    patch: Partial<Pick<PromoItem, "discountedPrice" | "isItemActive">>
   ) {
     setItems((prev) =>
       prev.map((i) =>
         i.productId === productId && i.variantId === variantId
           ? { ...i, ...patch }
-          : i,
-      ),
+          : i
+      )
     );
   }
 
   function removeItem(productId: string, variantId: string | null) {
     setItems((prev) =>
       prev.filter(
-        (i) => !(i.productId === productId && i.variantId === variantId),
-      ),
+        (i) => !(i.productId === productId && i.variantId === variantId)
+      )
     );
   }
 
@@ -212,9 +217,7 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
     items: PromoItem[];
   }> = [];
   for (const item of items) {
-    const existing = groupedItems.find(
-      (g) => g.product.id === item.productId,
-    );
+    const existing = groupedItems.find((g) => g.product.id === item.productId);
     if (existing) {
       existing.items.push(item);
     } else {
@@ -227,7 +230,7 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
     setError("");
     if (!canSubmit) {
       setError(
-        "Gagal menyimpan karena terdapat kesalahan, edit dahulu dan coba lagi.",
+        "Gagal menyimpan karena terdapat kesalahan, edit dahulu dan coba lagi."
       );
       return;
     }
@@ -258,7 +261,9 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
       if (!res.ok) {
         if (json.conflictingPromoNames) {
           throw new Error(
-            `Produk sudah masuk Promo Toko lain: ${json.conflictingPromoNames.join(", ")}. Hapus produk yang konflik dulu.`,
+            `Produk sudah masuk Promo Toko lain: ${json.conflictingPromoNames.join(
+              ", "
+            )}. Hapus produk yang konflik dulu.`
           );
         }
         throw new Error(json.error ?? "Gagal menyimpan");
@@ -272,7 +277,7 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-5 md:px-8 md:py-10">
+    <AdminPage maxWidth="lg" className="admin-operational-page">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1 text-xs text-zinc-500">
         <Link href="/admin/diskon" className="hover:text-zinc-900">
@@ -288,7 +293,7 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
         </span>
       </nav>
 
-      <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
         {isEdit ? "Edit Promo Toko" : "Buat Promo Toko"}
       </h1>
 
@@ -309,6 +314,7 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Cth. Promo Hari Pet Nasional"
+                  aria-label="Nama promo toko"
                   maxLength={150}
                   className={`block w-full rounded-xl border bg-white px-4 py-3 pr-16 text-sm outline-none focus:border-natalo-600 ${
                     showFieldErrors && errors.name
@@ -334,9 +340,10 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
             <label className="w-full text-sm font-semibold text-zinc-700 sm:w-48 sm:pt-3">
               Periode Promo Toko
             </label>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="grid min-w-0 grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
                 <input
+                  aria-label="Periode promo"
                   type="datetime-local"
                   value={startsAt}
                   onChange={(e) => setStartsAt(e.target.value)}
@@ -346,18 +353,24 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
                       ? "Promo sudah berjalan — waktu mulai tidak bisa diubah"
                       : undefined
                   }
-                  className={`flex-1 rounded-xl border bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500 ${
+                  className={`min-w-0 w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500 ${
                     showFieldErrors && errors.startsAt
                       ? "border-red-400"
                       : "border-zinc-300"
                   }`}
                 />
-                <span className="text-zinc-400">—</span>
+                <span
+                  className="hidden self-center text-zinc-400 xl:block"
+                  aria-hidden="true"
+                >
+                  —
+                </span>
                 <input
+                  aria-label="Akhir periode promo"
                   type="datetime-local"
                   value={endsAt}
                   onChange={(e) => setEndsAt(e.target.value)}
-                  className={`flex-1 rounded-xl border bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 ${
+                  className={`min-w-0 w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 ${
                     showFieldErrors && errors.endsAt
                       ? "border-red-400"
                       : "border-zinc-300"
@@ -366,9 +379,9 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
               </div>
               {isOngoing && (
                 <p className="mt-1 text-xs text-amber-700">
-                  🔒 Promo sedang berjalan. Waktu mulai dikunci — hanya
-                  bisa ubah waktu berakhir (akhiri lebih awal atau
-                  perpanjang sampai maks 90 hari dari mulai).
+                  🔒 Promo sedang berjalan. Waktu mulai dikunci — hanya bisa
+                  ubah waktu berakhir (akhiri lebih awal atau perpanjang sampai
+                  maks 90 hari dari mulai).
                 </p>
               )}
               <p className="mt-1 text-xs text-amber-600">
@@ -555,18 +568,17 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
       </div>
 
       {/* ─── Product Picker Modal ──────────────────────────────────── */}
-      {pickerOpen && (
-        <ProductPickerModal
-          excludeId={excludeId}
-          existingItems={items}
-          onClose={() => setPickerOpen(false)}
-          onAdd={(newItems) => {
-            addItems(newItems);
-            setPickerOpen(false);
-          }}
-        />
-      )}
-    </div>
+      <ProductPickerModal
+        open={pickerOpen}
+        excludeId={excludeId}
+        existingItems={items}
+        onClose={() => setPickerOpen(false)}
+        onAdd={(newItems) => {
+          addItems(newItems);
+          setPickerOpen(false);
+        }}
+      />
+    </AdminPage>
   );
 }
 
@@ -586,7 +598,7 @@ function ProductGroupRow({
   onUpdate: (
     productId: string,
     variantId: string | null,
-    patch: Partial<Pick<PromoItem, "discountedPrice" | "isItemActive">>,
+    patch: Partial<Pick<PromoItem, "discountedPrice" | "isItemActive">>
   ) => void;
   onRemoveProduct: (productId: string) => void;
   onRemoveItem: (productId: string, variantId: string | null) => void;
@@ -614,7 +626,6 @@ function ProductGroupRow({
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               {product.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={product.imageUrl}
                   alt=""
@@ -627,7 +638,7 @@ function ProductGroupRow({
                 <p className="truncate text-sm font-semibold text-zinc-900">
                   {product.name}
                 </p>
-                <p className="text-[10px] text-zinc-500">
+                <p className="text-xs text-zinc-500">
                   {items.length} varian dipromosikan
                 </p>
               </div>
@@ -680,13 +691,16 @@ function ItemRow({
   onUpdate: (
     productId: string,
     variantId: string | null,
-    patch: Partial<Pick<PromoItem, "discountedPrice" | "isItemActive">>,
+    patch: Partial<Pick<PromoItem, "discountedPrice" | "isItemActive">>
   ) => void;
   onRemove: () => void;
 }) {
   const discountPercent =
     basePrice > 0
-      ? Math.round(((basePrice - item.discountedPrice) / basePrice) * 100)
+      ? Math.max(
+          0,
+          Math.round(((basePrice - item.discountedPrice) / basePrice) * 100)
+        )
       : 0;
 
   return (
@@ -694,7 +708,6 @@ function ItemRow({
       <td className="px-3 py-3 align-top">
         <div className="flex items-center gap-2">
           {productThumbnail?.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={productThumbnail.imageUrl}
               alt=""
@@ -720,34 +733,38 @@ function ItemRow({
       <td className="px-3 py-3 align-top text-sm text-zinc-700">
         {formatRupiah(basePrice)}
       </td>
-      {/* Harga Diskon (Rp) */}
       <td className="px-3 py-3 align-top">
-        <div className="relative">
-          <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400">
-            Rp
-          </span>
-          <input
-            type="number"
-            value={item.discountedPrice || ""}
-            onChange={(e) => {
-              const v = parseInt(e.target.value || "0", 10);
-              onUpdate(item.productId, item.variantId, {
-                discountedPrice: Math.max(0, v),
-              });
-            }}
-            placeholder="Input"
-            min={0}
-            max={basePrice}
-            className="w-32 rounded-lg border border-zinc-300 bg-white pl-8 pr-2 py-1.5 text-sm outline-none focus:border-natalo-600"
-          />
-        </div>
+        <NumberInput
+          aria-invalid={item.discountedPrice > basePrice}
+          aria-label={`Harga diskon ${
+            variantLabel || productThumbnail?.name || item.product.name
+          }`}
+          value={String(item.discountedPrice || "")}
+          onValueChange={(value) => {
+            if (!/^\d*$/.test(value)) return;
+            onUpdate(item.productId, item.variantId, {
+              discountedPrice: Math.max(0, Number(value)),
+            });
+          }}
+          placeholder="Harga diskon"
+          className="w-32 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-natalo-600"
+        />
+        {item.discountedPrice > basePrice && (
+          <p role="alert" className="mt-1 max-w-40 text-xs text-red-700">
+            Harga diskon melebihi harga awal.
+          </p>
+        )}
       </td>
       {/* %Diskon — 2-way bound dengan Harga Diskon */}
       <td className="px-3 py-3 align-top">
         <span className="text-xs text-zinc-400">OR</span>
         <div className="relative mt-1">
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
+            aria-label={`Persentase diskon ${
+              variantLabel || item.product.name
+            }`}
             value={discountPercent || ""}
             onChange={(e) => {
               const pct = parseInt(e.target.value || "0", 10);
@@ -771,6 +788,9 @@ function ItemRow({
       <td className="px-3 py-3 align-top text-center">
         <button
           type="button"
+          role="switch"
+          aria-checked={item.isItemActive}
+          aria-label={`Aktifkan promo ${variantLabel || item.product.name}`}
           onClick={() =>
             onUpdate(item.productId, item.variantId, {
               isItemActive: !item.isItemActive,
@@ -805,43 +825,61 @@ function ItemRow({
 // ── Product Picker Modal ─────────────────────────────────────────
 
 function ProductPickerModal({
+  open,
   excludeId,
   existingItems,
   onClose,
   onAdd,
 }: {
+  open: boolean;
   excludeId?: string;
   existingItems: PromoItem[];
   onClose: () => void;
   onAdd: (items: PromoItem[]) => void;
 }) {
   const [products, setProducts] = useState<EligibleProduct[]>([]);
+  const [knownProducts, setKnownProducts] = useState<EligibleProduct[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [retry, setRetry] = useState(0);
   const [search, setSearch] = useState("");
   // Selected: key = "productId::variantId|nullForNoVariant"
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Existing items keys — sudah ditambah ke promo, di-grey-out di picker.
   const existingKeys = new Set(
-    existingItems.map((i) => `${i.productId}::${i.variantId ?? ""}`),
+    existingItems.map((i) => `${i.productId}::${i.variantId ?? ""}`)
   );
 
   useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     const fetchProducts = async () => {
       setLoading(true);
+      setLoadError("");
       try {
         const params = new URLSearchParams();
         if (search.trim()) params.set("q", search.trim());
         if (excludeId) params.set("excludeId", excludeId);
         const res = await fetch(
-          `/api/admin/discounts/promo-toko/eligible-products?${params.toString()}`,
+          `/api/admin/discounts/promo-toko/eligible-products?${params.toString()}`
         );
         if (!res.ok) throw new Error("Gagal load produk");
         const json = await res.json();
-        if (!cancelled) setProducts(json.products ?? []);
-      } catch {
-        // silent
+        if (!cancelled) {
+          const loaded: EligibleProduct[] = json.products ?? [];
+          setProducts(loaded);
+          setKnownProducts((previous) => {
+            const byId = new Map(
+              previous.map((product) => [product.id, product])
+            );
+            for (const product of loaded) byId.set(product.id, product);
+            return Array.from(byId.values());
+          });
+        }
+      } catch (e) {
+        if (!cancelled)
+          setLoadError(e instanceof Error ? e.message : "Gagal memuat produk.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -851,7 +889,14 @@ function ProductPickerModal({
       cancelled = true;
       clearTimeout(debounce);
     };
-  }, [search, excludeId]);
+  }, [search, excludeId, open, retry]);
+
+  useEffect(() => {
+    if (open) {
+      setSelected(new Set());
+      setKnownProducts([]);
+    }
+  }, [open]);
 
   function toggle(key: string) {
     setSelected((prev) => {
@@ -864,7 +909,7 @@ function ProductPickerModal({
 
   function confirm() {
     const itemsToAdd: PromoItem[] = [];
-    for (const product of products) {
+    for (const product of knownProducts) {
       if (product.hasVariants && product.variants.length > 0) {
         // Variant product — add per varian terpilih
         for (const v of product.variants) {
@@ -918,34 +963,38 @@ function ProductPickerModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
+    <AdminDialog
+      open={open}
+      title="Pilih produk"
+      onClose={onClose}
+      className="admin-product-picker-dialog"
     >
-      <div
-        className="flex h-[80vh] w-full max-w-3xl flex-col rounded-2xl bg-white p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-black text-zinc-900">Pilih Produk</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-zinc-500 hover:text-zinc-900"
+      <div className="flex max-h-[65dvh] flex-col">
+        {loadError && (
+          <div
+            role="alert"
+            className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700"
           >
-            ✕
-          </button>
-        </div>
-
+            {loadError}
+            <button
+              type="button"
+              onClick={() => setRetry((n) => n + 1)}
+              className="ml-3 font-semibold underline"
+            >
+              Coba lagi
+            </button>
+          </div>
+        )}
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="🔍 Cari nama produk..."
+          placeholder="Cari nama produk"
+          aria-label="Cari produk untuk promosi"
           className="mt-3 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
         />
 
-        <div className="mt-3 flex-1 overflow-y-auto rounded-xl border border-zinc-200">
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-xl border border-zinc-200">
           {loading ? (
             <p className="px-4 py-8 text-center text-sm text-zinc-400">
               Memuat produk...
@@ -965,7 +1014,6 @@ function ProductPickerModal({
                     <div key={p.id} className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {p.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={p.imageUrl}
                             alt=""
@@ -1012,12 +1060,12 @@ function ProductPickerModal({
                                   {formatRupiah(v.price)}
                                 </span>
                                 {isExisting && (
-                                  <span className="ml-1 text-[10px] font-bold text-amber-600">
+                                  <span className="ml-1 text-xs font-bold text-amber-600">
                                     (sudah ditambah)
                                   </span>
                                 )}
                                 {v.isBlocked && !isExisting && (
-                                  <span className="ml-1 text-[10px] font-bold text-red-600">
+                                  <span className="ml-1 text-xs font-bold text-red-600">
                                     (di promo lain)
                                   </span>
                                 )}
@@ -1047,7 +1095,6 @@ function ProductPickerModal({
                       className="h-4 w-4 rounded border-zinc-300"
                     />
                     {p.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={p.imageUrl}
                         alt=""
@@ -1076,9 +1123,7 @@ function ProductPickerModal({
         </div>
 
         <div className="mt-4 flex items-center justify-between">
-          <span className="text-sm text-zinc-500">
-            {selected.size} dipilih
-          </span>
+          <span className="text-sm text-zinc-500">{selected.size} dipilih</span>
           <div className="flex gap-2">
             <button
               type="button"
@@ -1090,7 +1135,7 @@ function ProductPickerModal({
             <button
               type="button"
               onClick={confirm}
-              disabled={selected.size === 0}
+              disabled={selected.size === 0 || loading || Boolean(loadError)}
               className="rounded-lg bg-natalo-600 px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Tambahkan ({selected.size})
@@ -1098,7 +1143,7 @@ function ProductPickerModal({
           </div>
         </div>
       </div>
-    </div>
+    </AdminDialog>
   );
 }
 

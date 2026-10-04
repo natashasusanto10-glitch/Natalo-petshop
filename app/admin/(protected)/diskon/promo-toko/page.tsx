@@ -19,7 +19,7 @@ type StatusFilter = "all" | "ongoing" | "upcoming" | "expired";
 function statusOf(
   startsAt: Date,
   endsAt: Date,
-  isActive: boolean,
+  isActive: boolean
 ): "ongoing" | "upcoming" | "expired" {
   const now = new Date();
   if (!isActive) return "expired";
@@ -57,12 +57,12 @@ export default async function PromoTokoListPage({
     status === "ongoing"
       ? { isActive: true, startsAt: { lte: now }, endsAt: { gt: now } }
       : status === "upcoming"
-        ? { isActive: true, startsAt: { gt: now } }
-        : status === "expired"
-          ? {
-              OR: [{ isActive: false }, { endsAt: { lt: now } }],
-            }
-          : {};
+      ? { isActive: true, startsAt: { gt: now } }
+      : status === "expired"
+      ? {
+          OR: [{ isActive: false }, { endsAt: { lt: now } }],
+        }
+      : {};
 
   // Satu objek `where` dipakai bersama oleh daftar DAN penghitungnya, supaya
   // angka "menampilkan N dari M" tidak bisa lepas dari filter yang aktif.
@@ -113,7 +113,7 @@ export default async function PromoTokoListPage({
     ]);
 
   return (
-    <AdminPage>
+    <AdminPage className="admin-operational-page">
       <Link
         href="/admin/diskon"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
@@ -122,7 +122,7 @@ export default async function PromoTokoListPage({
       </Link>
       <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
             🏷 Promo Toko
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
@@ -165,7 +165,7 @@ export default async function PromoTokoListPage({
           type="text"
           name="q"
           defaultValue={search}
-          placeholder="🔍 Cari nama promosi..."
+          placeholder="Cari nama promosi..."
           className="flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
         />
         <Button type="submit">Cari</Button>
@@ -183,12 +183,12 @@ export default async function PromoTokoListPage({
               {search
                 ? "Tidak ada promo cocok dengan pencarian."
                 : status === "ongoing"
-                  ? "Belum ada promo yang sedang berjalan."
-                  : status === "upcoming"
-                    ? "Belum ada promo yang akan datang."
-                    : status === "expired"
-                      ? "Belum ada promo yang kedaluwarsa."
-                      : "Belum ada promo toko."}
+                ? "Belum ada promo yang sedang berjalan."
+                : status === "upcoming"
+                ? "Belum ada promo yang akan datang."
+                : status === "expired"
+                ? "Belum ada promo yang kedaluwarsa."
+                : "Belum ada promo toko."}
             </p>
             {!search && status === "all" && (
               <Button href="/admin/diskon/promo-toko/new" className="mt-4">
@@ -202,7 +202,7 @@ export default async function PromoTokoListPage({
               const promoStatus = statusOf(
                 promo.startsAt,
                 promo.endsAt,
-                promo.isActive,
+                promo.isActive
               );
               const totalItems = promo._count.items;
               const thumbnails = promo.items.map((it) => it.product);
@@ -227,7 +227,6 @@ export default async function PromoTokoListPage({
                   <div className="flex items-center gap-1">
                     {thumbnails.map((p, i) =>
                       p.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           key={i}
                           src={p.imageUrl}
@@ -240,7 +239,7 @@ export default async function PromoTokoListPage({
                           key={i}
                           className="h-10 w-10 rounded border border-zinc-200 bg-zinc-100"
                         />
-                      ),
+                      )
                     )}
                     {totalItems > thumbnails.length && (
                       <span className="ml-1 text-xs font-bold text-zinc-400">
@@ -316,7 +315,7 @@ function StatusBadge({
   };
   return (
     <span
-      className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold ${styles[status]}`}
+      className={`inline-block rounded-md px-2 py-0.5 text-xs font-bold ${styles[status]}`}
     >
       {labels[status]}
     </span>

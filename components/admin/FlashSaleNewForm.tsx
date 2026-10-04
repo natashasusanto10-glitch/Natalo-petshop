@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminPage } from "@/components/admin/ui/AdminPage";
+
 import { useMemo, useState } from "react";
 import Link from "next/link";
 
@@ -37,7 +39,11 @@ export function FlashSaleNewForm({ products, action }: Props) {
     const raw = search.trim().toLowerCase();
     if (!raw) return products;
     const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const tokens = raw.split(/\s+/).filter(Boolean).map(normalize).filter(Boolean);
+    const tokens = raw
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(normalize)
+      .filter(Boolean);
     if (tokens.length === 0) return products;
     return products.filter((p) => {
       const nName = normalize(p.name);
@@ -76,19 +82,19 @@ export function FlashSaleNewForm({ products, action }: Props) {
     filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id));
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-5 md:px-8 md:py-10">
+    <AdminPage maxWidth="lg" className="admin-operational-page">
       <Link
         href="/admin/diskon"
         className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
       >
         ← Kembali ke Buat Diskon
       </Link>
-      <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
         Buat Flash Sale
       </h1>
       <p className="mt-1 text-sm text-zinc-500">
-        Pilih produk + diskon + waktu berakhir. Produk akan tampil di
-        Flash Sale section dengan countdown timer.
+        Pilih produk + diskon + waktu berakhir. Produk akan tampil di Flash Sale
+        section dengan countdown timer.
       </p>
 
       <form action={action} className="mt-6 space-y-5">
@@ -140,8 +146,7 @@ export function FlashSaleNewForm({ products, action }: Props) {
             </span>
           </div>
           <p className="mt-0.5 text-xs text-zinc-500">
-            Hanya produk yang sedang tidak di Flash Sale yang muncul di
-            sini.
+            Hanya produk yang sedang tidak di Flash Sale yang muncul di sini.
           </p>
 
           {/* Search bar + bulk toggle */}
@@ -174,8 +179,8 @@ export function FlashSaleNewForm({ products, action }: Props) {
           <div className="mt-3 max-h-96 overflow-y-auto rounded-xl border border-zinc-200 bg-white">
             {products.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-zinc-400">
-                Semua produk sedang di Flash Sale atau tidak ada produk
-                aktif. Tunggu Flash Sale berakhir dulu.
+                Semua produk sedang di Flash Sale atau tidak ada produk aktif.
+                Tunggu Flash Sale berakhir dulu.
               </p>
             ) : filtered.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-zinc-400">
@@ -196,7 +201,6 @@ export function FlashSaleNewForm({ products, action }: Props) {
                       className="h-4 w-4 rounded border-zinc-300"
                     />
                     {p.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={p.imageUrl}
                         alt=""
@@ -237,6 +241,6 @@ export function FlashSaleNewForm({ products, action }: Props) {
           </button>
         </div>
       </form>
-    </div>
+    </AdminPage>
   );
 }

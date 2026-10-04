@@ -1,5 +1,5 @@
 /**
- * Admin Audit Log — feed kronologis semua action critical yang admin
+ * Admin Riwayat aktivitas — feed kronologis semua action critical yang admin
  * lakukan. Dipakai untuk compliance, dispute resolution, rogue admin
  * detection, dan onboarding staff baru.
  *
@@ -179,13 +179,13 @@ export default async function AdminAuditLogPage({
   };
 
   return (
-    <AdminPage maxWidth="xl">
+    <AdminPage maxWidth="xl" className="admin-operational-page">
       <PageHeader
-        title="Audit Log"
-        subtitle="Kronologi semua tindakan admin. Pakai untuk verifikasi, dispute, dan tracking staff. Newest first."
+        title="Riwayat aktivitas"
+        subtitle="Telusuri tindakan admin, mulai dari aktivitas terbaru."
         actions={
           <Button href="/admin/dashboard" variant="secondary" size="sm">
-            ← Dashboard
+            Kembali ke ringkasan
           </Button>
         }
       />
@@ -194,7 +194,7 @@ export default async function AdminAuditLogPage({
       <form
         action="/admin/audit-log"
         method="get"
-        className="mt-6 mb-5 grid gap-3 rounded-2xl border border-zinc-200 bg-white p-4 md:grid-cols-4 md:p-5"
+        className="mt-6 mb-5 grid gap-3 rounded-2xl border border-zinc-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-4 md:p-5"
       >
         <div>
           <label className="block text-xs font-semibold text-zinc-700">
@@ -282,22 +282,22 @@ export default async function AdminAuditLogPage({
             size="full"
           />
         ) : (
-          <table className="w-full text-sm">
+          <table className="admin-data-table w-full text-sm">
             <thead className="border-b border-zinc-100 bg-zinc-50/50">
               <tr>
-                <th className="px-4 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">
                   Waktu
                 </th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">
                   Admin
                 </th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">
                   Action
                 </th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">
                   Summary
                 </th>
-                <th className="px-4 py-3.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                <th className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">
                   Target
                 </th>
               </tr>
@@ -312,7 +312,7 @@ export default async function AdminAuditLogPage({
                     </td>
                     <td className="px-4 py-3 align-top">
                       <div className="flex items-center gap-2">
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-natalo-50 text-[10px] font-black text-natalo-700">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-natalo-50 text-xs font-semibold text-natalo-700">
                           {initial}
                         </div>
                         <span className="text-xs font-bold text-zinc-900">
@@ -328,19 +328,21 @@ export default async function AdminAuditLogPage({
                     <td className="px-4 py-3 align-top text-sm text-zinc-800">
                       {log.summary}
                       {log.metadata !== null && (
-                        <details className="mt-1 text-[11px] text-zinc-500">
+                        <details className="mt-1 text-xs text-zinc-500">
                           <summary className="cursor-pointer hover:text-natalo-600">
                             Detail metadata
                           </summary>
-                          <pre className="mt-1 max-w-md overflow-x-auto rounded-lg bg-zinc-100 p-2 text-[10px]">
+                          <pre className="mt-1 max-w-md overflow-x-auto rounded-lg bg-zinc-100 p-2 text-xs">
                             {JSON.stringify(log.metadata, null, 2)}
                           </pre>
                         </details>
                       )}
                     </td>
                     <td className="px-4 py-3 align-top text-xs">
-                      <div className="font-bold text-zinc-700">{log.targetType}</div>
-                      <div className="font-mono text-[10px] text-zinc-500">
+                      <div className="font-bold text-zinc-700">
+                        {log.targetType}
+                      </div>
+                      <div className="font-mono text-xs text-zinc-500">
                         {log.targetId.slice(0, 12)}…
                       </div>
                     </td>

@@ -25,10 +25,10 @@ export type ButtonVariant =
 export type ButtonSize = "sm" | "md";
 
 const BASE =
-  "inline-flex items-center justify-center gap-2 rounded-full font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-natalo-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+  "admin-button inline-flex items-center justify-center gap-2 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-natalo-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  primary: "bg-natalo-600 text-white shadow-sm hover:bg-natalo-700",
+  primary: "bg-[#245bd6] text-white shadow-sm hover:bg-[#1e4db6]",
   secondary:
     "border border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50",
   ghost: "text-zinc-700 hover:bg-zinc-100",
@@ -38,10 +38,10 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
 };
 
 // Tinggi minimum 44px (min-h-11) untuk target sentuh; `sm` untuk konteks
-// tabel desktop yang padat (tetap ≥36px, dipakai di area non-mobile).
+// tabel desktop yang padat (40px desktop, 44px mobile).
 const SIZE_CLASSES: Record<ButtonSize, string> = {
   md: "min-h-11 px-5 text-sm",
-  sm: "min-h-9 px-3.5 text-xs",
+  sm: "min-h-11 md:min-h-10 px-3.5 text-xs",
 };
 
 type BaseProps = {
@@ -68,9 +68,15 @@ function classes(
   variant: ButtonVariant,
   size: ButtonSize,
   fullWidth: boolean,
-  className: string,
+  className: string
 ): string {
-  return [BASE, VARIANT_CLASSES[variant], SIZE_CLASSES[size], fullWidth && "w-full", className]
+  return [
+    BASE,
+    VARIANT_CLASSES[variant],
+    SIZE_CLASSES[size],
+    fullWidth && "w-full",
+    className,
+  ]
     .filter(Boolean)
     .join(" ");
 }
@@ -86,7 +92,10 @@ export function Button({
   const cls = classes(variant, size, fullWidth, className);
 
   if ("href" in rest && typeof rest.href === "string") {
-    const linkProps = rest as Omit<ComponentPropsWithoutRef<typeof Link>, "className">;
+    const linkProps = rest as Omit<
+      ComponentPropsWithoutRef<typeof Link>,
+      "className"
+    >;
     return (
       <Link className={cls} {...linkProps}>
         {children}
@@ -94,7 +103,10 @@ export function Button({
     );
   }
 
-  const buttonProps = rest as Omit<ComponentPropsWithoutRef<"button">, "className">;
+  const buttonProps = rest as Omit<
+    ComponentPropsWithoutRef<"button">,
+    "className"
+  >;
   return (
     <button className={cls} {...buttonProps}>
       {children}

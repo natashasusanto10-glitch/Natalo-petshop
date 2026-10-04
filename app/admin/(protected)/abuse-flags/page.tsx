@@ -118,13 +118,13 @@ export default async function AbuseFlagsPage({
   ]);
 
   return (
-    <AdminPage maxWidth="xl">
+    <AdminPage maxWidth="xl" className="admin-operational-page">
       <PageHeader
-        title="🚨 Abuse Flags"
-        subtitle="Cron daily scan suspicious pattern (burst claim, gmail alias, alamat duplikat, instant claim). Review flagged user + decide action. Daily 03:00 WIB."
+        title="Indikasi penyalahgunaan"
+        subtitle="Tinjau akun dengan pola aktivitas yang perlu diperiksa sebelum mengambil tindakan."
         actions={
           <Button href="/admin/dashboard" variant="secondary" size="sm">
-            ← Dashboard
+            Kembali ke ringkasan
           </Button>
         }
       />
@@ -252,7 +252,9 @@ export default async function AbuseFlagsPage({
   );
 }
 
-type FlagWithUser = Awaited<ReturnType<typeof prisma.abuseFlag.findMany>>[number] & {
+type FlagWithUser = Awaited<
+  ReturnType<typeof prisma.abuseFlag.findMany>
+>[number] & {
   user: {
     id: string;
     name: string;
@@ -306,7 +308,7 @@ function FlagCard({ flag }: { flag: FlagWithUser }) {
           <summary className="cursor-pointer text-zinc-600">
             Lihat detail data
           </summary>
-          <pre className="mt-1 max-w-full overflow-x-auto rounded bg-zinc-100 p-2 text-[10px] text-zinc-700">
+          <pre className="mt-1 max-w-full overflow-x-auto rounded bg-zinc-100 p-2 text-xs text-zinc-700">
             {JSON.stringify(flag.details, null, 2)}
           </pre>
         </details>
@@ -335,13 +337,31 @@ function FlagCard({ flag }: { flag: FlagWithUser }) {
             maxLength={500}
             className="flex-1 min-w-[200px] rounded-lg border border-zinc-300 px-2.5 py-1.5 text-xs"
           />
-          <Button type="submit" name="action" value="REVIEWED" variant="primary" size="md">
+          <Button
+            type="submit"
+            name="action"
+            value="REVIEWED"
+            variant="primary"
+            size="md"
+          >
             Tinjau (Monitoring)
           </Button>
-          <Button type="submit" name="action" value="DISMISSED" variant="secondary" size="md">
+          <Button
+            type="submit"
+            name="action"
+            value="DISMISSED"
+            variant="secondary"
+            size="md"
+          >
             Dismiss (False Positive)
           </Button>
-          <Button type="submit" name="action" value="BLOCKED" variant="dangerSoft" size="md">
+          <Button
+            type="submit"
+            name="action"
+            value="BLOCKED"
+            variant="dangerSoft"
+            size="md"
+          >
             🚫 Block User
           </Button>
         </form>

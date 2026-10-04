@@ -774,7 +774,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     // Sumber utama: kategori master dari /api/categories (semua kategori
     // dengan produk aktif). Fallback ke kategori derive-dari-produk-terload
     // kalau master belum/ gagal ke-fetch. Value = slug; label di sheet
-    // diformat via formatCategoryLabel.
+    // memakai name dari master API; slug tetap menjadi nilai filter.
     final masterSlugs = _allCategories
         .where((c) => c.productCount > 0)
         .map((c) => c.slug)
@@ -799,6 +799,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
               scrollController: scrollController,
               selectedCategory: _filter.category,
               categories: categories,
+              categoryNames: {for (final category in _allCategories) category.slug: category.name},
               onSelected: (category) => Navigator.pop(context, category),
             );
           },
@@ -1145,6 +1146,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           query: _query,
                           activeMode: _activeMode,
                           selectedCategory: _filter.category,
+                          selectedCategoryLabel: _allCategories.where((category) => category.slug == _filter.category).firstOrNull?.name,
                           visibleCount: products.length,
                           // Total dari API (jumlah produk sesuai filter di DB),
                           // bukan jumlah yang kebetulan ter-load.
@@ -1406,6 +1408,7 @@ class _CatalogHeader extends StatelessWidget {
   final String query;
   final _ProductFilterMode activeMode;
   final String? selectedCategory;
+  final String? selectedCategoryLabel;
   final int visibleCount;
   final int totalCount;
   final ValueChanged<String> onQueryChanged;
@@ -1425,6 +1428,7 @@ class _CatalogHeader extends StatelessWidget {
     required this.query,
     required this.activeMode,
     required this.selectedCategory,
+    this.selectedCategoryLabel,
     required this.visibleCount,
     required this.totalCount,
     required this.onQueryChanged,
@@ -1618,6 +1622,7 @@ class _CatalogHeader extends StatelessWidget {
             _HorizontalProductFilterChips(
               selectedMode: activeMode,
               selectedCategory: selectedCategory,
+              selectedCategoryLabel: selectedCategoryLabel,
               onChanged: onFilterModeChanged,
             ),
             const SizedBox(height: 12),
@@ -2249,11 +2254,13 @@ class _ProductSearchBar extends StatelessWidget {
 class _HorizontalProductFilterChips extends StatelessWidget {
   final _ProductFilterMode selectedMode;
   final String? selectedCategory;
+  final String? selectedCategoryLabel;
   final ValueChanged<_ProductFilterMode> onChanged;
 
   const _HorizontalProductFilterChips({
     required this.selectedMode,
     required this.selectedCategory,
+    this.selectedCategoryLabel,
     required this.onChanged,
   });
 
@@ -2270,10 +2277,11 @@ class _HorizontalProductFilterChips extends StatelessWidget {
             for (final mode in _ProductFilterMode.values) ...[
               if (mode == _ProductFilterMode.kategori)
                 ProductFilterChip(
-                  // Apply formatter — defensive kalau backend kasih slug
-                  // mentah (mis. "snack-treat-anjing" → "Snack & Treat Anjing").
+                  // Utamakan nama master; formatter hanya fallback saat master belum dimuat.
                   label: selectedCategory != null
-                      ? formatCategoryLabel(selectedCategory!)
+                      ? (selectedCategoryLabel?.trim().isNotEmpty == true
+                          ? selectedCategoryLabel!
+                          : formatCategoryLabel(selectedCategory!))
                       : mode.label,
                   icon: mode.icon,
                   leadingIcon: mode.coloredIcon,
@@ -3344,12 +3352,14 @@ class ProductCatalogFilter {
 class _CategoryBottomSheet extends StatelessWidget {
   final ScrollController scrollController;
   final List<String> categories;
+  final Map<String, String> categoryNames;
   final String? selectedCategory;
   final ValueChanged<String> onSelected;
 
   const _CategoryBottomSheet({
     required this.scrollController,
     required this.categories,
+    this.categoryNames = const {},
     required this.selectedCategory,
     required this.onSelected,
   });
@@ -3404,7 +3414,9 @@ class _CategoryBottomSheet extends StatelessWidget {
                   final category = categories[index];
                   final label = category == 'Semua'
                       ? 'Semua'
-                      : formatCategoryLabel(category);
+                      : (categoryNames[category]?.trim().isNotEmpty == true
+                          ? categoryNames[category]!
+                          : formatCategoryLabel(category));
                   final isSelected =
                       (selectedCategory == null && category == 'Semua') ||
                           selectedCategory == category;

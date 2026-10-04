@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminConfirm } from "@/components/admin/ui/useAdminConfirm";
+
 /**
  * Admin Feed dashboard — list + filter + manage actions.
  *
@@ -78,6 +80,7 @@ const FILTERS: { value: AdminFilter; label: string }[] = [
 ];
 
 export function AdminFeedClient() {
+  const { confirm, confirmation } = useAdminConfirm();
   const [filter, setFilter] = useState<AdminFilter>("all");
   const [items, setItems] = useState<AdminFeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -140,7 +143,9 @@ export function AdminFeedClient() {
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const res = await fetch(`/api/admin/feed/posts?filter=${filter}&cursor=${cursor}`);
+      const res = await fetch(
+        `/api/admin/feed/posts?filter=${filter}&cursor=${cursor}`
+      );
       if (!res.ok) throw new Error("Gagal memuat");
       const data: AdminFeedResponse = await res.json();
       setItems((prev) => [...prev, ...data.items]);
@@ -174,7 +179,7 @@ export function AdminFeedClient() {
 
   async function moderate(
     postId: string,
-    action: "hide" | "unhide" | "restore",
+    action: "hide" | "unhide" | "restore"
   ) {
     let note: string | undefined;
     if (action === "hide") {
@@ -209,7 +214,7 @@ export function AdminFeedClient() {
     const confirmMsg = isTrashView
       ? "Hapus permanen dari sampah? Tidak bisa di-undo (post + komentar + likes ikut hilang)."
       : "Pindahkan post ini ke Sampah? Bisa di-restore dari tab Sampah.";
-    if (!window.confirm(confirmMsg)) return;
+    if (!(await confirm(confirmMsg))) return;
     setActionBusy(postId);
     try {
       const url = isTrashView
@@ -235,7 +240,7 @@ export function AdminFeedClient() {
   // result di-return supaya admin tahu ada yang skip (mis. status sudah
   // ACTIVE, tidak bisa di-approve lagi).
   async function bulkAction(
-    action: "hide" | "unhide" | "restore" | "soft-delete" | "hard-delete",
+    action: "hide" | "unhide" | "restore" | "soft-delete" | "hard-delete"
   ) {
     if (bulkBusy || selectedIds.size === 0) return;
 
@@ -252,7 +257,7 @@ export function AdminFeedClient() {
     const confirmMsg = isDestructive
       ? `Hapus PERMANEN ${selectedIds.size} post? Tidak bisa di-undo.`
       : `${labels[action]} ${selectedIds.size} post?`;
-    if (!window.confirm(confirmMsg)) return;
+    if (!(await confirm(confirmMsg))) return;
 
     setBulkBusy(true);
     try {
@@ -273,7 +278,11 @@ export function AdminFeedClient() {
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? "Bulk action gagal");
       }
-      const { applied, skipped, error: errs } = data.summary ?? {
+      const {
+        applied,
+        skipped,
+        error: errs,
+      } = data.summary ?? {
         applied: 0,
         skipped: 0,
         error: 0,
@@ -315,8 +324,10 @@ export function AdminFeedClient() {
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? "Sync gagal");
       }
-      const ready = data.results?.filter((r) => r.action === "ready").length ?? 0;
-      const failed = data.results?.filter((r) => r.action === "failed").length ?? 0;
+      const ready =
+        data.results?.filter((r) => r.action === "ready").length ?? 0;
+      const failed =
+        data.results?.filter((r) => r.action === "failed").length ?? 0;
       const skipped =
         data.results?.filter((r) => r.action === "skipped").length ?? 0;
       const scanned = data.scanned ?? 0;
@@ -350,7 +361,7 @@ export function AdminFeedClient() {
   // belum di-load (cursor pagination).
   const allVisibleSelected = useMemo(
     () => items.length > 0 && items.every((p) => selectedIds.has(p.id)),
-    [items, selectedIds],
+    [items, selectedIds]
   );
   function toggleSelectAllVisible() {
     if (allVisibleSelected) {
@@ -362,6 +373,7 @@ export function AdminFeedClient() {
 
   return (
     <div className="space-y-4">
+      {confirmation}
       <PageHeader
         title="Feed"
         subtitle={`${counts.total} post · ${counts.photo} foto · ${counts.video} video`}
@@ -373,10 +385,12 @@ export function AdminFeedClient() {
               size="sm"
               onClick={syncBunny}
               disabled={syncBusy}
-              title="Polling Bunny untuk post yang nyangkut encoding (webhook miss)"
+              title="Periksa ulang video yang masih diproses"
             >
-              <FiRefreshCw className={`h-3.5 w-3.5 ${syncBusy ? "animate-spin" : ""}`} />
-              {syncBusy ? "Sync…" : "Sync Bunny"}
+              <FiRefreshCw
+                className={`h-3.5 w-3.5 ${syncBusy ? "animate-spin" : ""}`}
+              />
+              {syncBusy ? "Sync…" : "Periksa video"}
             </Button>
             <Button href="/admin/feed/new" size="sm">
               <FiPlus className="h-4 w-4" />
@@ -398,8 +412,8 @@ export function AdminFeedClient() {
             f.value === "photo"
               ? counts.photo
               : f.value === "video"
-                ? counts.video
-                : null;
+              ? counts.video
+              : null;
           return (
             <button
               key={f.value}
@@ -416,8 +430,10 @@ export function AdminFeedClient() {
               {f.label}
               {badge != null && (
                 <span
-                  className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-black ${
-                    active ? "bg-white text-natalo-700" : "bg-zinc-200 text-zinc-600"
+                  className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-xs font-semibold ${
+                    active
+                      ? "bg-white text-natalo-700"
+                      : "bg-zinc-200 text-zinc-600"
                   }`}
                 >
                   {badge}
@@ -429,7 +445,9 @@ export function AdminFeedClient() {
       </nav>
 
       {loading && (
-        <p className="py-12 text-center text-xs font-bold text-zinc-400">Memuat...</p>
+        <p className="py-12 text-center text-xs font-bold text-zinc-400">
+          Memuat...
+        </p>
       )}
       {error && (
         <p className="rounded-2xl bg-red-50 p-3 text-center text-sm font-bold text-red-700">
@@ -455,7 +473,9 @@ export function AdminFeedClient() {
               className="h-4 w-4 rounded border-zinc-300 text-natalo-600 focus:ring-natalo-400 disabled:opacity-50"
             />
             <span className="text-xs font-semibold text-zinc-600">
-              {selectedIds.size > 0 ? `${selectedIds.size} dipilih` : "Pilih semua"}
+              {selectedIds.size > 0
+                ? `${selectedIds.size} dipilih`
+                : "Pilih semua"}
             </span>
           </div>
           <div className="divide-y divide-zinc-100">
@@ -480,7 +500,7 @@ export function AdminFeedClient() {
           type="button"
           onClick={() => loadMore()}
           disabled={loadingMore}
-          className="w-full rounded-full border border-zinc-200 bg-white py-3 text-xs font-extrabold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
+          className="w-full rounded-full border border-zinc-200 bg-white py-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
         >
           {loadingMore ? "Memuat..." : "Muat lebih banyak"}
         </button>
@@ -491,7 +511,7 @@ export function AdminFeedClient() {
           tergantung view: trash view → Restore / Hapus Permanen. View lain
           → Approve/Reject, Hide, Pindah ke Sampah. */}
       {selectedIds.size > 0 && (
-        <div className="sticky bottom-4 z-10 flex flex-wrap items-center gap-2 rounded-2xl border border-natalo-200 bg-white px-3 py-2.5 shadow-sm">
+        <div className="admin-operational-bulkbar sticky bottom-4 z-10 flex flex-wrap items-center gap-2 rounded-2xl border border-natalo-200 bg-white px-3 py-2.5 shadow-sm">
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
@@ -564,14 +584,14 @@ function BulkBtn({
     tone === "green"
       ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
       : tone === "red"
-        ? "bg-red-50 text-red-700 hover:bg-red-100"
-        : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200";
+      ? "bg-red-50 text-red-700 hover:bg-red-100"
+      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200";
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={busy}
-      className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${cls}`}
+      className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${cls}`}
     >
       {label}
     </button>
@@ -659,12 +679,22 @@ function AdminFeedRow({
         <div className="relative h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
           {thumb ? (
             <>
-              <Image src={thumb} alt="" fill sizes="44px" className="object-cover" />
+              <Image
+                src={thumb}
+                alt=""
+                fill
+                sizes="44px"
+                className="object-cover"
+              />
               {/* Play icon overlay untuk video — visual cue thumbnail = video */}
               {isVideo && (
                 <div className="absolute inset-0 grid place-items-center bg-black/20">
                   <div className="grid h-5 w-5 place-items-center rounded-full bg-white/90">
-                    <svg className="h-2.5 w-2.5 text-zinc-900" fill="currentColor" viewBox="0 0 24 24">
+                    <svg
+                      className="h-2.5 w-2.5 text-zinc-900"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
                       <path d="M8 5v14l11-7z" />
                     </svg>
                   </div>
@@ -686,8 +716,10 @@ function AdminFeedRow({
 
         {/* Info */}
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-bold text-zinc-900">{post.title}</h3>
-          <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+          <h3 className="truncate text-sm font-bold text-zinc-900">
+            {post.title}
+          </h3>
+          <p className="mt-0.5 truncate text-xs text-zinc-500">
             {kindLabel} · {post.author.role === "ADMIN" ? "Admin" : "User"}{" "}
             {post.author.name} ·{" "}
             {new Date(post.createdAt).toLocaleDateString("id-ID", {
@@ -696,11 +728,11 @@ function AdminFeedRow({
               year: "numeric",
             })}
           </p>
-          <p className="mt-0.5 text-[11px] text-zinc-400">
+          <p className="mt-0.5 text-xs text-zinc-400">
             ♥ {post.likeCount} · 💬 {post.commentCount} · 👁 {post.viewCount}
           </p>
           {post.moderationNote && (
-            <p className="mt-1 line-clamp-2 rounded-lg bg-zinc-50 px-2 py-1 text-[10px] italic text-zinc-500">
+            <p className="mt-1 line-clamp-2 rounded-lg bg-zinc-50 px-2 py-1 text-xs italic text-zinc-500">
               Catatan: {post.moderationNote}
             </p>
           )}
@@ -711,7 +743,9 @@ function AdminFeedRow({
       <div className="flex shrink-0 items-center gap-2 pl-7 md:pl-0">
         <div className="flex shrink-0 flex-col items-start gap-1 md:items-end">
           <Badge variant={statusMeta.variant}>{statusMeta.text}</Badge>
-          {encodingMeta && <Badge variant={encodingMeta.variant}>{encodingMeta.text}</Badge>}
+          {encodingMeta && (
+            <Badge variant={encodingMeta.variant}>{encodingMeta.text}</Badge>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -803,7 +837,7 @@ function ActionButton({
       onClick={onClick}
       disabled={busy || disabled}
       title={title}
-      className={`rounded-full px-2.5 py-1.5 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${cls}`}
+      className={`rounded-full px-2.5 py-1.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${cls}`}
     >
       {label}
     </button>

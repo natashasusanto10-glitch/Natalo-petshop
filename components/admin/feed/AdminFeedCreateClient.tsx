@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdminConfirm } from "@/components/admin/ui/useAdminConfirm";
+
 /**
  * Admin create post form. Mendukung 4 jenis (spec section 4):
  *   1. VIDEO_ONLY     → video edukasi/info tanpa produk (tab REKOMENDASI)
@@ -62,6 +64,7 @@ const ACCEPT_VIDEO = "video/mp4,video/webm,video/quicktime";
 const MAX_ADMIN_TAGGED_PRODUCTS = 5;
 
 export function AdminFeedCreateClient() {
+  const { confirm, confirmation } = useAdminConfirm();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -78,7 +81,9 @@ export function AdminFeedCreateClient() {
   const [thumbPreviewUrl, setThumbPreviewUrl] = useState<string | null>(null);
   const [productQuery, setProductQuery] = useState("");
   const [productResults, setProductResults] = useState<ProductSummary[]>([]);
-  const [selectedProducts, setSelectedProducts] = useState<ProductSummary[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<ProductSummary[]>(
+    []
+  );
   const [productLoading, setProductLoading] = useState(false);
 
   // Per-product promo pricing untuk kind=PROMO. Key = productId,
@@ -86,7 +91,7 @@ export function AdminFeedCreateClient() {
   // Tujuan: 1 video PROMO bisa diskon banyak produk dengan harga
   // discount masing-masing yang admin set di sini.
   const [productPromos, setProductPromos] = useState<Record<string, string>>(
-    {},
+    {}
   );
   const [promoStarts, setPromoStarts] = useState("");
   const [promoEnds, setPromoEnds] = useState("");
@@ -107,7 +112,7 @@ export function AdminFeedCreateClient() {
   } | null>(null);
   const [pushInfoLoading, setPushInfoLoading] = useState(false);
   const [testState, setTestState] = useState<"idle" | "sending" | "sent">(
-    "idle",
+    "idle"
   );
   const [testError, setTestError] = useState<string | null>(null);
   // Guard setState setelah unmount — handleTestPush punya setTimeout 2s dan
@@ -140,7 +145,7 @@ export function AdminFeedCreateClient() {
   useUploadLifecycle(uploading, {
     onSuspend: () => {
       setProgress(
-        "Upload pause sementara — app di background. Buka kembali untuk lanjut.",
+        "Upload pause sementara — app di background. Buka kembali untuk lanjut."
       );
     },
     onResume: () => {
@@ -154,7 +159,7 @@ export function AdminFeedCreateClient() {
   // discard. TUS fingerprint di-resolve otomatis saat file dipilih lagi
   // (tus-js-client findPreviousUploads match by file content hash).
   const [pendingUpload, setPendingUpload] = useState<PendingUploadInfo | null>(
-    null,
+    null
   );
   useEffect(() => {
     setPendingUpload(getPendingUpload());
@@ -164,7 +169,8 @@ export function AdminFeedCreateClient() {
   // di-hapus dari opsi UI (lihat header comment). needsVideo bisa di-
   // simplify jadi true, tapi explicit list dibiarkan supaya lebih jelas
   // saat baca code.
-  const needsVideo = kind === "VIDEO_ONLY" || kind === "VIDEO_PRODUCT" || kind === "PROMO";
+  const needsVideo =
+    kind === "VIDEO_ONLY" || kind === "VIDEO_PRODUCT" || kind === "PROMO";
   const needsProduct = kind === "VIDEO_PRODUCT" || kind === "PROMO";
   // PROMO sekarang wajib video juga — tidak lagi banner-only — karena
   // PRODUCT_ONLY (use case banner) sudah dihapus.
@@ -176,8 +182,7 @@ export function AdminFeedCreateClient() {
     setError(null);
     const stillNeedsVideo =
       kind === "VIDEO_ONLY" || kind === "VIDEO_PRODUCT" || kind === "PROMO";
-    const stillNeedsProduct =
-      kind === "VIDEO_PRODUCT" || kind === "PROMO";
+    const stillNeedsProduct = kind === "VIDEO_PRODUCT" || kind === "PROMO";
     if (!stillNeedsVideo) {
       setVideoFile(null);
       setVideoMeta(null);
@@ -204,7 +209,7 @@ export function AdminFeedCreateClient() {
     }
     if (
       (title.trim() || description.trim()) &&
-      !window.confirm("Timpa Judul & Deskripsi yang ada dengan hasil AI?")
+      !(await confirm("Timpa Judul & Deskripsi yang ada dengan hasil AI?"))
     ) {
       return;
     }
@@ -229,7 +234,7 @@ export function AdminFeedCreateClient() {
       }
     } catch (err) {
       setAiError(
-        err instanceof Error ? `Network error: ${err.message}` : "Network error",
+        err instanceof Error ? `Network error: ${err.message}` : "Network error"
       );
     } finally {
       setAiLoading(false);
@@ -246,17 +251,18 @@ export function AdminFeedCreateClient() {
     const timer = window.setTimeout(async () => {
       setProductLoading(true);
       try {
-        const res = await fetch(`/api/admin/products?q=${encodeURIComponent(q)}&limit=10`);
+        const res = await fetch(
+          `/api/admin/products?q=${encodeURIComponent(q)}&limit=10`
+        );
         if (!res.ok) throw new Error();
-        const data: { items?: ProductSummary[]; products?: ProductSummary[] } = await res
-          .json()
-          .catch(() => ({}));
+        const data: { items?: ProductSummary[]; products?: ProductSummary[] } =
+          await res.json().catch(() => ({}));
         // Different shape kemungkinan — coba beberapa key umum.
         const arr = Array.isArray(data.items)
           ? data.items
           : Array.isArray(data.products)
-            ? data.products
-            : [];
+          ? data.products
+          : [];
         setProductResults(arr.slice(0, 10));
       } catch {
         setProductResults([]);
@@ -283,7 +289,7 @@ export function AdminFeedCreateClient() {
 
   function removeSelectedProduct(productId: string) {
     setSelectedProducts((current) =>
-      current.filter((product) => product.id !== productId),
+      current.filter((product) => product.id !== productId)
     );
     setProductPromos((prev) => {
       const next = { ...prev };
@@ -296,12 +302,18 @@ export function AdminFeedCreateClient() {
     if (!file) return;
     setError(null);
     if (!file.type.startsWith("video/")) {
-      setError("File yang dipilih bukan video. Pilih file format MP4, MOV, atau WebM.");
+      setError(
+        "File yang dipilih bukan video. Pilih file format MP4, MOV, atau WebM."
+      );
       return;
     }
     if (file.size > MAX_SOURCE_VIDEO_SIZE) {
       setError(
-        `Ukuran video terlalu besar (${formatFileSize(file.size)}). Maksimal ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)} — coba turunkan kualitas kamera ke 1080p (Settings → Camera → Record Video).`,
+        `Ukuran video terlalu besar (${formatFileSize(
+          file.size
+        )}). Maksimal ${formatFileSize(
+          MAX_SOURCE_VIDEO_SIZE
+        )} — coba turunkan kualitas kamera ke 1080p (Settings → Camera → Record Video).`
       );
       return;
     }
@@ -311,7 +323,9 @@ export function AdminFeedCreateClient() {
       const meta = await readVideoMetadata(file);
       if (meta.durationSec < ADMIN_VIDEO_CONFIG.minDuration) {
         setError(
-          `Video terlalu pendek (${Math.round(meta.durationSec)}s). Feed butuh minimal ${ADMIN_VIDEO_CONFIG.minDuration} detik.`,
+          `Video terlalu pendek (${Math.round(
+            meta.durationSec
+          )}s). Feed butuh minimal ${ADMIN_VIDEO_CONFIG.minDuration} detik.`
         );
         setVideoFile(null);
         setVideoMeta(null);
@@ -319,7 +333,9 @@ export function AdminFeedCreateClient() {
       }
       if (meta.durationSec > ADMIN_VIDEO_CONFIG.maxDuration) {
         setError(
-          `Video terlalu panjang (${Math.round(meta.durationSec)}s). Maksimal ${ADMIN_VIDEO_CONFIG.maxDuration} detik untuk feed.`,
+          `Video terlalu panjang (${Math.round(meta.durationSec)}s). Maksimal ${
+            ADMIN_VIDEO_CONFIG.maxDuration
+          } detik untuk feed.`
         );
         setVideoFile(null);
         setVideoMeta(null);
@@ -431,7 +447,7 @@ export function AdminFeedCreateClient() {
       });
       if (!anyValid) {
         setError(
-          "Set minimal 1 harga promo per-produk (lebih kecil dari harga normal).",
+          "Set minimal 1 harga promo per-produk (lebih kecil dari harga normal)."
         );
         return;
       }
@@ -441,9 +457,7 @@ export function AdminFeedCreateClient() {
         if (raw === "") continue;
         const n = Number(raw);
         if (!Number.isFinite(n) || n <= 0 || n >= p.price) {
-          setError(
-            `Harga promo "${p.name}" harus angka positif < ${p.price}.`,
-          );
+          setError(`Harga promo "${p.name}" harus angka positif < ${p.price}.`);
           return;
         }
       }
@@ -467,8 +481,8 @@ export function AdminFeedCreateClient() {
             raw === ""
               ? null
               : Number.isFinite(Number(raw))
-                ? Number(raw)
-                : null;
+              ? Number(raw)
+              : null;
         }
       }
 
@@ -506,8 +520,10 @@ export function AdminFeedCreateClient() {
         const isLargeFile = sizeMB > 50;
         setProgress(
           isLargeFile
-            ? `Mengunggah video ${sizeMB.toFixed(0)} MB — koneksi putus pun bisa lanjut otomatis...`
-            : "Mengunggah video, mohon tunggu...",
+            ? `Mengunggah video ${sizeMB.toFixed(
+                0
+              )} MB — koneksi putus pun bisa lanjut otomatis...`
+            : "Mengunggah video, mohon tunggu..."
         );
 
         // Save pending state ke localStorage SEBELUM upload mulai —
@@ -549,14 +565,13 @@ export function AdminFeedCreateClient() {
             // supaya user bisa retry next session (TUS fingerprint
             // di-keep oleh tus-js-client untuk resume).
             setUploading(false);
-            const msg =
-              err instanceof Error ? err.message : String(err);
+            const msg = err instanceof Error ? err.message : String(err);
             if (msg.toLowerCase().includes("abort")) {
               clearPendingUpload();
               throw new Error("Upload dibatalkan.");
             }
             throw new Error(
-              "Upload terputus berkali-kali. Coba lagi dengan koneksi yang lebih stabil — atau gunakan WiFi.",
+              "Upload terputus berkali-kali. Coba lagi dengan koneksi yang lebih stabil — atau gunakan WiFi."
             );
           }
         } else {
@@ -566,12 +581,9 @@ export function AdminFeedCreateClient() {
             xhr.open("PUT", provisionData.uploadUrl, true);
             xhr.setRequestHeader(
               "AccessKey",
-              provisionData.uploadHeaders.AccessKey,
+              provisionData.uploadHeaders.AccessKey
             );
-            xhr.setRequestHeader(
-              "Content-Type",
-              "application/octet-stream",
-            );
+            xhr.setRequestHeader("Content-Type", "application/octet-stream");
             xhr.upload.onprogress = (e) => {
               if (e.lengthComputable) {
                 setCompressProgress(Math.round((e.loaded / e.total) * 100));
@@ -582,21 +594,21 @@ export function AdminFeedCreateClient() {
               else
                 reject(
                   new Error(
-                    `Upload gagal (HTTP ${xhr.status}). Coba lagi dengan koneksi yang lebih stabil.`,
-                  ),
+                    `Upload gagal (HTTP ${xhr.status}). Coba lagi dengan koneksi yang lebih stabil.`
+                  )
                 );
             };
             xhr.onerror = () =>
               reject(
                 new Error(
-                  "Upload terputus. Coba lagi dengan koneksi yang lebih stabil — atau gunakan WiFi.",
-                ),
+                  "Upload terputus. Coba lagi dengan koneksi yang lebih stabil — atau gunakan WiFi."
+                )
               );
             xhr.ontimeout = () =>
               reject(
                 new Error(
-                  "Upload terlalu lama (timeout). Coba lagi dengan koneksi yang lebih cepat.",
-                ),
+                  "Upload terlalu lama (timeout). Coba lagi dengan koneksi yang lebih cepat."
+                )
               );
             xhr.timeout = 30 * 60 * 1000;
             xhr.send(videoFile);
@@ -621,7 +633,7 @@ export function AdminFeedCreateClient() {
         }
 
         setProgress(
-          "Upload selesai. Video sedang diproses di background dan akan muncul otomatis saat siap.",
+          "Upload selesai. Video sedang diproses di background dan akan muncul otomatis saat siap."
         );
         await new Promise((r) => setTimeout(r, 700));
         router.push("/admin/feed");
@@ -693,15 +705,20 @@ export function AdminFeedCreateClient() {
   const previewCaption = description.trim() || "Caption akan tampil di sini";
   const previewDurationLabel =
     videoMeta && Number.isFinite(videoMeta.durationSec)
-      ? `${Math.floor(videoMeta.durationSec / 60)}:${Math.round(videoMeta.durationSec % 60)
+      ? `${Math.floor(videoMeta.durationSec / 60)}:${Math.round(
+          videoMeta.durationSec % 60
+        )
           .toString()
           .padStart(2, "0")}`
       : null;
 
-  const publishButtonLabel = submitting ? progress || "Memproses..." : "Publish Post";
+  const publishButtonLabel = submitting
+    ? progress || "Memproses..."
+    : "Publish Post";
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
+      {confirmation}
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
@@ -712,7 +729,9 @@ export function AdminFeedCreateClient() {
           >
             <FiArrowLeft className="h-4 w-4 text-gray-700" />
           </button>
-          <h1 className="text-base font-black text-gray-900">Buat Post Feed</h1>
+          <h1 className="text-base font-semibold text-gray-900">
+            Buat Post Feed
+          </h1>
         </div>
 
         {/* Jenis post — segmented pill, desktop only (mobile pakai kartu
@@ -745,13 +764,13 @@ export function AdminFeedCreateClient() {
             <FiUploadCloud className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-extrabold text-amber-900">
+            <p className="text-xs font-semibold text-amber-900">
               Upload sebelumnya belum selesai
             </p>
-            <p className="mt-0.5 text-[11px] text-amber-800">
-              File: {pendingUpload.filename} ({pendingUpload.sizeMB.toFixed(0)} MB).
-              Pilih file yang sama lagi untuk lanjutkan dari titik
-              terakhir — tidak perlu upload ulang.
+            <p className="mt-0.5 text-xs text-amber-800">
+              File: {pendingUpload.filename} ({pendingUpload.sizeMB.toFixed(0)}{" "}
+              MB). Pilih file yang sama lagi untuk lanjutkan dari titik terakhir
+              — tidak perlu upload ulang.
             </p>
             <button
               type="button"
@@ -759,7 +778,7 @@ export function AdminFeedCreateClient() {
                 clearPendingUpload();
                 setPendingUpload(null);
               }}
-              className="mt-1 text-[11px] font-bold text-amber-700 underline"
+              className="mt-1 text-xs font-bold text-amber-700 underline"
             >
               Buang dan mulai baru
             </button>
@@ -767,580 +786,625 @@ export function AdminFeedCreateClient() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_300px] lg:items-start">
-      <div className="min-w-0 space-y-4">
-
-      {/* Kind selector — mobile only (desktop pakai pill di header). */}
-      <section className="rounded-2xl border border-gray-100 bg-white p-3 lg:hidden">
-        <p className="mb-2 text-xs font-extrabold text-gray-700">Jenis post</p>
-        <div className="grid grid-cols-2 gap-2">
-          {KIND_OPTIONS.map((opt) => (
-            <button
-              key={opt.v}
-              type="button"
-              onClick={() => setKind(opt.v)}
-              className={`rounded-2xl border p-3 text-left text-xs font-extrabold transition ${
-                kind === opt.v
-                  ? "border-natalo-600 bg-natalo-50 text-natalo-700"
-                  : "border-gray-200 bg-white text-gray-700 active:bg-gray-50"
-              }`}
-            >
-              <p>{opt.l}</p>
-              <p className="mt-0.5 text-[10px] font-semibold text-gray-500">{opt.d}</p>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Video picker */}
-      {needsVideo && (
-        <section className="rounded-2xl border border-gray-100 bg-white p-3">
-          <p className="mb-2 text-xs font-extrabold text-gray-700">
-            Video {videoOptional && <span className="text-gray-400">(opsional)</span>}
-          </p>
-          {videoFile && thumbPreviewUrl ? (
-            <div className="space-y-2">
-              <div className="relative aspect-[9/16] w-full max-w-[200px] overflow-hidden rounded-xl bg-gray-100">
-                <Image src={thumbPreviewUrl} alt="" fill sizes="200px" className="object-cover" unoptimized />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setVideoFile(null);
-                    setVideoMeta(null);
-                    if (thumbPreviewUrl) URL.revokeObjectURL(thumbPreviewUrl);
-                    setThumbPreviewUrl(null);
-                    setThumbBlob(null);
-                  }}
-                  className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white"
-                  aria-label="Hapus video"
-                >
-                  <FiX className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <p className="text-[11px] text-gray-500">
-                {videoFile.name} · {(videoFile.size / 1024 / 1024).toFixed(1)} MB
-                {videoMeta && ` · ${Math.round(videoMeta.durationSec)}s`}
-              </p>
-            </div>
-          ) : (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={ACCEPT_VIDEO}
-                className="hidden"
-                onChange={(e) => handleVideoPick(e.target.files?.[0] ?? null)}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={analyzing}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 py-4 text-xs font-extrabold text-gray-600 transition active:bg-gray-50 disabled:opacity-50"
-              >
-                <FiUploadCloud className="h-4 w-4" />
-                {analyzing
-                  ? "Memproses..."
-                  : `Pilih video (${ADMIN_VIDEO_CONFIG.minDuration}-${ADMIN_VIDEO_CONFIG.maxDuration}s · maks ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)})`}
-              </button>
-            </>
-          )}
-        </section>
-      )}
-
-      {/* Title + description */}
-      <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-3">
-        {/* AI generate — topik + produk tertaut → judul & caption */}
-        <div className="rounded-xl border border-purple-200 bg-purple-50/60 p-2.5">
-          <label htmlFor="ai-topic" className="text-xs font-extrabold text-purple-800">
-            ✨ Bantu tulis dengan AI
-          </label>
-          <div className="mt-1.5 flex gap-2">
-            <input
-              id="ai-topic"
-              type="text"
-              value={aiTopic}
-              onChange={(e) => setAiTopic(e.target.value)}
-              placeholder="Topik singkat, mis. grooming kucing musim panas"
-              maxLength={120}
-              className="min-w-0 flex-1 rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
-            />
-            <button
-              type="button"
-              onClick={() => void handleAiGenerate()}
-              disabled={aiLoading}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-bold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
-            >
-              {aiLoading ? (
-                <>
-                  <span
-                    className="h-3 w-3 animate-spin rounded-full border-2 border-white/70 border-t-transparent"
-                    aria-hidden
-                  />
-                  Membuat…
-                </>
-              ) : (
-                "Generate"
-              )}
-            </button>
-          </div>
-          <p className="mt-1 text-[11px] text-purple-700/80">
-            Dari topik + produk yang di-tag. Hasil bisa kamu edit sebelum publish.
-          </p>
-          {aiError && <p className="mt-1 text-[11px] text-red-600">⚠️ {aiError}</p>}
-        </div>
-
-        <div>
-          <label htmlFor="title" className="text-xs font-extrabold text-gray-700">
-            Judul <span className="text-red-500">*</span>
-          </label>
-          <input
-            id="title"
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            maxLength={200}
-            className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none"
-          />
-        </div>
-        <div>
-          <label htmlFor="desc" className="text-xs font-extrabold text-gray-700">
-            Deskripsi
-          </label>
-          <textarea
-            id="desc"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            maxLength={2000}
-            className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none"
-          />
-        </div>
-      </section>
-
-      {/* Beri tahu pelanggan — push notification opsional saat publish */}
-      <section className="rounded-2xl border border-gray-100 bg-white p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-extrabold text-gray-700">
-              Beri tahu pelanggan
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
+        <div className="min-w-0 space-y-4">
+          {/* Kind selector — mobile only (desktop pakai pill di header). */}
+          <section className="rounded-2xl border border-gray-100 bg-white p-3 lg:hidden">
+            <p className="mb-2 text-xs font-semibold text-gray-700">
+              Jenis post
             </p>
-            <p className="mt-0.5 text-[11px] font-semibold text-gray-500">
-              {notifyOnPublish
-                ? "Push dikirim saat post ini tayang"
-                : "Post tayang tanpa notifikasi"}
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={notifyOnPublish}
-            disabled={quotaExhausted}
-            onClick={() => void handleNotifyToggle()}
-            className={`relative h-[26px] w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-              notifyOnPublish ? "bg-natalo-600" : "bg-gray-200"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-[22px] w-[22px] rounded-full bg-white shadow transition-transform ${
-                notifyOnPublish ? "translate-x-[22px]" : "translate-x-0.5"
-              }`}
-            />
-          </button>
-        </div>
-
-        {notifyOnPublish && (
-          <div className="mt-3 space-y-3">
-            {pushInfoLoading && !pushInfo ? (
-              <p className="text-[11px] font-bold text-gray-400">
-                Memuat info kuota...
-              </p>
-            ) : (
-              <p
-                className={`rounded-xl px-3 py-2 text-[11px] font-bold ${
-                  quotaExhausted
-                    ? "bg-red-50 text-red-700"
-                    : "bg-green-50 text-green-700"
-                }`}
-              >
-                Kuota push hari ini:{" "}
-                {pushInfo
-                  ? `${Math.max(pushInfo.quota.cap - pushInfo.quota.used, 0)} dari ${pushInfo.quota.cap} tersisa`
-                  : "–"}
-              </p>
-            )}
-
-            <div className="space-y-2">
-              {(
-                [
-                  {
-                    v: "all",
-                    l: "Semua pelanggan",
-                    d: "Semua yang mengizinkan notifikasi. Untuk konten penting saja.",
-                  },
-                  {
-                    v: "members",
-                    l: "Member",
-                    d: "Pernah belanja — paling relevan untuk promo dan produk.",
-                    badge: "Disarankan",
-                  },
-                  {
-                    v: "active30d",
-                    l: "Aktif 30 hari",
-                    d: "Belanja dalam sebulan terakhir — paling kecil risiko ganggu.",
-                  },
-                ] as {
-                  v: "all" | "members" | "active30d";
-                  l: string;
-                  d: string;
-                  badge?: string;
-                }[]
-              ).map((opt) => (
+            <div className="grid grid-cols-2 gap-2">
+              {KIND_OPTIONS.map((opt) => (
                 <button
                   key={opt.v}
                   type="button"
-                  onClick={() => setPushSegment(opt.v)}
-                  className={`w-full rounded-xl border p-2.5 text-left transition ${
-                    pushSegment === opt.v
-                      ? "border-natalo-600 bg-natalo-50"
-                      : "border-gray-200 bg-white active:bg-gray-50"
+                  onClick={() => setKind(opt.v)}
+                  className={`rounded-2xl border p-3 text-left text-xs font-semibold transition ${
+                    kind === opt.v
+                      ? "border-natalo-600 bg-natalo-50 text-natalo-700"
+                      : "border-gray-200 bg-white text-gray-700 active:bg-gray-50"
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <p
-                      className={`text-xs font-extrabold ${
-                        pushSegment === opt.v ? "text-natalo-700" : "text-gray-700"
-                      }`}
-                    >
-                      {opt.l}
-                    </p>
-                    {opt.badge && (
-                      <span className="rounded-full bg-natalo-100 px-1.5 py-0.5 text-[9px] font-extrabold text-natalo-700">
-                        {opt.badge}
-                      </span>
-                    )}
-                    <span className="ml-auto shrink-0 text-[11px] font-bold text-gray-400">
-                      {pushInfo ? pushInfo.counts[opt.v] : "–"}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-[10px] font-semibold text-gray-500">
+                  <p>{opt.l}</p>
+                  <p className="mt-0.5 text-xs font-semibold text-gray-500">
                     {opt.d}
                   </p>
                 </button>
               ))}
             </div>
+          </section>
 
-            <button
-              type="button"
-              onClick={() => void handleTestPush()}
-              disabled={testState === "sending"}
-              className="w-full rounded-xl border border-gray-200 bg-white py-2 text-xs font-extrabold text-gray-700 transition active:bg-gray-50 disabled:opacity-50"
-            >
-              {testState === "sent"
-                ? "Terkirim ke HP kamu ✓"
-                : testState === "sending"
-                  ? "Mengirim..."
-                  : "Tes ke HP saya dulu"}
-            </button>
-            {testError && (
-              <p className="text-[11px] font-bold text-red-600">{testError}</p>
-            )}
-            {pushInfo?.self && pushInfo.self.devices === 0 && (
-              <p className="rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
-                Akun admin ini belum punya perangkat terdaftar — tombol tes
-                tidak akan sampai ke mana pun. Login app di HP dengan akun
-                ini, atau uji lewat publish ke segmen yang memuat akun HP-mu.
+          {/* Video picker */}
+          {needsVideo && (
+            <section className="rounded-2xl border border-gray-100 bg-white p-3">
+              <p className="mb-2 text-xs font-semibold text-gray-700">
+                Video{" "}
+                {videoOptional && (
+                  <span className="text-gray-400">(opsional)</span>
+                )}
               </p>
-            )}
-
-            <p className="text-[10px] font-semibold text-gray-400">
-              Video dikirim setelah selesai diproses, bukan saat upload.
-            </p>
-          </div>
-        )}
-      </section>
-
-      {/* Product picker */}
-      {needsProduct && (
-        <section className="rounded-2xl border border-gray-100 bg-white p-3">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-xs font-extrabold text-gray-700">
-              Produk terkait <span className="text-red-500">*</span>
-            </p>
-            <span className="text-[11px] font-extrabold text-gray-400">
-              {selectedProducts.length}/{MAX_ADMIN_TAGGED_PRODUCTS}
-            </span>
-          </div>
-
-          {selectedProducts.length > 0 && (
-            <div className="mb-3 space-y-2">
-              {selectedProducts.map((product, index) => {
-                const promoRaw = productPromos[product.id] ?? "";
-                const promoNum = Number(promoRaw);
-                const hasValidPromo =
-                  promoRaw.trim() !== "" &&
-                  Number.isFinite(promoNum) &&
-                  promoNum > 0 &&
-                  promoNum < product.price;
-                const discountPct = hasValidPromo
-                  ? Math.round(
-                      ((product.price - promoNum) / product.price) * 100,
-                    )
-                  : 0;
-                return (
-                  <div
-                    key={product.id}
-                    className="rounded-xl bg-natalo-50 p-2"
-                  >
-                    <div className="flex items-center gap-3">
-                      {product.imageUrl && (
-                        <Image
-                          src={product.imageUrl}
-                          alt=""
-                          width={40}
-                          height={40}
-                          className="h-10 w-10 rounded-lg object-cover"
-                        />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-extrabold text-natalo-800">
-                          {product.name}
-                        </p>
-                        <p className="text-[11px] font-semibold text-natalo-600">
-                          {index === 0 ? "Produk utama · " : ""}
-                          Harga normal {formatRupiah(product.price)}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeSelectedProduct(product.id)}
-                        className="grid h-8 w-8 place-items-center rounded-full text-natalo-700 transition active:bg-natalo-100"
-                        aria-label={`Hapus ${product.name}`}
-                      >
-                        <FiX className="h-4 w-4" />
-                      </button>
-                    </div>
-                    {kind === "PROMO" && (
-                      <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/70 p-2.5">
-                        <label className="block">
-                          <span className="text-[11px] font-bold text-rose-800">
-                            Harga Promo (Rp) — kosongkan kalau tidak diskon
-                          </span>
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            value={promoRaw}
-                            onChange={(e) =>
-                              setProductPromos((prev) => ({
-                                ...prev,
-                                [product.id]: e.target.value,
-                              }))
-                            }
-                            placeholder={`< ${product.price}`}
-                            className="mt-0.5 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm focus:border-rose-500 focus:outline-none"
-                          />
-                        </label>
-                        {hasValidPromo ? (
-                          <p className="mt-1.5 text-[11px] font-bold text-rose-800">
-                            Hemat {formatRupiah(product.price - promoNum)} ·{" "}
-                            {discountPct}% off
-                          </p>
-                        ) : promoRaw.trim() !== "" &&
-                          Number.isFinite(promoNum) &&
-                          promoNum >= product.price ? (
-                          <p className="mt-1.5 text-[11px] font-bold text-amber-700">
-                            Harus lebih kecil dari harga normal.
-                          </p>
-                        ) : null}
-                      </div>
-                    )}
+              {videoFile && thumbPreviewUrl ? (
+                <div className="space-y-2">
+                  <div className="relative aspect-[9/16] w-full max-w-[200px] overflow-hidden rounded-xl bg-gray-100">
+                    <Image
+                      src={thumbPreviewUrl}
+                      alt=""
+                      fill
+                      sizes="200px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVideoFile(null);
+                        setVideoMeta(null);
+                        if (thumbPreviewUrl)
+                          URL.revokeObjectURL(thumbPreviewUrl);
+                        setThumbPreviewUrl(null);
+                        setThumbBlob(null);
+                      }}
+                      className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/60 text-white"
+                      aria-label="Hapus video"
+                    >
+                      <FiX className="h-3.5 w-3.5" />
+                    </button>
                   </div>
-                );
-              })}
-            </div>
+                  <p className="text-xs text-gray-500">
+                    {videoFile.name} ·{" "}
+                    {(videoFile.size / 1024 / 1024).toFixed(1)} MB
+                    {videoMeta && ` · ${Math.round(videoMeta.durationSec)}s`}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={ACCEPT_VIDEO}
+                    className="hidden"
+                    onChange={(e) =>
+                      handleVideoPick(e.target.files?.[0] ?? null)
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={analyzing}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 py-4 text-xs font-semibold text-gray-600 transition active:bg-gray-50 disabled:opacity-50"
+                  >
+                    <FiUploadCloud className="h-4 w-4" />
+                    {analyzing
+                      ? "Memproses..."
+                      : `Pilih video (${ADMIN_VIDEO_CONFIG.minDuration}-${
+                          ADMIN_VIDEO_CONFIG.maxDuration
+                        }s · maks ${formatFileSize(MAX_SOURCE_VIDEO_SIZE)})`}
+                  </button>
+                </>
+              )}
+            </section>
           )}
 
-          {selectedProducts.length >= MAX_ADMIN_TAGGED_PRODUCTS ? (
-            <p className="rounded-xl bg-gray-50 px-3 py-2 text-[11px] font-bold text-gray-500">
-              Maksimal {MAX_ADMIN_TAGGED_PRODUCTS} produk terkait sudah dipilih.
-            </p>
-          ) : (
-            <>
-              <input
-                type="text"
-                placeholder={
-                  selectedProducts.length > 0
-                    ? "Cari produk tambahan..."
-                    : "Cari produk (min 2 huruf)..."
-                }
-                value={productQuery}
-                onChange={(e) => setProductQuery(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none"
-              />
-              {productLoading && (
-                <p className="mt-2 text-center text-[11px] font-bold text-gray-400">Mencari...</p>
+          {/* Title + description */}
+          <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-3">
+            {/* AI generate — topik + produk tertaut → judul & caption */}
+            <div className="rounded-xl border border-natalo-200 bg-natalo-50/60 p-2.5">
+              <label
+                htmlFor="ai-topic"
+                className="text-xs font-semibold text-natalo-800"
+              >
+                ✨ Bantu tulis dengan AI
+              </label>
+              <div className="mt-1.5 flex gap-2">
+                <input
+                  id="ai-topic"
+                  type="text"
+                  value={aiTopic}
+                  onChange={(e) => setAiTopic(e.target.value)}
+                  placeholder="Topik singkat, mis. grooming kucing musim panas"
+                  maxLength={120}
+                  className="min-w-0 flex-1 rounded-lg border border-natalo-200 bg-white px-3 py-2 text-sm focus:border-natalo-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleAiGenerate()}
+                  disabled={aiLoading}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-natalo-600 px-3 py-2 text-xs font-bold text-white hover:bg-natalo-700 disabled:cursor-not-allowed disabled:bg-natalo-300"
+                >
+                  {aiLoading ? (
+                    <>
+                      <span
+                        className="h-3 w-3 animate-spin rounded-full border-2 border-white/70 border-t-transparent"
+                        aria-hidden
+                      />
+                      Membuat…
+                    </>
+                  ) : (
+                    "Generate"
+                  )}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-natalo-700/80">
+                Dari topik + produk yang di-tag. Hasil bisa kamu edit sebelum
+                publish.
+              </p>
+              {aiError && (
+                <p className="mt-1 text-xs text-red-600">⚠️ {aiError}</p>
               )}
-              {productResults.length > 0 && (
-                <ul className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-gray-100">
-                  {productResults.map((p) => {
-                    const selected = selectedProductIdSet.has(p.id);
-                    return (
-                      <li key={p.id}>
-                        <button
-                          type="button"
-                          onClick={() => addSelectedProduct(p)}
-                          disabled={selected}
-                          className="flex w-full items-center gap-2 border-b border-gray-50 px-2 py-2 text-left text-xs transition last:border-0 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-60"
+            </div>
+
+            <div>
+              <label
+                htmlFor="title"
+                className="text-xs font-semibold text-gray-700"
+              >
+                Judul <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                maxLength={200}
+                className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="desc"
+                className="text-xs font-semibold text-gray-700"
+              >
+                Deskripsi
+              </label>
+              <textarea
+                id="desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                maxLength={2000}
+                className="mt-1 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none"
+              />
+            </div>
+          </section>
+
+          {/* Beri tahu pelanggan — push notification opsional saat publish */}
+          <section className="rounded-2xl border border-gray-100 bg-white p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-gray-700">
+                  Beri tahu pelanggan
+                </p>
+                <p className="mt-0.5 text-xs font-semibold text-gray-500">
+                  {notifyOnPublish
+                    ? "Push dikirim saat post ini tayang"
+                    : "Post tayang tanpa notifikasi"}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={notifyOnPublish}
+                disabled={quotaExhausted}
+                onClick={() => void handleNotifyToggle()}
+                className={`relative h-[26px] w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  notifyOnPublish ? "bg-natalo-600" : "bg-gray-200"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-[22px] w-[22px] rounded-full bg-white shadow transition-transform ${
+                    notifyOnPublish ? "translate-x-[22px]" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {notifyOnPublish && (
+              <div className="mt-3 space-y-3">
+                {pushInfoLoading && !pushInfo ? (
+                  <p className="text-xs font-bold text-gray-400">
+                    Memuat info kuota...
+                  </p>
+                ) : (
+                  <p
+                    className={`rounded-xl px-3 py-2 text-xs font-bold ${
+                      quotaExhausted
+                        ? "bg-red-50 text-red-700"
+                        : "bg-green-50 text-green-700"
+                    }`}
+                  >
+                    Kuota push hari ini:{" "}
+                    {pushInfo
+                      ? `${Math.max(
+                          pushInfo.quota.cap - pushInfo.quota.used,
+                          0
+                        )} dari ${pushInfo.quota.cap} tersisa`
+                      : "–"}
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  {(
+                    [
+                      {
+                        v: "all",
+                        l: "Semua pelanggan",
+                        d: "Semua yang mengizinkan notifikasi. Untuk konten penting saja.",
+                      },
+                      {
+                        v: "members",
+                        l: "Member",
+                        d: "Pernah belanja — paling relevan untuk promo dan produk.",
+                        badge: "Disarankan",
+                      },
+                      {
+                        v: "active30d",
+                        l: "Aktif 30 hari",
+                        d: "Belanja dalam sebulan terakhir — paling kecil risiko ganggu.",
+                      },
+                    ] as {
+                      v: "all" | "members" | "active30d";
+                      l: string;
+                      d: string;
+                      badge?: string;
+                    }[]
+                  ).map((opt) => (
+                    <button
+                      key={opt.v}
+                      type="button"
+                      onClick={() => setPushSegment(opt.v)}
+                      className={`w-full rounded-xl border p-2.5 text-left transition ${
+                        pushSegment === opt.v
+                          ? "border-natalo-600 bg-natalo-50"
+                          : "border-gray-200 bg-white active:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <p
+                          className={`text-xs font-semibold ${
+                            pushSegment === opt.v
+                              ? "text-natalo-700"
+                              : "text-gray-700"
+                          }`}
                         >
-                          {p.imageUrl && (
+                          {opt.l}
+                        </p>
+                        {opt.badge && (
+                          <span className="rounded-full bg-natalo-100 px-1.5 py-0.5 text-[9px] font-semibold text-natalo-700">
+                            {opt.badge}
+                          </span>
+                        )}
+                        <span className="ml-auto shrink-0 text-xs font-bold text-gray-400">
+                          {pushInfo ? pushInfo.counts[opt.v] : "–"}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs font-semibold text-gray-500">
+                        {opt.d}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void handleTestPush()}
+                  disabled={testState === "sending"}
+                  className="w-full rounded-xl border border-gray-200 bg-white py-2 text-xs font-semibold text-gray-700 transition active:bg-gray-50 disabled:opacity-50"
+                >
+                  {testState === "sent"
+                    ? "Terkirim ke HP kamu ✓"
+                    : testState === "sending"
+                    ? "Mengirim..."
+                    : "Tes ke HP saya dulu"}
+                </button>
+                {testError && (
+                  <p className="text-xs font-bold text-red-600">{testError}</p>
+                )}
+                {pushInfo?.self && pushInfo.self.devices === 0 && (
+                  <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                    Akun admin ini belum punya perangkat terdaftar — tombol tes
+                    tidak akan sampai ke mana pun. Login app di HP dengan akun
+                    ini, atau uji lewat publish ke segmen yang memuat akun
+                    HP-mu.
+                  </p>
+                )}
+
+                <p className="text-xs font-semibold text-gray-400">
+                  Video dikirim setelah selesai diproses, bukan saat upload.
+                </p>
+              </div>
+            )}
+          </section>
+
+          {/* Product picker */}
+          {needsProduct && (
+            <section className="rounded-2xl border border-gray-100 bg-white p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-gray-700">
+                  Produk terkait <span className="text-red-500">*</span>
+                </p>
+                <span className="text-xs font-semibold text-gray-400">
+                  {selectedProducts.length}/{MAX_ADMIN_TAGGED_PRODUCTS}
+                </span>
+              </div>
+
+              {selectedProducts.length > 0 && (
+                <div className="mb-3 space-y-2">
+                  {selectedProducts.map((product, index) => {
+                    const promoRaw = productPromos[product.id] ?? "";
+                    const promoNum = Number(promoRaw);
+                    const hasValidPromo =
+                      promoRaw.trim() !== "" &&
+                      Number.isFinite(promoNum) &&
+                      promoNum > 0 &&
+                      promoNum < product.price;
+                    const discountPct = hasValidPromo
+                      ? Math.round(
+                          ((product.price - promoNum) / product.price) * 100
+                        )
+                      : 0;
+                    return (
+                      <div
+                        key={product.id}
+                        className="rounded-xl bg-natalo-50 p-2"
+                      >
+                        <div className="flex items-center gap-3">
+                          {product.imageUrl && (
                             <Image
-                              src={p.imageUrl}
+                              src={product.imageUrl}
                               alt=""
-                              width={32}
-                              height={32}
-                              className="h-8 w-8 rounded-lg object-cover"
+                              width={40}
+                              height={40}
+                              className="h-10 w-10 rounded-lg object-cover"
                             />
                           )}
-                          <span className="min-w-0 flex-1 truncate font-bold">
-                            {p.name}
-                          </span>
-                          <span className="shrink-0 text-natalo-600">
-                            {selected ? "Dipilih" : formatRupiah(p.price)}
-                          </span>
-                        </button>
-                      </li>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-semibold text-natalo-800">
+                              {product.name}
+                            </p>
+                            <p className="text-xs font-semibold text-natalo-600">
+                              {index === 0 ? "Produk utama · " : ""}
+                              Harga normal {formatRupiah(product.price)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeSelectedProduct(product.id)}
+                            className="grid h-8 w-8 place-items-center rounded-full text-natalo-700 transition active:bg-natalo-100"
+                            aria-label={`Hapus ${product.name}`}
+                          >
+                            <FiX className="h-4 w-4" />
+                          </button>
+                        </div>
+                        {kind === "PROMO" && (
+                          <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/70 p-2.5">
+                            <label className="block">
+                              <span className="text-xs font-bold text-rose-800">
+                                Harga Promo (Rp) — kosongkan kalau tidak diskon
+                              </span>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                value={promoRaw}
+                                onChange={(e) =>
+                                  setProductPromos((prev) => ({
+                                    ...prev,
+                                    [product.id]: e.target.value,
+                                  }))
+                                }
+                                placeholder={`< ${product.price}`}
+                                className="mt-0.5 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm focus:border-rose-500 focus:outline-none"
+                              />
+                            </label>
+                            {hasValidPromo ? (
+                              <p className="mt-1.5 text-xs font-bold text-rose-800">
+                                Hemat {formatRupiah(product.price - promoNum)} ·{" "}
+                                {discountPct}% off
+                              </p>
+                            ) : promoRaw.trim() !== "" &&
+                              Number.isFinite(promoNum) &&
+                              promoNum >= product.price ? (
+                              <p className="mt-1.5 text-xs font-bold text-amber-700">
+                                Harus lebih kecil dari harga normal.
+                              </p>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
-                </ul>
+                </div>
               )}
-            </>
+
+              {selectedProducts.length >= MAX_ADMIN_TAGGED_PRODUCTS ? (
+                <p className="rounded-xl bg-gray-50 px-3 py-2 text-xs font-bold text-gray-500">
+                  Maksimal {MAX_ADMIN_TAGGED_PRODUCTS} produk terkait sudah
+                  dipilih.
+                </p>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    placeholder={
+                      selectedProducts.length > 0
+                        ? "Cari produk tambahan..."
+                        : "Cari produk (min 2 huruf)..."
+                    }
+                    value={productQuery}
+                    onChange={(e) => setProductQuery(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none"
+                  />
+                  {productLoading && (
+                    <p className="mt-2 text-center text-xs font-bold text-gray-400">
+                      Mencari...
+                    </p>
+                  )}
+                  {productResults.length > 0 && (
+                    <ul className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-gray-100">
+                      {productResults.map((p) => {
+                        const selected = selectedProductIdSet.has(p.id);
+                        return (
+                          <li key={p.id}>
+                            <button
+                              type="button"
+                              onClick={() => addSelectedProduct(p)}
+                              disabled={selected}
+                              className="flex w-full items-center gap-2 border-b border-gray-50 px-2 py-2 text-left text-xs transition last:border-0 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-60"
+                            >
+                              {p.imageUrl && (
+                                <Image
+                                  src={p.imageUrl}
+                                  alt=""
+                                  width={32}
+                                  height={32}
+                                  className="h-8 w-8 rounded-lg object-cover"
+                                />
+                              )}
+                              <span className="min-w-0 flex-1 truncate font-bold">
+                                {p.name}
+                              </span>
+                              <span className="shrink-0 text-natalo-600">
+                                {selected ? "Dipilih" : formatRupiah(p.price)}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </>
+              )}
+            </section>
           )}
-        </section>
-      )}
 
-      {/* Promo schedule (per-product pricing diset di list produk di atas) */}
-      {kind === "PROMO" && (
-        <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-3">
-          <div>
-            <p className="text-xs font-extrabold text-gray-700">
-              Jadwal promo (opsional)
+          {/* Promo schedule (per-product pricing diset di list produk di atas) */}
+          {kind === "PROMO" && (
+            <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-3">
+              <div>
+                <p className="text-xs font-semibold text-gray-700">
+                  Jadwal promo (opsional)
+                </p>
+                <p className="text-xs font-semibold text-gray-500">
+                  Harga promo set per-produk di daftar produk di atas. Promo
+                  tetap aktif tanpa jadwal.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-gray-600">
+                    Mulai
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={promoStarts}
+                    onChange={(e) => setPromoStarts(e.target.value)}
+                    className="mt-0.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600">
+                    Berakhir
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={promoEnds}
+                    onChange={(e) => setPromoEnds(e.target.value)}
+                    className="mt-0.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs"
+                  />
+                </div>
+              </div>
+            </section>
+          )}
+
+          {error && (
+            <p className="rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">
+              {error}
             </p>
-            <p className="text-[11px] font-semibold text-gray-500">
-              Harga promo set per-produk di daftar produk di atas. Promo
-              tetap aktif tanpa jadwal.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] font-bold text-gray-600">Mulai</label>
-              <input
-                type="datetime-local"
-                value={promoStarts}
-                onChange={(e) => setPromoStarts(e.target.value)}
-                className="mt-0.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold text-gray-600">Berakhir</label>
-              <input
-                type="datetime-local"
-                value={promoEnds}
-                onChange={(e) => setPromoEnds(e.target.value)}
-                className="mt-0.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs"
-              />
-            </div>
-          </div>
-        </section>
-      )}
+          )}
 
-      {error && (
-        <p className="rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>
-      )}
-
-      {/* Publish — mobile only (desktop: tombol di panel kanan, sticky
+          {/* Publish — mobile only (desktop: tombol di panel kanan, sticky
           di kolom). Handler + disabled state identik, cuma tampilan. */}
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={submitting}
-        className="sticky bottom-4 w-full rounded-full bg-natalo-600 py-3 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300 lg:hidden"
-      >
-        {publishButtonLabel}
-      </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="sticky bottom-4 w-full rounded-full bg-natalo-600 py-3 text-sm font-semibold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300 lg:hidden"
+          >
+            {publishButtonLabel}
+          </button>
+        </div>
 
-      </div>
-
-      {/* Panel kanan — pratinjau hidup + status notifikasi + Publish
+        {/* Panel kanan — pratinjau hidup + status notifikasi + Publish
           sticky. Desktop only; read-only (tidak ada state baru, semua
           dibaca dari state form yang sama). Mobile tetap satu kolom
           seperti sebelumnya (panel ini disembunyikan). */}
-      <div className="hidden flex-col gap-3 lg:sticky lg:top-4 lg:flex">
-        <p className="text-center text-[11px] font-bold uppercase tracking-wide text-gray-400">
-          Pratinjau langsung
-        </p>
+        <div className="hidden flex-col gap-3 lg:sticky lg:top-4 lg:flex">
+          <p className="text-center text-xs font-bold uppercase tracking-wide text-gray-400">
+            Pratinjau langsung
+          </p>
 
-        <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
-          <div className="relative aspect-[4/3] w-full bg-gray-900">
-            {previewThumb ? (
-              <Image
-                src={previewThumb}
-                alt=""
-                fill
-                sizes="300px"
-                className="object-cover"
-                unoptimized={!!thumbPreviewUrl}
-              />
-            ) : (
-              <div className="grid h-full w-full place-items-center text-3xl font-black text-gray-600">
-                NP
-              </div>
-            )}
-            {needsVideo && (
-              <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-white">
-                {previewDurationLabel ?? "Video"}
-              </span>
-            )}
-          </div>
-          <div className="p-3">
-            <div className="mb-1.5 flex items-center gap-2">
-              <div className="grid h-5 w-5 place-items-center rounded-full bg-natalo-600 text-[10px] font-black text-white">
-                N
-              </div>
-              <span className="text-[11px] font-extrabold text-gray-800">
-                Natalo Petshop
-              </span>
+          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+            <div className="relative aspect-[4/3] w-full bg-gray-900">
+              {previewThumb ? (
+                <Image
+                  src={previewThumb}
+                  alt=""
+                  fill
+                  sizes="300px"
+                  className="object-cover"
+                  unoptimized={!!thumbPreviewUrl}
+                />
+              ) : (
+                <div className="grid h-full w-full place-items-center text-3xl font-semibold text-gray-600">
+                  NP
+                </div>
+              )}
+              {needsVideo && (
+                <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs font-bold text-white">
+                  {previewDurationLabel ?? "Video"}
+                </span>
+              )}
             </div>
-            <p className="line-clamp-2 text-xs font-extrabold text-gray-900">
-              {previewTitle}
-            </p>
-            <p className="mt-0.5 line-clamp-2 text-[11px] text-gray-500">
-              {previewCaption}
-            </p>
-            {needsProduct && selectedProducts.length > 0 && (
-              <p className="mt-2 text-[11px] font-bold text-natalo-600">
-                {selectedProducts.length} produk
+            <div className="p-3">
+              <div className="mb-1.5 flex items-center gap-2">
+                <div className="grid h-5 w-5 place-items-center rounded-full bg-natalo-600 text-xs font-semibold text-white">
+                  N
+                </div>
+                <span className="text-xs font-semibold text-gray-800">
+                  Natalo Petshop
+                </span>
+              </div>
+              <p className="line-clamp-2 text-xs font-semibold text-gray-900">
+                {previewTitle}
               </p>
-            )}
+              <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">
+                {previewCaption}
+              </p>
+              {needsProduct && selectedProducts.length > 0 && (
+                <p className="mt-2 text-xs font-bold text-natalo-600">
+                  {selectedProducts.length} produk
+                </p>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-white px-3 py-2">
-          <span className="text-[11px] font-bold text-gray-600">
-            Beri tahu pelanggan
-          </span>
-          <span className="ml-auto text-[11px] font-bold text-gray-400">
-            {notifyOnPublish ? "Nyala" : "Mati"}
-          </span>
-        </div>
+          <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-white px-3 py-2">
+            <span className="text-xs font-bold text-gray-600">
+              Beri tahu pelanggan
+            </span>
+            <span className="ml-auto text-xs font-bold text-gray-400">
+              {notifyOnPublish ? "Nyala" : "Mati"}
+            </span>
+          </div>
 
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={submitting}
-          className="w-full rounded-full bg-natalo-600 py-3 text-sm font-extrabold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300"
-        >
-          {publishButtonLabel}
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full rounded-full bg-natalo-600 py-3 text-sm font-semibold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300"
+          >
+            {publishButtonLabel}
+          </button>
+        </div>
       </div>
 
       {/* Loading overlay — full-screen blocker saat submitting. Kompres
@@ -1354,7 +1418,7 @@ export function AdminFeedCreateClient() {
               className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-natalo-100 border-t-natalo-600"
               aria-hidden
             />
-            <p className="mt-4 text-sm font-extrabold text-gray-900">
+            <p className="mt-4 text-sm font-semibold text-gray-900">
               {progress || "Memproses..."}
             </p>
             {/* Progress bar saat upload PUT — compressProgress > 0 hanya
@@ -1372,7 +1436,7 @@ export function AdminFeedCreateClient() {
                 </p>
               </>
             )}
-            <p className="mt-4 text-[11px] font-semibold text-gray-400">
+            <p className="mt-4 text-xs font-semibold text-gray-400">
               Mohon jangan tutup halaman ini sampai selesai.
             </p>
           </div>

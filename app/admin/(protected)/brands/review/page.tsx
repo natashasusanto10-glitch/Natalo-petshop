@@ -83,18 +83,20 @@ export default async function BrandReviewPage({
     if (affectedProducts.length > 0) {
       const { syncProduct } = await import("@/lib/search");
       await Promise.all(
-        affectedProducts.map((product) => syncProduct(product.id).catch(() => {}))
+        affectedProducts.map((product) =>
+          syncProduct(product.id).catch(() => {})
+        )
       );
     }
     revalidatePath("/admin/brands/review");
   }
 
   return (
-    <AdminPage maxWidth="xl">
+    <AdminPage maxWidth="xl" className="admin-operational-page">
       <Button href="/admin/brands" variant="secondary" size="sm">
         ← Kembali ke brand
       </Button>
-      <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
         Review Auto-Assign Brand
       </h1>
       <p className="mt-1 text-sm text-zinc-500">
@@ -131,8 +133,10 @@ export default async function BrandReviewPage({
               >
                 {b.name}
                 <span
-                  className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                    active ? "bg-white/20 text-white" : "bg-white text-amber-600"
+                  className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                    active
+                      ? "bg-white/20 text-white"
+                      : "bg-white text-amber-600"
                   }`}
                 >
                   {count}
@@ -146,15 +150,15 @@ export default async function BrandReviewPage({
       {brandFilter && (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-semibold text-amber-900">
-            Yakin semua produk di brand &ldquo;{brands.find((b) => b.slug === brandFilter)?.name}&rdquo; sudah benar?
+            Yakin semua produk di brand &ldquo;
+            {brands.find((b) => b.slug === brandFilter)?.name}&rdquo; sudah
+            benar?
           </p>
           <p className="mt-1 text-xs text-amber-700">
-            Konfirmasi sekaligus akan menghilangkan flag &ldquo;perlu review&rdquo; dari semua produk di brand ini.
+            Konfirmasi sekaligus akan menghilangkan flag &ldquo;perlu
+            review&rdquo; dari semua produk di brand ini.
           </p>
-          <form
-            action={bulkConfirmBrand}
-            className="mt-3"
-          >
+          <form action={bulkConfirmBrand} className="mt-3">
             <input
               type="hidden"
               name="brandId"
@@ -238,7 +242,9 @@ export default async function BrandReviewPage({
         currentPage={page}
         totalPages={totalPages}
         hrefFor={(target) =>
-          `/admin/brands/review?page=${target}${brandFilter ? `&brand=${brandFilter}` : ""}`
+          `/admin/brands/review?page=${target}${
+            brandFilter ? `&brand=${brandFilter}` : ""
+          }`
         }
         summary={`${total} produk`}
       />

@@ -42,12 +42,16 @@ type BadgeProps = {
   size?: "sm" | "md";
 };
 
-export function Badge({ children, variant = "neutral", size = "sm" }: BadgeProps) {
+export function Badge({
+  children,
+  variant = "neutral",
+  size = "sm",
+}: BadgeProps) {
   const sizeClass =
-    size === "md" ? "px-2.5 py-1 text-xs" : "px-2 py-0.5 text-[11px]";
+    size === "md" ? "px-2.5 py-1 text-xs" : "px-2 py-0.5 text-xs";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full font-bold ring-1 ring-inset ${VARIANT_CLASSES[variant]} ${sizeClass}`}
+      className={`inline-flex items-center gap-1 rounded-md font-medium ring-1 ring-inset ${VARIANT_CLASSES[variant]} ${sizeClass}`}
     >
       {children}
     </span>

@@ -22,7 +22,9 @@
 import { useState, useMemo } from "react";
 
 function formatRupiah(n: number): string {
-  return `Rp${new Intl.NumberFormat("id-ID").format(Math.max(0, Math.round(n)))}`;
+  return `Rp${new Intl.NumberFormat("id-ID").format(
+    Math.max(0, Math.round(n))
+  )}`;
 }
 
 export default function ItemOutOfStockButton({
@@ -70,7 +72,7 @@ export default function ItemOutOfStockButton({
   if (!paymentPaid) {
     return (
       <span
-        className="rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-medium text-zinc-500"
+        className="rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-500"
         title="Order belum lunas. Verifikasi pembayaran dulu untuk refund item kosong, atau batalkan order (panel aksi kanan) kalau dana belum masuk."
       >
         Belum lunas — batalkan order untuk item kosong
@@ -87,7 +89,7 @@ export default function ItemOutOfStockButton({
       <button
         type="button"
         onClick={() => setExpanded(true)}
-        className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100"
+        className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
       >
         Tandai kosong
       </button>
@@ -102,13 +104,13 @@ export default function ItemOutOfStockButton({
       <input type="hidden" name="itemId" value={itemId} />
 
       <div className="flex items-center gap-2">
-        <span className="text-[11px] font-bold uppercase text-amber-800">
+        <span className="text-xs font-bold uppercase text-amber-800">
           Item kosong saat packing
         </span>
         <button
           type="button"
           onClick={() => setExpanded(false)}
-          className="ml-auto text-[11px] text-zinc-500 hover:text-zinc-700"
+          className="ml-auto text-xs text-zinc-500 hover:text-zinc-700"
         >
           Batal
         </button>
@@ -152,20 +154,22 @@ export default function ItemOutOfStockButton({
           </div>
           {hasVoucher && (
             <>
-              <div className="mt-0.5 flex items-center justify-between text-[11px] text-amber-700">
-                <span>− Alokasi voucher ({(discountRatio * 100).toFixed(1)}%)</span>
+              <div className="mt-0.5 flex items-center justify-between text-xs text-amber-700">
+                <span>
+                  − Alokasi voucher ({(discountRatio * 100).toFixed(1)}%)
+                </span>
                 <span>−{formatRupiah(gross - net)}</span>
               </div>
               <div className="mt-0.5 border-t border-zinc-200 pt-0.5 flex items-center justify-between text-blue-900">
                 <span className="font-semibold">Refund net</span>
-                <span className="font-black">{formatRupiah(net)}</span>
+                <span className="font-semibold">{formatRupiah(net)}</span>
               </div>
             </>
           )}
           {!hasVoucher && (
             <div className="mt-0.5 flex items-center justify-between text-blue-900">
               <span className="font-semibold">Refund</span>
-              <span className="font-black">{formatRupiah(net)}</span>
+              <span className="font-semibold">{formatRupiah(net)}</span>
             </div>
           )}
         </div>

@@ -1,0 +1,1 @@
+export function usePathname(){return location.pathname;} export function useRouter(){return {push(url){location.assign(url);},refresh(){window.dispatchEvent(new Event("review-refresh"));},replace(url){location.replace(url);},back(){history.back();}};} export function useSearchParams(){return new URLSearchParams(location.search);}

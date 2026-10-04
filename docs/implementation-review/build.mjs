@@ -1,0 +1,11 @@
+import { build } from "esbuild";
+import fs from "node:fs/promises";
+import path from "node:path";
+import postcss from "postcss";
+import tailwind from "@tailwindcss/postcss";
+const root=path.resolve("docs/implementation-review");
+await build({entryPoints:[path.join(root,"review.jsx")],bundle:true,format:"esm",platform:"browser",outfile:path.join(root,"review.js"),alias:{"next/link":path.join(root,"next-link.jsx"),"next/image":path.join(root,"next-image.jsx"),"next/navigation":path.join(root,"next-navigation.jsx")},define:{"process.env.NODE_ENV":"\"development\"","process.env.NEXT_PUBLIC_BRAND_NAME":"\"Natalo\""},logLevel:"warning"});
+let css=await fs.readFile("app/globals.css","utf8");
+css=css.replace('@import "tailwindcss";','@import "tailwindcss" source(none);\n@source "../../components";\n@source "../../app/admin";\n@source "./";').replace('@import "./auth-premium.css";','');
+const output=await postcss([tailwind({base:process.cwd()})]).process(css,{from:path.join(root,"review.css")});
+await fs.writeFile(path.join(root,"review.css"),output.css+"\n"+await fs.readFile("app/admin/admin-premium.css","utf8"));

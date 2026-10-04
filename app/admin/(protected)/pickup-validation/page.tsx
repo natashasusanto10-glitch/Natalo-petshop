@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
 import { markAsPickedUp } from "../orders/[id]/actions";
-import { PageHeader, Badge, Button } from "@/components/admin/ui";
+import { PageHeader, Badge, Button, AdminPage } from "@/components/admin/ui";
 
 const PICKUP_STATUS_LABELS: Record<string, string> = {
   WAITING_PAYMENT: "Menunggu pembayaran",
@@ -32,9 +32,9 @@ export default async function PickupValidationPage({
   const handOverAction = order ? markAsPickedUp.bind(null, order.id) : null;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-5 md:py-10">
+    <AdminPage maxWidth="lg" className="admin-operational-page">
       <PageHeader
-        title="🏪 Validasi Pickup"
+        title="Validasi pickup"
         subtitle="Masukkan kode pickup yang ditunjukkan customer saat mengambil pesanan di toko."
         actions={
           <Button href="/admin/orders" variant="secondary" size="sm">
@@ -47,10 +47,7 @@ export default async function PickupValidationPage({
         action="/admin/pickup-validation"
         className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 md:p-5"
       >
-        <label
-          className="text-sm font-bold text-zinc-700"
-          htmlFor="code"
-        >
+        <label className="text-sm font-bold text-zinc-700" htmlFor="code">
           Kode Pickup
         </label>
         <div className="mt-2 flex flex-col gap-3 sm:flex-row">
@@ -59,7 +56,7 @@ export default async function PickupValidationPage({
             name="code"
             defaultValue={code}
             placeholder="NTL-4821"
-            className="min-w-0 flex-1 rounded-2xl border border-zinc-300 px-4 py-3 font-mono text-base font-black uppercase tracking-wider outline-none transition focus:border-natalo-500 focus:ring-2 focus:ring-natalo-100"
+            className="min-w-0 flex-1 rounded-2xl border border-zinc-300 px-4 py-3 font-mono text-base font-semibold uppercase tracking-wider outline-none transition focus:border-natalo-500 focus:ring-2 focus:ring-natalo-100"
           />
           <Button type="submit">Cek Kode</Button>
         </div>
@@ -69,8 +66,8 @@ export default async function PickupValidationPage({
         <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
           <span className="text-xl leading-none">⚠️</span>
           <p>
-            Kode pickup <span className="font-mono font-black">{code}</span> tidak
-            ditemukan. Pastikan kode yang dimasukkan sudah benar.
+            Kode pickup <span className="font-mono font-semibold">{code}</span>{" "}
+            tidak ditemukan. Pastikan kode yang dimasukkan sudah benar.
           </p>
         </div>
       )}
@@ -79,14 +76,15 @@ export default async function PickupValidationPage({
         <section className="mt-5 overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-emerald-50 to-white p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-xs font-black text-white shadow-sm">
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white shadow-sm">
                 ✓ Pesanan Valid
               </p>
-              <h2 className="mt-2.5 text-2xl font-black text-zinc-950">
+              <h2 className="mt-2.5 text-2xl font-semibold text-zinc-950">
                 {order.orderNumber}
               </h2>
               <p className="mt-1 text-sm text-zinc-600">
-                Customer: <span className="font-bold">{order.customerName}</span>
+                Customer:{" "}
+                <span className="font-bold">{order.customerName}</span>
               </p>
             </div>
             <Badge variant="success" size="md">
@@ -103,13 +101,13 @@ export default async function PickupValidationPage({
             </div>
             <div className="flex justify-between gap-2 border-b border-zinc-100 pb-2">
               <span className="font-bold text-zinc-700">Kode Pickup</span>
-              <span className="font-mono font-black tracking-wider text-zinc-950">
+              <span className="font-mono font-semibold tracking-wider text-zinc-950">
                 {order.pickupCode}
               </span>
             </div>
             <div className="flex justify-between gap-2 border-b border-zinc-100 pb-2">
               <span className="font-bold text-zinc-700">Total</span>
-              <span className="font-black text-zinc-950">
+              <span className="font-semibold text-zinc-950">
                 {formatRupiah(order.total)}
               </span>
             </div>
@@ -133,7 +131,7 @@ export default async function PickupValidationPage({
 
           {canHandOver && handOverAction ? (
             <form action={handOverAction} className="mt-5">
-              <button className="w-full rounded-full bg-emerald-600 px-6 py-3.5 text-sm font-black text-white shadow-sm transition hover:bg-emerald-700">
+              <button className="w-full rounded-full bg-emerald-600 px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700">
                 ✓ Serahkan Pesanan ke Customer
               </button>
             </form>
@@ -145,6 +143,6 @@ export default async function PickupValidationPage({
           )}
         </section>
       )}
-    </div>
+    </AdminPage>
   );
 }

@@ -1,11 +1,17 @@
 "use client";
 
+import "./admin-premium.css";
+
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { AdminNav } from "@/components/AdminNav";
 import { ToastProvider } from "@/components/admin/ui";
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
 
   useEffect(() => {

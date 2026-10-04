@@ -4,6 +4,8 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -22,7 +24,8 @@ const Ctx = createContext<ToastCtx | null>(null);
 
 export function useAdminToast(): ToastCtx {
   const ctx = useContext(Ctx);
-  if (!ctx) throw new Error("useAdminToast harus dipakai di dalam <ToastProvider>");
+  if (!ctx)
+    throw new Error("useAdminToast harus dipakai di dalam <ToastProvider>");
   return ctx;
 }
 
@@ -34,30 +37,52 @@ const TONE_ICON: Record<ToastTone, string> = {
   info: "M12 16v-4M12 8h.01",
 };
 const TONE_COLOR: Record<ToastTone, string> = {
-  success: "text-emerald-400",
-  error: "text-red-400",
-  info: "text-sky-400",
+  success: "text-emerald-600",
+  error: "text-red-600",
+  info: "text-sky-600",
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const activeTimers = timers.current;
+    return () => {
+      activeTimers.forEach(clearTimeout);
+      activeTimers.clear();
+    };
+  }, []);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const dismiss = useCallback(
-    (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id)),
-    [],
-  );
+  const dismiss = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    timers.current.delete(id);
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   const show = useCallback<ToastCtx["show"]>((message, tone = "success") => {
     const id = (_toastId += 1);
     setToasts((prev) => [...prev, { id, message, tone }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4500);
+    timers.current.set(
+      id,
+      setTimeout(() => {
+        timers.current.delete(id);
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 6000)
+    );
   }, []);
 
   return (
     <Ctx.Provider value={{ show }}>
       {children}
+      <div
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {toasts.at(-1)?.message}
+      </div>
       {toasts.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 top-4 z-[80] flex flex-col items-center gap-2 px-4">
           {toasts.map((t) => (
@@ -65,7 +90,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               key={t.id}
               type="button"
               onClick={() => dismiss(t.id)}
-              className="pointer-events-auto flex max-w-md items-center gap-2 rounded-full bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg"
+              aria-label={`Tutup notifikasi: ${t.message}`}
+              className="admin-toast pointer-events-auto flex min-h-11 max-w-md items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-lg"
             >
               <svg
                 viewBox="0 0 24 24"

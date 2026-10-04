@@ -34,9 +34,7 @@ export function SectionCard({
   className = "",
 }: SectionCardProps) {
   return (
-    <section
-      className={`overflow-hidden rounded-2xl border border-zinc-200 bg-white ${className}`}
-    >
+    <section className={`admin-section ${className}`}>
       <header className="flex items-start justify-between gap-3 border-b border-zinc-100 px-4 py-4 md:px-5 md:py-5">
         <div className="flex min-w-0 items-start gap-3">
           {icon ? (
@@ -45,9 +43,7 @@ export function SectionCard({
             </span>
           ) : null}
           <div className="min-w-0">
-            <h2 className="truncate text-base font-black text-zinc-950 md:text-lg">
-              {title}
-            </h2>
+            <h2 className="admin-heading text-base">{title}</h2>
             {subtitle ? (
               <p className="mt-0.5 text-xs text-zinc-500 md:text-sm">
                 {subtitle}
@@ -56,15 +52,14 @@ export function SectionCard({
           </div>
         </div>
         {action ? (
-          <Link
-            href={action.href}
-            className="shrink-0 rounded-full bg-natalo-50 px-3 py-1.5 text-xs font-bold text-natalo-700 transition hover:bg-natalo-100 md:text-sm"
-          >
+          <Link href={action.href} className="admin-section-action">
             {action.label} →
           </Link>
         ) : null}
       </header>
-      <div className={density === "tight" ? "" : "p-4 md:p-5"}>{children}</div>
+      <div className={density === "tight" ? "" : "admin-section-body"}>
+        {children}
+      </div>
     </section>
   );
 }

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function AdminFeedPage() {
   return (
-    <AdminPage maxWidth="lg">
+    <AdminPage maxWidth="lg" className="admin-operational-page">
       <AdminFeedClient />
     </AdminPage>
   );

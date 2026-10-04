@@ -6,7 +6,13 @@ import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { BrandLogoOrderClient } from "@/components/admin/BrandLogoOrderClient";
 import { BrandLogoUploadButton } from "@/components/admin/BrandLogoUploadButton";
 import { BrandCreateDialog } from "@/components/admin/BrandCreateDialog";
-import { PageHeader, EmptyState, Badge, AdminPage, Button } from "@/components/admin/ui";
+import {
+  PageHeader,
+  EmptyState,
+  Badge,
+  AdminPage,
+  Button,
+} from "@/components/admin/ui";
 
 function slugify(name: string) {
   return name
@@ -28,7 +34,9 @@ function parseOrderedIds(value: FormDataEntryValue | null) {
   try {
     const parsed = JSON.parse(value);
     return Array.isArray(parsed)
-      ? parsed.filter((id): id is string => typeof id === "string" && id.length > 0)
+      ? parsed.filter(
+          (id): id is string => typeof id === "string" && id.length > 0
+        )
       : [];
   } catch {
     return [];
@@ -96,7 +104,9 @@ export default async function AdminBrandsPage({
     if (affectedProducts.length > 0) {
       const { syncProduct } = await import("@/lib/search");
       await Promise.all(
-        affectedProducts.map((product) => syncProduct(product.id).catch(() => {})),
+        affectedProducts.map((product) =>
+          syncProduct(product.id).catch(() => {})
+        )
       );
     }
 
@@ -113,7 +123,7 @@ export default async function AdminBrandsPage({
         prisma.brand.update({
           where: { id },
           data: { position: index },
-        }),
+        })
       ),
       prisma.brand.updateMany({
         where: {
@@ -155,13 +165,22 @@ export default async function AdminBrandsPage({
     });
     if (currentPrimary.some((brand) => brand.id === brandId)) return;
 
-    const lastPrimary = currentPrimary.length >= 18 ? currentPrimary.at(-1) : undefined;
+    const lastPrimary =
+      currentPrimary.length >= 18 ? currentPrimary.at(-1) : undefined;
     const targetPosition = Math.min(currentPrimary.length, 17);
     await prisma.$transaction([
       ...(lastPrimary
-        ? [prisma.brand.update({ where: { id: lastPrimary.id }, data: { position: 1000 } })]
+        ? [
+            prisma.brand.update({
+              where: { id: lastPrimary.id },
+              data: { position: 1000 },
+            }),
+          ]
         : []),
-      prisma.brand.update({ where: { id: brandId }, data: { position: targetPosition } }),
+      prisma.brand.update({
+        where: { id: brandId },
+        data: { position: targetPosition },
+      }),
     ]);
     revalidateBrandSurfaces();
   }
@@ -189,7 +208,7 @@ export default async function AdminBrandsPage({
   const allBrandsPanel = (
     <div>
       <div className="flex flex-col gap-2 border-b border-zinc-100 px-4 py-5 sm:px-6">
-        <h2 className="text-base font-black text-zinc-950">Semua Brand</h2>
+        <h2 className="text-base font-semibold text-zinc-950">Semua Brand</h2>
         <p className="text-xs font-semibold text-zinc-500">
           Kelola logo, status, produk, dan informasi setiap brand.
         </p>
@@ -222,12 +241,12 @@ export default async function AdminBrandsPage({
                       {brand.isActive ? "Aktif" : "Nonaktif"}
                     </Badge>
                     {primaryIds.has(brand.id) && (
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
                         Utama #{brand.position + 1}
                       </span>
                     )}
                     {!brand.logoUrl && (
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
                         Tanpa logo
                       </span>
                     )}
@@ -238,10 +257,18 @@ export default async function AdminBrandsPage({
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
-                <Button href={`/admin/brands/${brand.id}/edit`} variant="secondary" size="md">
+                <Button
+                  href={`/admin/brands/${brand.id}/edit`}
+                  variant="secondary"
+                  size="md"
+                >
                   Edit
                 </Button>
-                <Button href={`/admin/products?brand=${brand.slug}`} variant="secondary" size="md">
+                <Button
+                  href={`/admin/products?brand=${brand.slug}`}
+                  variant="secondary"
+                  size="md"
+                >
                   Produk
                 </Button>
                 <form action={deleteBrand}>
@@ -262,7 +289,7 @@ export default async function AdminBrandsPage({
   );
 
   return (
-    <AdminPage maxWidth="xl">
+    <AdminPage maxWidth="xl" className="admin-operational-page">
       <PageHeader
         title="Brand"
         subtitle={`${brands.length} brand terdaftar.`}
@@ -270,10 +297,25 @@ export default async function AdminBrandsPage({
       />
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Total Brand" value={brands.length} tone="blue" icon="◇" />
+        <SummaryCard
+          label="Total Brand"
+          value={brands.length}
+          tone="blue"
+          icon="◇"
+        />
         <SummaryCard label="Aktif" value={activeCount} tone="green" icon="✓" />
-        <SummaryCard label="Tanpa Logo" value={withoutLogoCount} tone="amber" icon="▧" />
-        <SummaryCard label="Perlu Review" value={needsReviewCount} tone="violet" icon="↻" />
+        <SummaryCard
+          label="Tanpa Logo"
+          value={withoutLogoCount}
+          tone="amber"
+          icon="▧"
+        />
+        <SummaryCard
+          label="Perlu Review"
+          value={needsReviewCount}
+          tone="violet"
+          icon="↻"
+        />
       </div>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -348,12 +390,15 @@ function SummaryCard({
   }[tone];
   return (
     <div className="flex items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-      <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl text-xl font-black ${styles}`} aria-hidden="true">
+      <span
+        className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl text-xl font-semibold ${styles}`}
+        aria-hidden="true"
+      >
         {icon}
       </span>
       <div>
         <p className="text-xs font-bold text-zinc-500">{label}</p>
-        <p className="mt-0.5 text-2xl font-black text-zinc-950">{value}</p>
+        <p className="mt-0.5 text-2xl font-semibold text-zinc-950">{value}</p>
       </div>
     </div>
   );

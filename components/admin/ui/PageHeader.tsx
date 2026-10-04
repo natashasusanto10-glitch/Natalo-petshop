@@ -10,18 +10,23 @@ import type { ReactNode } from "react";
  */
 type PageHeaderProps = {
   title: string;
+  eyebrow?: string;
   subtitle?: string;
   /** CTA buttons / link, biasanya max 2-3. */
   actions?: ReactNode;
 };
 
-export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  eyebrow,
+  subtitle,
+  actions,
+}: PageHeaderProps) {
   return (
     <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center md:gap-4">
       <div className="min-w-0">
-        <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">
-          {title}
-        </h1>
+        {eyebrow && <p className="admin-page-eyebrow">{eyebrow}</p>}
+        <h1 className="admin-heading text-2xl md:text-3xl">{title}</h1>
         {subtitle ? (
           <p className="mt-1.5 text-sm text-zinc-600">{subtitle}</p>
         ) : null}

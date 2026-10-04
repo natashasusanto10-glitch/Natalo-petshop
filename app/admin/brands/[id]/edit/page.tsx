@@ -38,7 +38,9 @@ export default async function EditBrandPage({
   await requireAdmin();
 
   const { id } = await params;
-  const brand = await prisma.brand.findUnique({ where: { id } }).catch(() => null);
+  const brand = await prisma.brand
+    .findUnique({ where: { id } })
+    .catch(() => null);
   if (!brand) return notFound();
 
   async function updateBrand(formData: FormData) {
@@ -65,12 +67,12 @@ export default async function EditBrandPage({
   }
 
   return (
-    <AdminPage maxWidth="md">
+    <AdminPage maxWidth="md" className="admin-operational-page">
       <Button href="/admin/brands" variant="secondary" size="sm">
         Kembali ke Brand
       </Button>
 
-      <h1 className="mt-4 text-2xl font-black tracking-tight text-zinc-950">
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-950">
         Edit Brand
       </h1>
 

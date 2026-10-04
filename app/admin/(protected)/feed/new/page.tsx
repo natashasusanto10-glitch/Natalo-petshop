@@ -1,3 +1,4 @@
+import { AdminPage } from "@/components/admin/ui";
 import type { Metadata } from "next";
 import { AdminFeedCreateClient } from "@/components/admin/feed/AdminFeedCreateClient";
 
@@ -7,8 +8,8 @@ export const metadata: Metadata = {
 
 export default function AdminFeedNewPage() {
   return (
-    <main className="min-h-[100dvh] bg-slate-50 px-4 pb-32 pt-4">
+    <AdminPage maxWidth="lg" className="admin-operational-page">
       <AdminFeedCreateClient />
-    </main>
+    </AdminPage>
   );
 }

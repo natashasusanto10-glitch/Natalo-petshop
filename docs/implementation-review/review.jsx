@@ -1,0 +1,32 @@
+import {operationalPage,operationalFixtureFetch} from "./operational-review";
+import React,{useEffect,useState} from "react";
+import {createRoot} from "react-dom/client";
+import {AdminNav} from "../../components/AdminNav";
+import {ProductForm} from "../../components/admin/ProductForm";
+import {VariantInlineEditCell} from "../../components/admin/VariantInlineEditCell";
+import {InlineEditCell} from "../../components/admin/InlineEditCell";
+import {ProductSelectionProvider,ProductRowCheckbox,ProductBulkBar} from "../../components/admin/ProductBulkSelect";
+import {ProductVariantsDisclosure} from "../../components/admin/ProductVariantsDisclosure";
+import {AdminPage,PageHeader,Button,ToastProvider} from "../../components/admin/ui";
+const photo=(color,name)=>`data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><rect width="180" height="180" fill="${color}"/><rect x="42" y="20" width="96" height="140" rx="12" fill="white"/><text x="90" y="90" text-anchor="middle" font-family="Arial" font-size="14" fill="#183d63">${name}</text></svg>`)}`;
+const images=[photo("#e3f0ed","NATALO"),photo("#e8eefb","Chicken"),photo("#fff0d9","Beef")];
+const categories=[{id:"cat-1",name:"Makanan Kucing"},{id:"cat-2",name:"Kandang & Carrier"},{id:"cat-3",name:"Obat & Suplemen"}]; const brands=[{id:"brand-1",name:"Royal Canin"},{id:"brand-2",name:"Animal & Co"}];
+const attrs=[{id:"attr-1",name:"Rasa",position:0,options:[{id:"opt-1",value:"Chicken",position:0},{id:"opt-2",value:"Beef",position:1}]}];
+const variants=attrs[0].options.map((option,index)=>({id:`variant-${index}`,price:875000,stock:50,weightGram:500,sku:`NAT-${index+1}`,imageUrl:null,isActive:true,options:[{optionId:option.id}]}));
+const base={name:"Animal & Co Snack Treat Premium",description:"Camilan hewan dengan bahan pilihan untuk kebutuhan harian.",imageUrl:images[0],gallery:images.slice(1),categoryId:"cat-1",brandId:"brand-2",price:875000,stock:100,weightGram:500,sku:null,isActive:true,discountPrice:null,memberPrice:null,avgRating:0,reviewCount:0,discountItems:[],hasVariants:true,variantAttrs:attrs,variants,videoGuid:null,videoStatus:null,videoThumbnailUrl:null,videoDurationSec:null};
+const single={...base,id:"review-single",name:"Tisu Basah Hewan Isi 80 Lembar",hasVariants:false,variantAttrs:[],variants:[],price:12100,stock:200,sku:"RUNBELLE"};
+const varied={...base,id:"review-variant"};
+window.reviewRequests=[]; window.reviewFailure=location.search.includes("review-failure");
+window.addEventListener("error",event=>{(window.reviewErrors??=[]).push(event.message);});
+window.fetch=async(url,options={})=>{
+  const path=String(url); window.reviewRequests.push({url:path,method:options.method||"GET",body:options.body ? JSON.parse(options.body):null}); console.info("Review request",JSON.stringify(window.reviewRequests.at(-1)));
+  const response=operationalFixtureFetch(path,options); if(response)return response;
+  if(!path.startsWith("/api/admin/products")) throw new Error("Review lokal: koneksi backend dinonaktifkan.");
+  if(window.reviewFailure || path.includes("review-failure")) return Response.json({error:"Simulasi gagal: coba kembali."},{status:503});
+  if((options.method||"GET")==="GET") return Response.json({attributes:attrs,variants});
+  if(path.endsWith("/variants/bulk")){const updates=JSON.parse(options.body).updates;updates.forEach(update=>Object.assign(variants.find(row=>row.id===update.id),update));const aggregate={price:Math.min(...variants.map(row=>row.price)),stock:variants.reduce((sum,row)=>sum+row.stock,0)};Object.assign(varied,aggregate);return Response.json({aggregate});}
+  return Response.json({id:path.includes("review-single") ? "review-single" : "review-variant"});
+};
+function ProductList(){return <ProductSelectionProvider allIds={[single.id,varied.id]}><AdminPage maxWidth="xl"><PageHeader title="Produk" subtitle="Data contoh untuk review komponen implementasi" actions={<Button href="/admin/products/new">+ Tambah produk</Button>}/><div className="mt-6 rounded-xl border border-slate-200 bg-white"><div className="admin-product-list-row admin-product-list-header bg-slate-50 text-xs"><span/><span>Produk</span><span>Harga</span><span>Stok</span><span>Aksi</span></div>{[single,varied].map(product=><div key={product.id}><div className="admin-product-list-row"><ProductRowCheckbox id={product.id}/><div className="flex min-w-0 gap-3"><img src={product.imageUrl} width="56" height="56" className="h-14 w-14 shrink-0 rounded-lg object-contain"/><div className="min-w-0"><a href={`/admin/products/${product.id}/edit`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold">{product.name}</a><p className="mt-2 text-xs text-slate-500">SKU {product.sku||"—"} · Makanan Kucing</p></div></div><div className="admin-price-column">{product.hasVariants ? <VariantInlineEditCell productId={product.id} productName={product.name} field="price" initialValue={product.price}/> : <InlineEditCell productId={product.id} productName={product.name} field="price" initialValue={product.price}/>}</div><div className="admin-stock-column">{product.hasVariants ? <VariantInlineEditCell productId={product.id} productName={product.name} field="stock" initialValue={product.stock}/> : <InlineEditCell productId={product.id} productName={product.name} field="stock" initialValue={product.stock}/>}</div><div className="admin-product-row-actions"><Button href={`/admin/products/${product.id}/edit`} target="_blank" rel="noopener noreferrer" variant="secondary" size="sm">Edit produk</Button><button className="admin-icon-button" type="button">•••</button></div></div>{product.hasVariants&&<ProductVariantsDisclosure productId={product.id} productName={product.name} price={product.price} stock={product.stock}/>}</div>)}</div><ProductBulkBar/></AdminPage></ProductSelectionProvider>;}
+function Review(){const [,update]=useState(0);useEffect(()=>{const refresh=()=>update(value=>value+1);window.addEventListener("review-refresh",refresh);return()=>window.removeEventListener("review-refresh",refresh);},[]);const isNew=location.pathname.endsWith("/new");const edit=location.pathname.endsWith("/edit");return <ToastProvider><AdminNav>{operationalPage(location.pathname)||(isNew||edit?<ProductForm mode={isNew?"create":"edit"} categories={categories} brands={brands} initialProduct={isNew?undefined:location.pathname.includes("review-single")?single:varied}/>:<ProductList/>)}</AdminNav></ToastProvider>;}
+createRoot(document.getElementById("root")).render(<Review/>);

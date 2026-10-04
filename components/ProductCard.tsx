@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { StoreProduct } from "@/lib/products";
+import type { StoreProduct } from "@/lib/products";
 import { formatRupiah } from "@/lib/format";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
 import { rankBadgeClass } from "@/lib/rank-badge";
@@ -16,6 +17,7 @@ export function computeDiscountPercent(price: number, displayPrice: number): num
 }
 
 type Props = {
+  preview?: boolean;
   product: StoreProduct;
   priority?: boolean;
   isFavorited?: boolean;
@@ -30,6 +32,7 @@ type Props = {
 
 export function ProductCard({
   product,
+  preview = false,
   priority = false,
   isFavorited: _isFavorited,
   variant = "default",
@@ -49,15 +52,15 @@ export function ProductCard({
   const outOfStock = product.stock <= 0;
   const productHref = `/products/${product.slug}`;
   const discountPercent = computeDiscountPercent(product.price, displayPrice);
-  const gridVideoMp4 = productVideoMp4(product.videoUrl, 360);
+  const gridVideoMp4 = preview && product.videoUrl?.startsWith("blob:") ? product.videoUrl : productVideoMp4(product.videoUrl, 360);
 
   if (isCompact) {
     return (
       <div className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#f0f0f0] bg-white p-3 transition active:opacity-90 sm:hover:shadow-lg">
-        <Link href={productHref} className="flex min-w-0 flex-1 flex-col">
+        <ProductCardLink preview={preview} href={productHref} className="flex min-w-0 flex-1 flex-col">
           <div
             className="relative aspect-square max-h-[160px] w-full overflow-hidden rounded-t-xl bg-gray-100"
-            style={{ viewTransitionName: `nat-prod-${product.slug}` }}
+            style={{ viewTransitionName: preview ? undefined : `nat-prod-${product.slug}` }}
           >
             {gridVideoMp4 ? (
               <ProductCardVideo
@@ -124,12 +127,12 @@ export function ProductCard({
               )}
             </div>
           </div>
-        </Link>
+        </ProductCardLink>
 
         {/* CTA kecil — di luar Link untuk hindari nested-interactive.
             + Keranjang untuk produk single-variant, Pilih Varian untuk multi-
             variant (link ke detail), Habis disabled saat stok kosong. */}
-        <div className="mt-2">
+        {!preview && <div className="mt-2">
           <ProductCardCta
             productId={product.id}
             slug={product.slug}
@@ -140,18 +143,18 @@ export function ProductCard({
             stock={product.stock}
             hasVariants={product.hasVariants}
           />
-        </div>
+        </div>}
       </div>
     );
   }
 
   return (
     <div className={`group relative flex min-w-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[#e8eef7] bg-white p-2.5 shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] [will-change:transform] active:scale-[0.99] active:opacity-90 sm:p-3 sm:hover:-translate-y-1.5 sm:hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] ${className}`}>
-      <Link href={`/products/${product.slug}`} className="flex flex-1 flex-col">
+      <ProductCardLink preview={preview} href={productHref} className="flex flex-1 flex-col">
         {/* Image area */}
         <div
           className="nat-lit-shelf nat-shelf-line relative aspect-square rounded-2xl bg-white"
-          style={{ viewTransitionName: `nat-prod-${product.slug}` }}
+          style={{ viewTransitionName: preview ? undefined : `nat-prod-${product.slug}` }}
         >
           {gridVideoMp4 ? (
             <ProductCardVideo
@@ -228,7 +231,7 @@ export function ProductCard({
             </p>
           )}
         </div>
-      </Link>
+      </ProductCardLink>
 
       {/* Quick-add overlay (desktop hover saja — Tailwind v4 membungkus
           group-hover dgn @media(hover:hover), mobile bersih). Container-
@@ -236,7 +239,7 @@ export function ProductCard({
           tombol HARUS di luar Link supaya tidak nested-interactive. Cuma
           dirender untuk kartu tanpa CTA inline (homepage/katalog) biar
           tidak dobel tombol. */}
-      {!showCta && (
+      {!preview && !showCta && (
         <div className="pointer-events-none absolute inset-x-3 top-3 z-20 hidden aspect-square sm:block">
           <ProductQuickAdd
             className="pointer-events-auto absolute bottom-3 right-3 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100"
@@ -253,7 +256,7 @@ export function ProductCard({
       )}
 
       {/* CTA kecil — outside Link untuk hindari nested-interactive. */}
-      {showCta && (
+      {!preview && showCta && (
         <div className="mt-3">
           <ProductCardCta
             productId={product.id}
@@ -269,4 +272,8 @@ export function ProductCard({
       )}
     </div>
   );
+}
+
+function ProductCardLink({ preview, href, className, children }: { preview: boolean; href: string; className: string; children: ReactNode }) {
+  return preview ? <div className={className}>{children}</div> : <Link href={href} className={className}>{children}</Link>;
 }

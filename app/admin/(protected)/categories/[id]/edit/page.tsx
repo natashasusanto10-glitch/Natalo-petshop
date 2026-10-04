@@ -39,14 +39,22 @@ export default async function AdminCategoryEditPage({
   }
 
   return (
-    <AdminPage maxWidth="md">
-      <Link href="/admin/categories" className="text-sm font-bold text-zinc-500 hover:text-zinc-950">
+    <AdminPage maxWidth="md" className="admin-operational-page">
+      <Link
+        href="/admin/categories"
+        className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
+      >
         ← Kembali ke kategori
       </Link>
-      <h1 className="mt-2 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Edit Kategori</h1>
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
+        Edit Kategori
+      </h1>
       <p className="mt-1 truncate text-sm text-zinc-600">/{category.slug}</p>
 
-      <form action={updateCategory} className="mt-5 space-y-5 md:mt-8">
+      <form
+        action={updateCategory}
+        className="admin-operational-form mt-5 space-y-5 md:mt-8"
+      >
         <div>
           <label className="block text-sm font-medium text-zinc-700">
             Nama kategori <span className="text-red-500">*</span>
@@ -57,7 +65,9 @@ export default async function AdminCategoryEditPage({
             defaultValue={category.name}
             className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
           />
-          <p className="mt-1 text-xs text-zinc-600">Slug akan diperbarui otomatis.</p>
+          <p className="mt-1 text-xs text-zinc-600">
+            Slug akan diperbarui otomatis.
+          </p>
         </div>
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">

@@ -96,17 +96,21 @@ export default async function AdminReviewsPage({
     { key: "all", label: "Semua", count: total },
     { key: "VISIBLE", label: "Tampil", count: countByStatus.VISIBLE ?? 0 },
     { key: "HIDDEN", label: "Disembunyikan", count: countByStatus.HIDDEN ?? 0 },
-    { key: "DELETED", label: "Dihapus user", count: countByStatus.DELETED ?? 0 },
+    {
+      key: "DELETED",
+      label: "Dihapus user",
+      count: countByStatus.DELETED ?? 0,
+    },
   ];
 
   return (
-    <AdminPage maxWidth="xl">
+    <AdminPage maxWidth="xl" className="admin-operational-page">
       <PageHeader
         title="Moderasi Review"
         subtitle={`Kelola ${total} review pembeli — approve, hide, atau balas.`}
         actions={
           <Button href="/admin/dashboard" variant="secondary" size="sm">
-            ← Dashboard
+            Kembali ke ringkasan
           </Button>
         }
       />
@@ -116,7 +120,9 @@ export default async function AdminReviewsPage({
         {tabs.map((t) => {
           const isActive = (filterStatus ?? "all") === t.key;
           const href =
-            t.key === "all" ? "/admin/reviews" : `/admin/reviews?status=${t.key}`;
+            t.key === "all"
+              ? "/admin/reviews"
+              : `/admin/reviews?status=${t.key}`;
           return (
             <Link
               key={t.key}
@@ -129,8 +135,10 @@ export default async function AdminReviewsPage({
             >
               {t.label}
               <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                  isActive ? "bg-white/20 text-white" : "bg-zinc-100 text-zinc-700"
+                className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                  isActive
+                    ? "bg-white/20 text-white"
+                    : "bg-zinc-100 text-zinc-700"
                 }`}
               >
                 {t.count}
@@ -172,14 +180,15 @@ export default async function AdminReviewsPage({
                 <div className="flex items-center gap-3">
                   <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
                     {r.product.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={r.product.imageUrl}
                         alt={r.product.name}
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <div className="flex h-full items-center justify-center text-xl">🐾</div>
+                      <div className="flex h-full items-center justify-center text-xl">
+                        🐾
+                      </div>
                     )}
                   </div>
                   <div>
@@ -214,12 +223,17 @@ export default async function AdminReviewsPage({
                   </span>
                 )}
               </div>
-              {r.title && <p className="mt-3 font-semibold text-zinc-950">{r.title}</p>}
-              {r.content && <p className="mt-2 text-sm text-zinc-700 whitespace-pre-line">{r.content}</p>}
+              {r.title && (
+                <p className="mt-3 font-semibold text-zinc-950">{r.title}</p>
+              )}
+              {r.content && (
+                <p className="mt-2 text-sm text-zinc-700 whitespace-pre-line">
+                  {r.content}
+                </p>
+              )}
               {r.images.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {r.images.map((img) => (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       key={img.id}
                       src={img.imageUrl}
@@ -230,14 +244,20 @@ export default async function AdminReviewsPage({
                 </div>
               )}
               {r.hiddenReason && (
-                <p className="mt-2 text-xs text-red-600">Alasan disembunyikan: {r.hiddenReason}</p>
+                <p className="mt-2 text-xs text-red-600">
+                  Alasan disembunyikan: {r.hiddenReason}
+                </p>
               )}
 
               {/* Existing reply */}
               {r.reply && (
                 <div className="mt-3 rounded-xl bg-natalo-50 p-3">
-                  <p className="text-xs font-bold text-natalo-800">Balasan saat ini:</p>
-                  <p className="mt-1 text-sm text-zinc-700 whitespace-pre-line">{r.reply.content}</p>
+                  <p className="text-xs font-bold text-natalo-800">
+                    Balasan saat ini:
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-700 whitespace-pre-line">
+                    {r.reply.content}
+                  </p>
                 </div>
               )}
 
@@ -246,7 +266,11 @@ export default async function AdminReviewsPage({
                 {r.status === "VISIBLE" ? (
                   <form action={hideReview}>
                     <input type="hidden" name="id" value={r.id} />
-                    <input type="hidden" name="reason" value="Konten tidak sesuai kebijakan toko" />
+                    <input
+                      type="hidden"
+                      name="reason"
+                      value="Konten tidak sesuai kebijakan toko"
+                    />
                     <Button type="submit" variant="dangerSoft" size="sm">
                       Sembunyikan
                     </Button>
@@ -290,7 +314,9 @@ export default async function AdminReviewsPage({
         currentPage={page}
         totalPages={totalPages}
         hrefFor={(target) =>
-          `/admin/reviews?${filterStatus ? `status=${filterStatus}&` : ""}page=${target}`
+          `/admin/reviews?${
+            filterStatus ? `status=${filterStatus}&` : ""
+          }page=${target}`
         }
         summary={`${total} review`}
       />

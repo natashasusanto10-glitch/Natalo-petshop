@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { ConfirmDialog } from "@/components/admin/ui";
+import { LayoutMotion } from "@/components/admin/ui/Motion";
 import { uploadAdminImage } from "@/lib/admin-image-upload";
 
 type Banner = {
@@ -42,11 +44,16 @@ const LINK_TYPE_LABELS: Record<string, string> = {
   url: "URL eksternal",
 };
 
-export function BannerManagerClient({ initialBanners, categories, brands }: Props) {
+export function BannerManagerClient({
+  initialBanners,
+  categories,
+  brands,
+}: Props) {
   const router = useRouter();
   const [banners, setBanners] = useState<Banner[]>(initialBanners);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const addFileRef = useRef<HTMLInputElement>(null);
 
   function refresh() {
@@ -87,6 +94,8 @@ export function BannerManagerClient({ initialBanners, categories, brands }: Prop
       }
       setBanners((prev) => [...prev, data.banner]);
       refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Koneksi gagal. Coba kembali.");
     } finally {
       setBusy(false);
     }
@@ -94,22 +103,33 @@ export function BannerManagerClient({ initialBanners, categories, brands }: Prop
 
   async function patchBanner(id: string, patch: Partial<Banner>) {
     setError("");
-    const res = await fetch(`/api/admin/banners/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error ?? "Gagal menyimpan");
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/banners/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.banner)
+        throw new Error(data?.error ?? "Gagal menyimpan. Coba kembali.");
+      setBanners((prev) =>
+        prev.map((row) => (row.id === id ? { ...row, ...data?.banner } : row))
+      );
+      return true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Koneksi gagal. Coba kembali.");
       return false;
+    } finally {
+      setBusy(false);
     }
-    setBanners((prev) => prev.map((b) => (b.id === id ? { ...b, ...data.banner } : b)));
-    return true;
   }
 
-  async function deleteBanner(id: string) {
-    if (!confirm("Hapus banner ini?")) return;
+  function deleteBanner(id: string) {
+    setError("");
+    setDeleteId(id);
+  }
+  async function removeBanner(id: string) {
     setError("");
     setBusy(true);
     try {
@@ -120,7 +140,10 @@ export function BannerManagerClient({ initialBanners, categories, brands }: Prop
         return;
       }
       setBanners((prev) => prev.filter((b) => b.id !== id));
+      setDeleteId(null);
       refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Koneksi gagal. Coba kembali.");
     } finally {
       setBusy(false);
     }
@@ -135,12 +158,16 @@ export function BannerManagerClient({ initialBanners, categories, brands }: Prop
     setBanners(next);
     setBusy(true);
     try {
-      await fetch("/api/admin/banners/reorder", {
+      const response = await fetch("/api/admin/banners/reorder", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: next.map((b) => b.id) }),
       });
+      if (!response.ok) throw new Error("Urutan gagal disimpan. Coba kembali.");
       refresh();
+    } catch (e) {
+      setBanners(banners);
+      setError(e instanceof Error ? e.message : "Koneksi gagal. Coba kembali.");
     } finally {
       setBusy(false);
     }
@@ -148,9 +175,22 @@ export function BannerManagerClient({ initialBanners, categories, brands }: Prop
 
   return (
     <div className="mt-5 space-y-5">
+      <ConfirmDialog
+        open={deleteId !== null}
+        title="Hapus banner?"
+        message="Banner ini akan dihapus dari tampilan pelanggan. Tindakan ini tidak dapat dibatalkan."
+        confirmLabel="Hapus banner"
+        busy={busy}
+        error={deleteId ? error : undefined}
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => {
+          if (deleteId) void removeBanner(deleteId);
+        }}
+      />
+
       {/* Panduan ukuran — biar admin upload gambar yang tidak ke-crop */}
       <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-        <p className="font-black">📐 Ukuran gambar ideal</p>
+        <p className="font-semibold">Panduan gambar</p>
         <p className="mt-1 leading-relaxed">
           Rasio <strong>16:7</strong> — ukuran rekomendasi{" "}
           <strong>
@@ -163,7 +203,10 @@ export function BannerManagerClient({ initialBanners, categories, brands }: Prop
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700">
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700"
+        >
           {error}
         </div>
       )}
@@ -185,7 +228,7 @@ export function BannerManagerClient({ initialBanners, categories, brands }: Prop
           type="button"
           disabled={busy}
           onClick={() => addFileRef.current?.click()}
-          className="inline-flex items-center gap-2 rounded-full bg-natalo-600 px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-natalo-700 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-full bg-natalo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-natalo-700 disabled:opacity-50"
         >
           + Tambah Banner
         </button>
@@ -197,7 +240,10 @@ export function BannerManagerClient({ initialBanners, categories, brands }: Prop
           sini.
         </div>
       ) : (
-        <div className="space-y-4">
+        <LayoutMotion
+          className="space-y-4"
+          revision={banners.map((row) => row.id).join(",")}
+        >
           {banners.map((banner, idx) => (
             <BannerCard
               key={banner.id}
@@ -213,7 +259,7 @@ export function BannerManagerClient({ initialBanners, categories, brands }: Prop
               uploadImage={uploadImage}
             />
           ))}
-        </div>
+        </LayoutMotion>
       )}
     </div>
   );
@@ -279,9 +325,12 @@ function BannerCard({
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-2">
-        <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-black text-zinc-600">
+    <div
+      data-motion-key={banner.id}
+      className="admin-media-card rounded-2xl border border-zinc-200 bg-white p-5"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold text-zinc-600">
           Slide {index + 1}
         </span>
         <div className="flex items-center gap-1.5">
@@ -291,6 +340,7 @@ function BannerCard({
             onClick={() => onMove(banner.id, -1)}
             className="rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-bold text-zinc-600 hover:bg-zinc-50 disabled:opacity-30"
             title="Naikkan"
+            aria-label="Naikkan banner"
           >
             ↑
           </button>
@@ -300,6 +350,7 @@ function BannerCard({
             onClick={() => onMove(banner.id, 1)}
             className="rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-bold text-zinc-600 hover:bg-zinc-50 disabled:opacity-30"
             title="Turunkan"
+            aria-label="Turunkan banner"
           >
             ↓
           </button>
@@ -307,7 +358,10 @@ function BannerCard({
             <input
               type="checkbox"
               checked={banner.isActive}
-              onChange={(e) => onPatch(banner.id, { isActive: e.target.checked })}
+              disabled={busy || saving || replacing}
+              onChange={(e) =>
+                onPatch(banner.id, { isActive: e.target.checked })
+              }
               className="accent-natalo-600"
             />
             Aktif
@@ -324,14 +378,17 @@ function BannerCard({
       </div>
 
       {/* Preview 16:7 — area yang BENAR-BENAR tampil di app (cover crop) */}
-      <div className="relative mt-3 w-full overflow-hidden rounded-xl bg-zinc-100 ring-1 ring-black/5" style={{ aspectRatio: "16 / 7" }}>
+      <div
+        className="relative mt-3 w-full overflow-hidden rounded-xl bg-zinc-100 ring-1 ring-black/5"
+        style={{ aspectRatio: "16 / 7" }}
+      >
         <img
           src={banner.imageUrl}
           alt={banner.imageAlt || "Banner"}
           className="h-full w-full object-cover"
         />
         {!banner.isActive && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-sm font-black text-white">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-sm font-semibold text-white">
             NONAKTIF
           </div>
         )}
@@ -350,7 +407,7 @@ function BannerCard({
       />
       <button
         type="button"
-        disabled={replacing}
+        disabled={busy || replacing}
         onClick={() => fileRef.current?.click()}
         className="mt-2 rounded-full border border-zinc-300 bg-white px-4 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
       >
@@ -359,9 +416,12 @@ function BannerCard({
 
       {/* Link tujuan */}
       <div className="mt-4 space-y-2 rounded-xl bg-zinc-50 p-3">
-        <p className="text-xs font-black text-zinc-500">LINK TUJUAN (saat di-tap)</p>
+        <p className="text-xs font-semibold text-zinc-500">
+          LINK TUJUAN (saat di-tap)
+        </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <select
+            aria-label="Jenis tujuan tautan"
             value={linkType}
             onChange={(e) => {
               setLinkType(e.target.value);
@@ -378,6 +438,7 @@ function BannerCard({
 
           {linkType === "category" && (
             <select
+              aria-label="Tujuan tautan"
               value={linkValue}
               onChange={(e) => setLinkValue(e.target.value)}
               className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-950"
@@ -392,6 +453,7 @@ function BannerCard({
           )}
           {linkType === "brand" && (
             <select
+              aria-label="Tujuan tautan"
               value={linkValue}
               onChange={(e) => setLinkValue(e.target.value)}
               className="flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-950"
@@ -424,8 +486,8 @@ function BannerCard({
               {linkType === "promo"
                 ? "Promo/Diskon"
                 : linkType === "voucher"
-                  ? "Voucher"
-                  : "Tukar Poin"}
+                ? "Voucher"
+                : "Tukar Poin"}
               .
             </p>
           )}
@@ -441,7 +503,7 @@ function BannerCard({
 
         <button
           type="button"
-          disabled={saving}
+          disabled={busy || saving}
           onClick={saveLink}
           className="rounded-full bg-zinc-950 px-4 py-1.5 text-xs font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
         >
@@ -462,7 +524,9 @@ export function ProductSlugPicker({
   onChange: (slug: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Array<{ slug: string; name: string }>>([]);
+  const [results, setResults] = useState<Array<{ slug: string; name: string }>>(
+    []
+  );
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -476,7 +540,7 @@ export function ProductSlugPicker({
     timer.current = setTimeout(async () => {
       try {
         const res = await fetch(
-          `/api/search/suggest?q=${encodeURIComponent(q.trim())}&limit=8`,
+          `/api/search/suggest?q=${encodeURIComponent(q.trim())}&limit=8`
         );
         const data = await res.json();
         const products = (data.products ?? []) as Array<{

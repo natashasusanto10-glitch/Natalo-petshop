@@ -1,3 +1,4 @@
+import { AdminPage } from "@/components/admin/ui";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { DangerZoneClient } from "@/components/admin/DangerZoneClient";
@@ -13,7 +14,7 @@ export default async function DangerZonePage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-6">
+    <AdminPage maxWidth="lg" className="admin-operational-page">
       <div className="rounded-3xl border-2 border-red-200 bg-red-50/40 p-6">
         <div className="mb-4 flex items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-full bg-red-100">
@@ -26,7 +27,7 @@ export default async function DangerZonePage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-black text-red-900">Danger Zone</h1>
+            <h1 className="text-2xl font-semibold text-red-900">Danger Zone</h1>
             <p className="text-sm text-red-700">
               Aksi destruktif. Tidak bisa di-undo.
             </p>
@@ -34,6 +35,6 @@ export default async function DangerZonePage() {
         </div>
         <DangerZoneClient />
       </div>
-    </main>
+    </AdminPage>
   );
 }
