@@ -182,6 +182,7 @@ flutter:
     - assets/products/
     - assets/native/
     - assets/lottie/
+    - assets/lottie/shortcuts/
 flutter_launcher_icons:
   android: true
   ios: true

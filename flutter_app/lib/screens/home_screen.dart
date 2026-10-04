@@ -1,11 +1,11 @@
 import 'dart:async';
 import '../widgets/app_motion.dart';
+import '../widgets/animated_shortcut_icon.dart';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemUiOverlayStyle;
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // sample_brands + sample_products dihapus dari import — Home screen sekarang
@@ -2360,18 +2360,14 @@ class _ShortcutGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Hybrid 4×2 grid: row 1 = pet kategori utama (Makanan Kucing/Anjing/
-    // Pasir/Vitamin), row 2 = commerce shortcut (Voucher/Tukar Poin/
-    // Grooming/Blog). Search intent + reward CTA dalam satu grid.
-    // Pet category tap → ProductsScreen filtered by category name.
+    // Four pet categories followed by four commerce shortcuts.
     final items = <_ShortcutItem>[
       // ── Row 1: Kategori utama (selaras katalog live — semua ada isi) ──
       // Slug dipakai (bukan nama) supaya match backend + highlight sheet
       // kategori akurat. Lihat /api/categories untuk jumlah produk.
       _ShortcutItem(
-        Icons.pets_rounded,
+        ShortcutArtwork.catFood,
         'Makanan Kucing',
-        const Color(0xFF0B7FEA),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
@@ -2380,15 +2376,9 @@ class _ShortcutGrid extends StatelessWidget {
           ),
         ),
       ),
-      // TULANG (SVG custom) — Material Icons tak punya tulang/anjing; dulu
-      // cruelty_free_rounded (KELINCI, salah makna), lalu cookie (biskuit)
-      // masih kurang pas. iconAsset menang atas `icon`; cookie disimpan
-      // sebagai fallback kalau SVG gagal load.
       _ShortcutItem(
-        Icons.cookie_rounded,
+        ShortcutArtwork.dogFood,
         'Makanan Anjing',
-        const Color(0xFFF59E0B),
-        iconAsset: 'assets/icons/bone.svg',
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
@@ -2397,14 +2387,9 @@ class _ShortcutGrid extends StatelessWidget {
           ),
         ),
       ),
-      // IKAN (SVG custom) — set_meal_rounded sebenarnya sashimi di piring
-      // (salah makna). SVG ikan polos, gaya sama dgn bone.svg; set_meal
-      // disimpan sebagai fallback kalau aset gagal load.
       _ShortcutItem(
-        Icons.set_meal_rounded,
+        ShortcutArtwork.fishFood,
         'Makanan Ikan',
-        const Color(0xFF0891B2),
-        iconAsset: 'assets/icons/fish.svg',
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
@@ -2412,9 +2397,8 @@ class _ShortcutGrid extends StatelessWidget {
         ),
       ),
       _ShortcutItem(
-        Icons.medication_rounded,
+        ShortcutArtwork.medicine,
         'Obat & Suplemen',
-        const Color(0xFFEF4444),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
@@ -2423,21 +2407,17 @@ class _ShortcutGrid extends StatelessWidget {
       ),
       // ── Row 2: Promo + Produk Baru + reward ──
       _ShortcutItem(
-        Icons.local_fire_department_rounded,
+        ShortcutArtwork.promo,
         'Promo',
-        const Color(0xFFE11D48),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
           arguments: const ProductCatalogArgs(discountOnly: true),
         ),
       ),
-      // Sparkle, bukan new_releases_rounded — starburst itu bahasa badge
-      // verified/warning di Material; sparkle = "baru/fresh" ala marketplace.
       _ShortcutItem(
-        Icons.auto_awesome_rounded,
+        ShortcutArtwork.newProducts,
         'Produk Baru',
-        const Color(0xFF16A34A),
         onTap: (ctx) => Navigator.pushNamed(
           ctx,
           '/products',
@@ -2447,22 +2427,20 @@ class _ShortcutGrid extends StatelessWidget {
       // Tiket sobek = ikon voucher di seluruh app (checkout/cart/notif);
       // local_offer (tag harga) lebih bermakna "diskon", bukan voucher.
       _ShortcutItem(
-        Icons.confirmation_number_rounded,
+        ShortcutArtwork.voucher,
         'Voucher',
-        const Color(0xFFDB2777),
         onTap: (ctx) => Navigator.pushNamed(ctx, '/member/vouchers'),
       ),
       // Kado (redeem) = literal "tukar hadiah"; stars_rounded mudah
       // terbaca sebagai rating.
       _ShortcutItem(
-        Icons.redeem_rounded,
+        ShortcutArtwork.points,
         'Tukar Poin',
-        const Color(0xFFEA580C),
         onTap: (ctx) => Navigator.pushNamed(ctx, '/member/loyalty'),
       ),
     ];
 
-    // Sel shortcut (ikon squircle 48 + label). Column min-height = konten.
+    // Animated artwork with a separate, accessible category label.
     Widget buildCell(_ShortcutItem item) {
       return InkWell(
         onTap: () {
@@ -2476,28 +2454,7 @@ class _ShortcutGrid extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Lingkaran 48px warna solid + icon PUTIH (redesign Jul 2026,
-            // gaya "circle warna" ala marketplace — dulu squircle soft-tint
-            // + icon berwarna yang terasa datar/pucat di device). Tap ≥48.
-            Container(
-              height: 48,
-              width: 48,
-              decoration: BoxDecoration(
-                color: item.color,
-                shape: BoxShape.circle,
-              ),
-              child: item.iconAsset != null
-                  ? SvgPicture.asset(
-                      item.iconAsset!,
-                      width: 24,
-                      height: 24,
-                      colorFilter: const ColorFilter.mode(
-                        Colors.white,
-                        BlendMode.srcIn,
-                      ),
-                    )
-                  : Icon(item.icon, color: Colors.white, size: 24),
-            ),
+            AnimatedShortcutIcon(artwork: item.artwork),
             const SizedBox(height: 6),
             Text(
               item.label,
@@ -4453,26 +4410,9 @@ class _RecommendationGrid extends StatelessWidget {
 }
 
 class _ShortcutItem {
-  final IconData icon;
+  final ShortcutArtwork artwork;
   final String label;
-  // Warna solid lingkaran tile (icon-nya putih) — redesign "circle warna"
-  // Jul 2026; field `background` tint lama dihapus bersama gaya squircle.
-  final Color color;
-  // Optional glyph SVG (putih) — dipakai kalau Material Icons TAK punya
-  // bentuk yang pas (mis. TULANG untuk Makanan Anjing; Material cuma punya
-  // kelinci/cookie). Kalau null → render `icon`. `icon` tetap wajib sbg
-  // fallback kalau aset SVG gagal load.
-  final String? iconAsset;
-  // Optional per-item handler. Kalau null, _ShortcutGrid pakai default
-  // (onOpenProducts). Pattern ini supaya tiap shortcut bisa navigate ke
-  // destination berbeda tanpa harus refactor grid widget.
   final void Function(BuildContext context)? onTap;
 
-  const _ShortcutItem(
-    this.icon,
-    this.label,
-    this.color, {
-    this.iconAsset,
-    this.onTap,
-  });
+  const _ShortcutItem(this.artwork, this.label, {this.onTap});
 }
