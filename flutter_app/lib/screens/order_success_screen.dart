@@ -16,9 +16,9 @@ import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../utils/payment_url_policy.dart';
 import '../widgets/app_toast.dart';
-import '../widgets/app_ui.dart';
 import '../widgets/compact_commerce_product_card.dart';
 import '../widgets/skeleton_product_card.dart';
+import '../widgets/order_created_animation.dart';
 
 const _brandBlue = NataloColors.nataloBlue;
 const _pendingAmber = NataloColors.warning;
@@ -317,12 +317,7 @@ class _SuccessHero extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const AppLottieAsset(
-            asset: 'assets/lottie/order_created.json',
-            size: 126,
-            repeat: false,
-            fallbackIcon: Icons.pets_rounded,
-          ),
+          const OrderCreatedAnimation(),
           const SizedBox(height: 2),
           const Text(
             'Pesanan Berhasil Dibuat',
