@@ -5,6 +5,7 @@ import { VariantInlineEditCell } from "./VariantInlineEditCell";
 type Variant = {
   id: string;
   sku: string | null;
+  imageUrl: string | null;
   price: number;
   stock: number;
   isActive: boolean;
@@ -15,6 +16,19 @@ type Attribute = {
   name: string;
   options: Array<{ id: string; value: string }>;
 };
+
+function VariantThumbnail({ imageUrl, name }: { imageUrl: string | null; name: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white p-1">
+      {imageUrl && !failed ? (
+        <img src={imageUrl} alt={`Foto varian ${name}`} width={48} height={48} loading="lazy" className="h-full w-full object-contain" onError={() => setFailed(true)} />
+      ) : (
+        <svg role="img" aria-label={`Foto varian ${name} belum tersedia`} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-slate-300"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8" cy="8" r="1.5" /><path d="m3 17 5-5 4 4 4-6 5 7" /></svg>
+      )}
+    </div>
+  );
+}
 export function ProductVariantsDisclosure({
   productId,
   productName,
@@ -98,30 +112,24 @@ export function ProductVariantsDisclosure({
               </button>
             </div>
           ) : (
-            rows.map((row) => (
+            rows.map((row) => {
+              const name = attrs.flatMap((attr) =>
+                attr.options.filter((option) => row.options.some((ref) => ref.optionId === option.id))
+                  .map((option) => option.value)
+              ).join(" / ") || row.sku || "Varian";
+              return (
               <div key={row.id} className="admin-product-variant-row">
-                <div className="min-w-0 text-sm">
-                  <span>
-                    {attrs
-                      .flatMap((attr) =>
-                        attr.options
-                          .filter((option) =>
-                            row.options.some(
-                              (ref) => ref.optionId === option.id
-                            )
-                          )
-                          .map((option) => option.value)
-                      )
-                      .join(" / ") ||
-                      row.sku ||
-                      "Varian"}
-                  </span>
+                <div className="flex min-w-0 items-center gap-3 text-sm">
+                  <VariantThumbnail key={row.imageUrl} imageUrl={row.imageUrl} name={name} />
+                  <div className="min-w-0 break-words">
+                  <span className="font-medium">{name}</span>
                   {row.sku && (
                     <p className="mt-1 text-xs text-slate-500">{row.sku}</p>
                   )}
                   {!row.isActive && (
                     <span className="text-xs text-slate-500">Tidak aktif</span>
                   )}
+                  </div>
                 </div>
                 <VariantInlineEditCell
                   productId={productId}
@@ -138,7 +146,8 @@ export function ProductVariantsDisclosure({
                   initialValue={row.stock}
                 />
               </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
