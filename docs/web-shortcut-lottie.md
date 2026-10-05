@@ -1,7 +1,8 @@
 # Web shortcut Lottie delivery
 
 The home page uses the same eight approved animations as Flutter, with 40 px
-slots. Mobile has four columns and two rows; desktop has eight columns.
+slots on mobile and 64 px on desktop. Mobile has four columns and two rows;
+desktop has eight columns with larger 14 px labels.
 Category, promotion, voucher, and loyalty links use the web app's routes.
 Trending, House Call Grooming, and Dog Training links have been removed from
 below the grid. Best sellers remain linked in their existing section.

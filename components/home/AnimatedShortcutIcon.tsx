@@ -82,7 +82,7 @@ export function AnimatedShortcutIcon({ artwork }: { artwork: ShortcutArtwork }) 
   }, [artwork]);
 
   return (
-    <div ref={host} aria-hidden="true" className="relative h-10 w-10 shrink-0" data-shortcut-artwork={artwork}>
+    <div ref={host} aria-hidden="true" className="relative h-10 w-10 shrink-0 md:h-16 md:w-16" data-shortcut-artwork={artwork}>
       {/* A meaningful still is visible during loading, reduced motion and errors. */}
       <img src={assets[artwork].still} alt="" width={40} height={40} loading="lazy" decoding="async"
         className={`absolute inset-0 h-full w-full object-contain ${ready && !failed ? "motion-safe:invisible" : ""}`} />

@@ -798,9 +798,9 @@ export default async function HomePage() {
         <div className="grid grid-cols-4 gap-x-2 gap-y-2 md:grid-cols-8 md:gap-3">
           {SHORTCUT_ITEMS.map(item => (
             <Link key={item.artwork} href={item.href}
-              className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1 transition active:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 md:hover:bg-blue-50/50">
+              className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1 transition active:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 md:gap-2 md:py-2 md:hover:bg-blue-50/50">
               <AnimatedShortcutIcon artwork={item.artwork} />
-              <span className="text-center text-[11px] font-medium leading-tight text-zinc-700 md:text-xs">
+              <span className="text-center text-[11px] font-medium leading-tight text-zinc-700 md:text-sm">
                 {item.label}
               </span>
             </Link>
