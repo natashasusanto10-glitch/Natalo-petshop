@@ -1977,3 +1977,28 @@
     transition: none;
   }
 }
+.admin-photo-preview-controls {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--admin-muted, #596a80);
+}
+.admin-photo-preview-image {
+  animation: admin-photo-preview-in 180ms ease-out;
+}
+@keyframes admin-photo-preview-in {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-photo-preview-image {
+    animation: none;
+  }
+}

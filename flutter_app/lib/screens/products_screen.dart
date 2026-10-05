@@ -16,6 +16,7 @@ import '../models/home_category.dart';
 import '../models/brand.dart';
 import '../services/product_service.dart';
 import '../state/account_scope.dart';
+import '../state/home_snapshot_store.dart';
 import '../state/recently_viewed_store.dart';
 import '../state/search_history_store.dart';
 import '../utils/formatters.dart';
@@ -171,6 +172,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   // jadi cuma muncul 2 kategori walau DB punya 20. Fallback ke derived
   // (_categories) kalau fetch master gagal.
   List<HomeCategory> _allCategories = const [];
+  Future<void>? _categoriesRequest;
   // Daftar brand MASTER dari /api/brands, di-scope ke _filter.category
   // kalau ada kategori aktif (brand yang tidak jual produk di kategori
   // itu tidak muncul). Sebelumnya Filter sheet derive brand dari
@@ -335,21 +337,32 @@ class _ProductsScreenState extends State<ProductsScreen> {
     _scrollController.addListener(_onScroll);
     _loadSearchHistory();
     _loadRotationState();
+    _allCategories = homeSnapshotStore.categories;
     _loadAllCategories();
     _loadAllBrands();
     _loadProducts();
   }
 
   /// Fetch daftar kategori master (/api/categories) untuk filter sheet.
-  /// Fire-and-forget — kalau gagal, sheet fallback ke kategori yang
-  /// ter-derive dari produk ter-load (_categories getter).
-  Future<void> _loadAllCategories() async {
+  /// Reuse in-flight requests and preserve previously loaded category names.
+  Future<void> _loadAllCategories() {
+    final pending = _categoriesRequest;
+    if (pending != null) return pending;
+    final request = _fetchAllCategories();
+    _categoriesRequest = request;
+    return request.whenComplete(() => _categoriesRequest = null);
+  }
+
+  Future<void> _fetchAllCategories() async {
     try {
       final cats = await productService.fetchCategories();
       if (!mounted) return;
-      setState(() => _allCategories = cats);
+      // A failed request is returned as [] by the service. Keep known names
+      // from the home snapshot rather than replacing them with raw slugs.
+      if (cats.isNotEmpty) setState(() => _allCategories = cats);
     } catch (_) {
-      // Diam — fallback derived categories tetap jalan.
+      // Preserve the previous master list; opening the sheet offers retry
+      // when neither a snapshot nor a successful fetch is available.
     }
   }
 
@@ -570,7 +583,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 
   Future<void> _refreshAll() async {
-    await _loadProducts();
+    await Future.wait([_loadProducts(), _loadAllCategories()]);
   }
 
   void _resetFilters() {
@@ -771,17 +784,31 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   Future<void> _openCategoryBottomSheet() async {
     FocusScope.of(context).unfocus();
-    // Sumber utama: kategori master dari /api/categories (semua kategori
-    // dengan produk aktif). Fallback ke kategori derive-dari-produk-terload
-    // kalau master belum/ gagal ke-fetch. Value = slug; label di sheet
-    // memakai name dari master API; slug tetap menjadi nilai filter.
+    // The sheet has its own route: parent setState cannot reliably update a
+    // list captured before category metadata finishes loading.
+    if (_allCategories.isEmpty) await _loadAllCategories();
+    if (!mounted) return;
+    if (_allCategories.isEmpty && _categories.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Kategori belum dapat dimuat. Coba kembali.'),
+          action: SnackBarAction(
+            label: 'Coba lagi',
+            onPressed: () => _openCategoryBottomSheet(),
+          ),
+        ),
+      );
+      return;
+    }
+    // Master API supplies labels; product slugs are never display names.
+    // The selected value remains the slug for server-side filtering.
     final masterSlugs = _allCategories
         .where((c) => c.productCount > 0)
         .map((c) => c.slug)
         .toList();
     final categories = [
       'Semua',
-      ...(masterSlugs.isNotEmpty ? masterSlugs : _categories),
+      ...masterSlugs,
     ];
     final picked = await showModalBottomSheet<String>(
       context: context,

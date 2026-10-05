@@ -58,6 +58,12 @@ export function ProductMediaRail({
   const uploadingRef = useRef(false);
   const suppressClick = useRef(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const previewIndex = preview === null ? -1 : images.indexOf(preview);
+  function navigatePreview(direction: number) {
+    const nextIndex = previewIndex + direction;
+    if (previewIndex >= 0 && nextIndex >= 0 && nextIndex < images.length)
+      setPreview(images[nextIndex]);
+  }
   const [error, setError] = useState<string | null>(null);
   const [dragged, setDragged] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
@@ -380,15 +386,59 @@ export function ProductMediaRail({
         {announcement}
       </p>
       <AdminDialog
-        open={Boolean(preview)}
+        open={previewIndex >= 0}
         title="Pratinjau foto"
         onClose={() => setPreview(null)}
+        onKeyDown={(event) => {
+          if (
+            previewIndex < 0 ||
+            event.altKey ||
+            event.ctrlKey ||
+            event.metaKey
+          )
+            return;
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            event.stopPropagation();
+            navigatePreview(event.key === "ArrowLeft" ? -1 : 1);
+          }
+        }}
+        footer={
+          previewIndex >= 0 && images.length > 1 ? (
+            <div className="admin-photo-preview-controls">
+              <button
+                type="button"
+                className="admin-icon-button"
+                aria-label="Foto sebelumnya"
+                aria-keyshortcuts="ArrowLeft"
+                disabled={previewIndex === 0}
+                onClick={() => navigatePreview(-1)}
+              >
+                <span aria-hidden="true">←</span>
+              </button>
+              <span role="status" aria-live="polite">
+                Foto {previewIndex + 1} dari {images.length}
+              </span>
+              <button
+                type="button"
+                className="admin-icon-button"
+                aria-label="Foto berikutnya"
+                aria-keyshortcuts="ArrowRight"
+                disabled={previewIndex === images.length - 1}
+                onClick={() => navigatePreview(1)}
+              >
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          ) : undefined
+        }
       >
         {preview && (
           <img
+            key={`${previewIndex}-${preview}`}
             src={preview}
-            alt="Pratinjau foto produk"
-            className="mx-auto max-h-[60dvh] max-w-full object-contain"
+            alt={`Foto produk ${previewIndex + 1} dari ${images.length}`}
+            className="admin-photo-preview-image mx-auto max-h-[60dvh] max-w-full object-contain"
           />
         )}
       </AdminDialog>

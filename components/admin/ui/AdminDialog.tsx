@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type KeyboardEventHandler,
+} from "react";
 import { createPortal } from "react-dom";
 import { adminMotionAllowed } from "./Motion";
 
@@ -13,6 +20,7 @@ export function AdminDialog({
   busy = false,
   className = "",
   side = false,
+  onKeyDown,
 }: {
   open: boolean;
   title: string;
@@ -22,6 +30,7 @@ export function AdminDialog({
   busy?: boolean;
   className?: string;
   side?: boolean;
+  onKeyDown?: KeyboardEventHandler<HTMLDialogElement>;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -92,6 +101,7 @@ export function AdminDialog({
       className={`admin-dialog ${className}`}
       aria-labelledby={titleId}
       aria-busy={busy}
+      onKeyDown={onKeyDown}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) closeRef.current();
