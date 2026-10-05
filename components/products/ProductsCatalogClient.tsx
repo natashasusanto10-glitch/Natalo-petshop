@@ -317,7 +317,7 @@ export function ProductsCatalogClient() {
             />
           ) : (
             <>
-              <div className="nat-content-fade-in grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+              <div className="nat-content-fade-in grid grid-cols-2 gap-2 sm:gap-2.5 md:grid-cols-3 lg:grid-cols-4">
                 {items.map((doc, index) => (
                   <ProductCard
                     key={doc.id}

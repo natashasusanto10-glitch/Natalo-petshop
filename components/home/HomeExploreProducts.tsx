@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { StoreProduct } from "@/lib/products";
 import { HomeProductCard, HomeProductSkeleton } from "@/components/home/HomeProductCard";
 
-const NEXT_PAGE_SIZE = 10;
+const NEXT_PAGE_SIZE = 12;
 
 type ProductsResponse = {
   items: StoreProduct[];
@@ -110,7 +110,7 @@ export function HomeExploreProducts({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4 2xl:grid-cols-6">
         {products.map((product, index) => (
           <HomeProductCard
             key={product.id}
@@ -123,7 +123,7 @@ export function HomeExploreProducts({
 
       <div ref={loaderRef} className="h-8" aria-hidden="true" />
 
-      {loading && <HomeProductSkeleton count={4} />}
+      {loading && <HomeProductSkeleton count={12} />}
 
       {error && (
         <p role="alert" className="pt-4 text-center text-sm font-semibold text-red-500">{error}</p>

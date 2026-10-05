@@ -147,7 +147,7 @@ export function ProductCard({
   }
 
   return (
-    <div className={`group relative flex min-w-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[#e8eef7] bg-white p-2.5 shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] active:scale-[0.99] active:opacity-90 sm:p-3 sm:hover:-translate-y-1.5 sm:hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] ${className}`}>
+    <div className={`group relative flex min-w-0 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[#e8eef7] bg-white p-2.5 shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-300 [transition-timing-function:cubic-bezier(0.25,1,0.5,1)] active:scale-[0.99] active:opacity-90 sm:p-2 sm:hover:-translate-y-0.5 sm:hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] ${className}`}>
       <ProductCardLink preview={preview} href={productHref} className="flex flex-1 flex-col">
         {/* Image area */}
         <div

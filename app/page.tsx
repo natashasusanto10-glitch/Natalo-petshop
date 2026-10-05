@@ -951,7 +951,7 @@ export default async function HomePage() {
         </div>
 
         <div className="mt-3 hidden md:block">
-          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 6 }} className="product-grid">
+          <ResponsiveGrid compact cols={{ base: 2, sm: 3, lg: 6 }} className="product-grid">
             {bestSellers.map((p, i) => (
               <HomeProductCard key={p.id} product={p} rankBadge={i + 1} />
             ))}
@@ -1027,7 +1027,7 @@ export default async function HomePage() {
         </div>
 
         {recommendedProducts.length > 0 ? (
-          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 4, xl: 4, xxl: 6 }} className="mt-3 product-grid">
+          <ResponsiveGrid compact cols={{ base: 2, sm: 3, lg: 4, xl: 4, xxl: 6 }} className="mt-3 product-grid">
             {recommendedProducts.map((product, index) => (
               <HomeProductCard
                 key={product.id}

@@ -32,7 +32,7 @@ export function HomeProductCard({
 
 export function HomeProductSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4 2xl:grid-cols-6">
       {Array.from({ length: count }).map((_, index) => (
         <div
           key={index}
