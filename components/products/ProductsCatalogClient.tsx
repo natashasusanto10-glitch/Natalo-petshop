@@ -1,4 +1,5 @@
 "use client";
+import { PRODUCT_GRID_CLASS } from "@/components/product/ProductGrid";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -317,7 +318,7 @@ export function ProductsCatalogClient() {
             />
           ) : (
             <>
-              <div className="nat-content-fade-in grid grid-cols-2 gap-2 sm:gap-2.5 md:grid-cols-3 lg:grid-cols-4">
+              <div className={PRODUCT_GRID_CLASS + " nat-content-fade-in"}>
                 {items.map((doc, index) => (
                   <ProductCard
                     key={doc.id}

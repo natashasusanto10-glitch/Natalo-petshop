@@ -1,3 +1,4 @@
+import { PRODUCT_GRID_CLASS } from "@/components/product/ProductGrid";
 import { ProductCardSkeleton, Skeleton } from "@/components/Skeleton";
 
 /**
@@ -6,7 +7,7 @@ import { ProductCardSkeleton, Skeleton } from "@/components/Skeleton";
  */
 export function ProductsGridSkeleton({ withSidebar = false }: { withSidebar?: boolean }) {
   const grid = (
-    <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-4">
+    <div className={PRODUCT_GRID_CLASS}>
       {Array.from({ length: 8 }).map((_, i) => (
         <ProductCardSkeleton key={i} />
       ))}

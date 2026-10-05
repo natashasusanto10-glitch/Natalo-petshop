@@ -1,10 +1,12 @@
 "use client";
+import type { ProductVoucherPreview } from "@/lib/product-vouchers";
+import { PRODUCT_GRID_CLASS } from "@/components/product/ProductGrid";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FiStar } from "react-icons/fi";
+import { ProductCard } from "@/components/ProductCard";
 import { formatRupiah } from "@/lib/format";
 import { addItemToCart } from "@/lib/cart-actions";
 import { getWishlistItems, WishlistButton } from "@/components/WishlistButton";
@@ -34,8 +36,15 @@ type RecommendationProduct = {
   name: string;
   price: number;
   image: string | null;
+  stock: number;
+  weightGram: number;
+  hasVariants: boolean;
+  normal_price: number | null;
   rating: number;
   sold_count: number;
+  review_count?: number;
+  voucherPreview?: ProductVoucherPreview | null;
+  shippingVoucherPreview?: ProductVoucherPreview | null;
 };
 
 type RecommendationsResponse = {
@@ -104,44 +113,13 @@ function RecommendationSkeleton() {
 }
 
 function RecommendationCard({ product }: { product: RecommendationProduct }) {
-  return (
-    <article className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-      <Link href={`/products/${product.slug}`} className="block">
-        <div className="relative aspect-square overflow-hidden bg-gray-100">
-          {product.image ? (
-            <Image
-              src={product.image}
-              alt={product.name}
-              fill
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 220px"
-              placeholder="blur"
-              blurDataURL={IMAGE_BLUR_GRAY}
-              className="object-cover transition hover:scale-105"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-3xl font-black text-gray-200">
-              NP
-            </div>
-          )}
-        </div>
-        <div className="p-2.5">
-          <h3 className="line-clamp-2 min-h-[2.35rem] text-[13px] font-bold leading-snug text-gray-900">
-            {product.name}
-          </h3>
-          <p className="mt-1.5 truncate text-sm font-black leading-tight text-natalo-600">
-            {formatRupiah(product.price)}
-          </p>
-          {product.rating > 0 || product.sold_count > 0 ? (
-            <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-gray-500">
-              <FiStar className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />
-              {product.rating > 0 ? product.rating.toFixed(1) : "Baru"}
-              {product.sold_count > 0 ? ` · ${product.sold_count} terjual` : ""}
-            </p>
-          ) : null}
-        </div>
-      </Link>
-    </article>
-  );
+  return <ProductCard showCta={false} showRating product={{
+    id: product.id, slug: product.slug, name: product.name, price: product.normal_price ?? product.price,
+    imageUrl: product.image, avgRating: product.rating, soldCount: product.sold_count,
+    reviewCount: product.review_count ?? 0, description: "", discountPrice: product.normal_price ? product.price : null, stock: product.stock,
+    weightGram: product.weightGram, hasVariants: product.hasVariants, gallery: [],
+    voucherPreview: product.voucherPreview, shippingVoucherPreview: product.shippingVoucherPreview,
+  }} />;
 }
 
 function EmptyWishlistRecommendations() {
@@ -206,13 +184,13 @@ function EmptyWishlistRecommendations() {
       <h2 className="px-1 text-lg font-black text-slate-950">Rekomendasi untuk kamu</h2>
 
       {recommendations.length === 0 && loading ? (
-        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
+        <div className={PRODUCT_GRID_CLASS + " mt-3"}>
           {Array.from({ length: 6 }).map((_, index) => (
             <RecommendationSkeleton key={index} />
           ))}
         </div>
       ) : (
-        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
+        <div className={PRODUCT_GRID_CLASS + " mt-3"}>
           {recommendations.map((product) => (
             <RecommendationCard key={product.id} product={product} />
           ))}
@@ -220,7 +198,7 @@ function EmptyWishlistRecommendations() {
       )}
 
       {loading && recommendations.length > 0 && (
-        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
+        <div className={PRODUCT_GRID_CLASS + " mt-3"}>
           {Array.from({ length: 3 }).map((_, index) => (
             <RecommendationSkeleton key={index} />
           ))}
@@ -343,58 +321,19 @@ export default function WishlistPage() {
           <EmptyWishlistRecommendations />
         </>
       ) : (
-        <div className="mt-4 grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
+        <div className={PRODUCT_GRID_CLASS + " mt-4"}>
           {items.map((item) => {
             const outOfStock = isOutOfStock(item);
             const added = addedIds.has(item.id);
             return (
-              <article
-                key={item.id}
-                className="group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm"
-              >
-                <Link href={`/products/${item.slug}`} className="block">
-                  <div className="relative aspect-square overflow-hidden bg-gray-100">
-                    {item.imageUrl ? (
-                      <Image
-                        src={item.imageUrl}
-                        alt={item.name}
-                        fill
-                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 220px"
-                        placeholder="blur"
-                        blurDataURL={IMAGE_BLUR_GRAY}
-                        className="object-cover transition group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-3xl font-black text-gray-200">
-                        NP
-                      </div>
-                    )}
-                  </div>
-                </Link>
-
-                <div className="absolute right-2 top-2">
-                  <WishlistButton product={item} size="sm" />
-                </div>
-
-                <div className="flex flex-1 flex-col p-2.5">
-                  <Link href={`/products/${item.slug}`} className="min-w-0">
-                    <h2 className="line-clamp-2 min-h-[2.35rem] text-[13px] font-bold leading-snug text-gray-900">
-                      {item.name}
-                    </h2>
-                  </Link>
-
-                  <div className="mt-1.5">
-                    <p className="truncate text-sm font-black leading-tight text-natalo-600">
-                      {formatRupiah(currentPrice(item))}
-                    </p>
-                    {item.memberPrice !== null && item.memberPrice !== undefined && item.memberPrice < item.price && (
-                      <p className="mt-0.5 truncate text-[11px] text-gray-400 line-through">
-                        {formatRupiah(item.price)}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="mt-3 flex w-full gap-2">
+              <ProductCard
+                key={item.id} showCta={false}
+                product={{ ...item, memberPrice: item.memberPrice, description: "", discountPrice: null,
+                  stock: item.stock ?? 1, weightGram: item.weightGram ?? 500, hasVariants: item.hasVariants ?? false,
+                  avgRating: 0, reviewCount: 0, gallery: [],
+                }}
+                imageAction={<div className="absolute right-3 top-3 z-20"><WishlistButton product={item} size="sm" /></div>}
+                footer={<>                  <div className="mt-3 flex w-full gap-2">
                     <button
                       type="button"
                       onClick={() => handleAddToCart(item)}
@@ -425,9 +364,8 @@ export default function WishlistPage() {
                     >
                       {outOfStock ? "Stok Habis" : "Beli Sekarang"}
                     </button>
-                  </div>
-                </div>
-              </article>
+                  </div></>}
+              />
             );
           })}
         </div>

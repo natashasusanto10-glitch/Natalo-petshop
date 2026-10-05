@@ -1,6 +1,9 @@
 "use client";
+import type { ProductVoucherPreview } from "@/lib/product-vouchers";
+import { PRODUCT_GRID_CLASS } from "@/components/product/ProductGrid";
 
 import Image from "next/image";
+import { ProductCard as StoreProductCard } from "@/components/ProductCard";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiChevronRight, FiRefreshCw, FiStar } from "react-icons/fi";
@@ -46,6 +49,9 @@ export type CartRecommendationProduct = {
   weightGram: number;
   rating: number;
   sold_count: number;
+  review_count?: number;
+  voucherPreview?: ProductVoucherPreview | null;
+  shippingVoucherPreview?: ProductVoucherPreview | null;
   hasVariants: boolean;
   category: string | null;
   brand: string | null;
@@ -135,61 +141,17 @@ function ProductCard({
   compact?: boolean;
   onAdd: (product: CartRecommendationProduct) => void;
 }) {
-  const hasDiscount = Boolean(product.normal_price && product.normal_price > product.price);
-
-  return (
-    <article
-      className={`relative rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.35)] ${
-        compact ? "w-40 shrink-0" : ""
-      }`}
-    >
-      <Link href={`/products/${product.slug}`} className="block" aria-label={`Lihat ${product.name}`}>
-        <div className="relative aspect-square overflow-hidden rounded-xl bg-gray-50">
-          {product.image ? (
-            <Image
-              src={product.image}
-              alt={product.name}
-              fill
-              sizes={compact ? "160px" : "(max-width: 768px) 50vw, 220px"}
-              placeholder="blur"
-              blurDataURL={IMAGE_BLUR_GRAY}
-              className="object-contain p-2"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-xs font-bold text-gray-300">
-              No image
-            </div>
-          )}
-          {product.discount_percent ? (
-            <span className="absolute left-2 top-2 rounded-full bg-red-500 px-2 py-1 text-[10px] font-black text-white">
-              -{product.discount_percent}%
-            </span>
-          ) : null}
-        </div>
-        <h3 className="mt-3 line-clamp-2 min-h-9 text-[12.5px] font-bold leading-snug text-gray-900">
-          {product.name}
-        </h3>
-        <div className="mt-2 min-h-10">
-          <p className="text-sm font-black text-blue-600">{formatRupiah(product.price)}</p>
-          {hasDiscount && product.normal_price ? (
-            <p className="text-[11px] font-semibold text-gray-400 line-through">
-              {formatRupiah(product.normal_price)}
-            </p>
-          ) : null}
-        </div>
-        {product.rating > 0 || product.sold_count > 0 ? (
-          <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-gray-500">
-            <FiStar className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden />
-            {product.rating > 0 ? product.rating.toFixed(1) : "Baru"}
-            {product.sold_count > 0 ? ` · ${product.sold_count} ulasan` : ""}
-          </p>
-        ) : null}
-      </Link>
-      <button
+  return <StoreProductCard showCta={false} showRating className={compact ? "w-40 shrink-0" : ""}
+    product={{ id: product.id, slug: product.slug, name: product.name, price: product.normal_price ?? product.price,
+      discountPrice: product.normal_price && product.normal_price > product.price ? product.price : null,
+      stock: product.stock, weightGram: product.weightGram, imageUrl: product.image, hasVariants: product.hasVariants,
+      description: "", gallery: [], avgRating: product.rating, reviewCount: product.review_count ?? 0, soldCount: product.sold_count,
+      voucherPreview: product.voucherPreview, shippingVoucherPreview: product.shippingVoucherPreview,
+    }} footer={<>      <button
         type="button"
         onClick={() => onAdd(product)}
         aria-label={`Tambah ${product.name} ke keranjang`}
-        className="absolute bottom-3 right-3 grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-white shadow-[0_8px_18px_-8px_rgba(37,99,235,0.55)] transition active:scale-95 disabled:bg-gray-300"
+        className="mt-2 ml-auto grid h-10 w-10 place-items-center rounded-full bg-blue-600 text-white shadow-[0_8px_18px_-8px_rgba(37,99,235,0.55)] transition active:scale-95 disabled:bg-gray-300"
         disabled={product.stock <= 0}
       >
         <PetCartIcon
@@ -197,9 +159,7 @@ function ProductCard({
           className="h-4 w-4"
           pawClassName="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-white p-[1.5px] text-blue-600 shadow-sm"
         />
-      </button>
-    </article>
-  );
+      </button></>} />;
 }
 
 function VariantChoiceSheet({
@@ -541,13 +501,13 @@ export function CartRecommendationSections({ cartItems }: Props) {
       <section>
         <SectionHeader title="Rekomendasi untukmu" />
         {recommendations.length === 0 && loadingMore ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className={PRODUCT_GRID_CLASS}>
             {Array.from({ length: 4 }).map((_, index) => (
               <RecommendationSkeleton key={index} />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className={PRODUCT_GRID_CLASS}>
             {recommendations.map((product) => (
               <ProductCard key={product.id} product={product} onAdd={addProduct} />
             ))}
@@ -555,7 +515,7 @@ export function CartRecommendationSections({ cartItems }: Props) {
         )}
 
         {loadingMore && recommendations.length > 0 && (
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className={PRODUCT_GRID_CLASS + " mt-3"}>
             {Array.from({ length: 4 }).map((_, index) => (
               <RecommendationSkeleton key={index} />
             ))}

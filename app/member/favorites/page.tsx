@@ -1,12 +1,12 @@
+import { ProductCard } from "@/components/ProductCard";
+import { ProductGrid } from "@/components/product/ProductGrid";
+import { getProducts } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
-import { formatRupiah } from "@/lib/format";
 import { LogoutButton } from "@/components/LogoutButton";
 import { MemberNav } from "@/components/MemberNav";
 import { FavoriteButton } from "@/components/FavoriteButton";
-import { QuickAddToCart } from "@/components/QuickAddToCart";
 import { EmptyWishlist } from "@/components/LoadingEmptyStates";
 import { requireCustomerSession } from "@/lib/session-guards";
-import Link from "next/link";
 
 export default async function MemberFavoritesPage() {
   const session = await requireCustomerSession("/member/favorites");
@@ -20,6 +20,11 @@ export default async function MemberFavoritesPage() {
       },
     },
   });
+
+  const products = favorites.length ? await getProducts({ includeIds: favorites.map(({product}) => product.id), take: favorites.length, viewerId: session.sub }) : [];
+
+  const byId = new Map(products.map(product => [product.id, product]));
+  const orderedProducts = favorites.map(({ product }) => byId.get(product.id) ?? { ...product, brand: null, stock: 0, flashSaleEndsAt: product.flashSaleEndsAt?.toISOString() ?? null });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -58,94 +63,11 @@ export default async function MemberFavoritesPage() {
             <EmptyWishlist />
           </div>
         ) : (
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {favorites.map(({ product }) => {
-              const hasDiscount =
-                product.discountPrice !== null &&
-                product.discountPrice < product.price;
-              const displayPrice = hasDiscount
-                ? product.discountPrice!
-                : product.price;
-              const isUnavailable = !product.isActive;
-
-              return (
-                <div
-                  key={product.id}
-                  className={`group overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:shadow ${
-                    isUnavailable ? "opacity-70" : ""
-                  }`}
-                >
-                  <Link href={`/products/${product.slug}`} className="block">
-                    <div className="relative aspect-square bg-gray-50">
-                      {product.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          className={`h-full w-full object-cover transition ${
-                            isUnavailable
-                              ? "grayscale"
-                              : "group-hover:scale-105"
-                          }`}
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-5xl text-gray-200">
-                          🐾
-                        </div>
-                      )}
-                      {/* Badge */}
-                      {isUnavailable ? (
-                        <span className="absolute left-3 top-3 rounded-full bg-gray-700 px-2 py-0.5 text-xs font-bold text-white">
-                          Tidak tersedia
-                        </span>
-                      ) : hasDiscount ? (
-                        <span className="absolute left-3 top-3 rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
-                          Diskon
-                        </span>
-                      ) : null}
-                    </div>
-                  </Link>
-
-                  <div className="p-4">
-                    {product.category && (
-                      <p className="text-xs font-semibold text-natalo-600">
-                        {product.category.name}
-                      </p>
-                    )}
-                    <Link href={`/products/${product.slug}`}>
-                      <p className="mt-1 font-semibold text-gray-900 leading-snug line-clamp-2 hover:text-natalo-700">
-                        {product.name}
-                      </p>
-                    </Link>
-
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <div>
-                        <p className="font-bold text-gray-900">
-                          {product.hasVariants
-                            ? `Mulai ${formatRupiah(displayPrice)}`
-                            : formatRupiah(displayPrice)}
-                        </p>
-                        {hasDiscount && !product.hasVariants && (
-                          <p className="text-xs text-gray-400 line-through">
-                            {formatRupiah(product.price)}
-                          </p>
-                        )}
-                      </div>
-                      <FavoriteButton
-                        productId={product.id}
-                        initialFavorited={true}
-                        size="sm"
-                      />
-                    </div>
-
-                    <div className="mt-3">
-                      <QuickAddToCart product={product} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <ProductGrid className="mt-5">
+            {orderedProducts.map((product) => <ProductCard key={product.id} product={product} showCta={false} showRating
+              imageAction={<div className="absolute right-3 top-3 z-20"><FavoriteButton productId={product.id} initialFavorited size="sm" /></div>}
+            />)}
+          </ProductGrid>
         )}
       </main>
     </div>

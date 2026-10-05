@@ -1,3 +1,4 @@
+import { attachProductSoldCounts } from "@/lib/product-sold-counts";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -69,7 +70,8 @@ async function sampleRecommendations(
         stock: product.stock,
         weightGram: product.weightGram,
         rating: product.avgRating,
-        sold_count: product.reviewCount,
+        sold_count: 0,
+        review_count: product.reviewCount,
         hasVariants: product.hasVariants,
         category: null,
         brand: null,
@@ -235,7 +237,7 @@ export async function GET(request: NextRequest) {
   }
 
   const data = await attachPublicProductVoucherPreviews(
-    page.map(serializeCartRecommendationProduct),
+    (await attachProductSoldCounts(page.map(serializeCartRecommendationProduct))).map(product => ({ ...product, review_count: product.sold_count, sold_count: product.soldCount })),
     { userId: session?.sub },
   );
 

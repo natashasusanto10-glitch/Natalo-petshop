@@ -22,9 +22,9 @@ export function TrustInfoCard({ stock, outOfStock }: Props) {
         </span>
         <div className="min-w-0">
           <p className="text-sm font-extrabold text-gray-900">
-            Garansi 100% Original
+            Belanja aman
           </p>
-          <p className="text-xs text-gray-500">Uang kembali jika produk palsu</p>
+          <p className="text-xs text-gray-500">Sesuai kebijakan Natalo</p>
         </div>
       </div>
       <div className="flex items-center gap-3 px-4 py-3">
@@ -49,7 +49,7 @@ export function TrustInfoCard({ stock, outOfStock }: Props) {
           <p className="text-xs text-gray-500">
             {outOfStock
               ? "Hubungi admin untuk info restock"
-              : "Siap dikirim hari ini sebelum 15:00"}
+              : "Ongkir dihitung saat checkout"}
           </p>
         </div>
       </div>

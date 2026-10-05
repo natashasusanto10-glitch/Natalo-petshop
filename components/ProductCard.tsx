@@ -19,6 +19,8 @@ export function computeDiscountPercent(price: number, displayPrice: number): num
 }
 
 type Props = {
+  footer?: ReactNode;
+  imageAction?: ReactNode;
   preview?: boolean;
   product: StoreProduct;
   priority?: boolean;
@@ -34,6 +36,8 @@ type Props = {
 
 export function ProductCard({
   product,
+  footer,
+  imageAction,
   preview = false,
   priority = false,
   isFavorited: _isFavorited,
@@ -127,7 +131,8 @@ export function ProductCard({
           </div>
         </ProductCardLink>
 
-        {/* CTA kecil — di luar Link untuk hindari nested-interactive.
+        {footer}
+      {/* CTA kecil — di luar Link untuk hindari nested-interactive.
             + Keranjang untuk produk single-variant, Pilih Varian untuk multi-
             variant (link ke detail), Habis disabled saat stok kosong. */}
         {!preview && <div className="mt-2">
@@ -232,7 +237,8 @@ export function ProductCard({
           tombol HARUS di luar Link supaya tidak nested-interactive. Cuma
           dirender untuk kartu tanpa CTA inline (homepage/katalog) biar
           tidak dobel tombol. */}
-      {!preview && !showCta && (
+      {imageAction}
+      {!preview && !showCta && !footer && (
         <div className="pointer-events-none absolute inset-x-3 top-3 z-20 hidden aspect-square sm:block">
           <ProductQuickAdd
             className="pointer-events-auto absolute bottom-3 right-3 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100"

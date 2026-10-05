@@ -1,3 +1,4 @@
+import { PRODUCT_GRID_CLASS } from "@/components/product/ProductGrid";
 import type { StoreProduct } from "@/lib/products";
 import { ProductCard } from "@/components/ProductCard";
 import { Skeleton } from "@/components/Skeleton";
@@ -32,7 +33,7 @@ export function HomeProductCard({
 
 export function HomeProductSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4 2xl:grid-cols-6">
+    <div className={PRODUCT_GRID_CLASS}>
       {Array.from({ length: count }).map((_, index) => (
         <div
           key={index}

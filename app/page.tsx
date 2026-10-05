@@ -1,3 +1,4 @@
+import { ProductGrid } from "@/components/product/ProductGrid";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
@@ -20,7 +21,6 @@ import HeroBanner from "@/components/home/HeroBanner";
 import { loadHeroSlides } from "@/lib/hero-slides-server";
 import { mapDbBrandsToCatalogItems } from "@/lib/brand-catalog";
 import { PageContainer } from "@/components/ui/PageContainer";
-import { ResponsiveGrid } from "@/components/ui/ResponsiveGrid";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { AppleReveal } from "@/components/AppleReveal";
 import { AnimatedShortcutIcon, type ShortcutArtwork } from "@/components/home/AnimatedShortcutIcon";
@@ -827,7 +827,7 @@ export default async function HomePage() {
               </Link>
             )}
           </div>
-          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 5, xl: 6 }} className="mt-3 product-grid">
+          <ProductGrid className="mt-3 product-grid">
             {flashSaleProducts.map((p) => {
               const finalPrice = p.discountPrice!;
               const off = discountPercent(p.price, p.discountPrice);
@@ -872,7 +872,7 @@ export default async function HomePage() {
                 </Link>
               );
             })}
-          </ResponsiveGrid>
+          </ProductGrid>
         </PageContainer>
       )}
 
@@ -889,11 +889,11 @@ export default async function HomePage() {
           ))}
         </div>
         <div className="mt-3 hidden md:block">
-          <ResponsiveGrid compact cols={{ base: 2, sm: 3, lg: 6 }} className="product-grid">
+          <ProductGrid className="product-grid">
             {bestSellers.map((p, i) => (
               <HomeProductCard key={p.id} product={p} rankBadge={i + 1} />
             ))}
-          </ResponsiveGrid>
+          </ProductGrid>
         </div>
       </PageContainer>
 
@@ -965,7 +965,7 @@ export default async function HomePage() {
         </div>
 
         {recommendedProducts.length > 0 ? (
-          <ResponsiveGrid compact cols={{ base: 2, sm: 3, lg: 4, xl: 4, xxl: 6 }} className="mt-3 product-grid">
+          <ProductGrid className="mt-3 product-grid">
             {recommendedProducts.map((product, index) => (
               <HomeProductCard
                 key={product.id}
@@ -973,7 +973,7 @@ export default async function HomePage() {
                 priority={index < 4}
               />
             ))}
-          </ResponsiveGrid>
+          </ProductGrid>
         ) : (
           <div className="mt-3 rounded-[18px] border border-dashed border-zinc-200 bg-white px-6 py-10 text-center">
             <h3 className="text-base font-black text-zinc-900">Produk belum tersedia</h3>

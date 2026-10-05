@@ -1,4 +1,5 @@
 "use client";
+import { PRODUCT_GRID_CLASS } from "@/components/product/ProductGrid";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { StoreProduct } from "@/lib/products";
@@ -110,7 +111,7 @@ export function HomeExploreProducts({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-4 2xl:grid-cols-6">
+      <div className={PRODUCT_GRID_CLASS}>
         {products.map((product, index) => (
           <HomeProductCard
             key={product.id}

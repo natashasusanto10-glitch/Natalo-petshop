@@ -1,3 +1,4 @@
+import { attachProductSoldCounts } from "@/lib/product-sold-counts";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -142,5 +143,6 @@ export async function GET(request: NextRequest) {
     { userId: session?.sub },
   );
 
-  return NextResponse.json({ data: withVoucherPreview });
+  const withSoldCounts = await attachProductSoldCounts(withVoucherPreview);
+  return NextResponse.json({ data: withSoldCounts.map(product => ({ ...product, review_count: product.sold_count, sold_count: product.soldCount })) });
 }

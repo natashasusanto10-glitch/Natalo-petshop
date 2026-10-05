@@ -7,13 +7,13 @@ export default function ProductDetailLoading() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl pb-40 md:px-4 md:py-10 md:pb-10">
-        <div className="grid gap-2 bg-gray-50 md:grid-cols-2 md:gap-10 md:bg-white">
+      <div className="mx-auto max-w-[1200px] pb-40 md:px-4 md:py-6 md:pb-10">
+        <div className="grid items-start gap-2 bg-gray-50 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:gap-6 md:bg-white">
           {/* Carousel */}
-          <div className="relative mx-auto aspect-square w-full max-h-[360px] animate-pulse bg-gray-100 md:max-h-none md:rounded-3xl" />
+          <div className="relative mx-auto aspect-square w-full max-h-[360px] animate-pulse bg-gray-100 md:max-h-none md:rounded-2xl" />
 
           {/* Right column */}
-          <section className="space-y-4 bg-white px-4 py-4 md:rounded-3xl md:border md:border-gray-100 md:p-6">
+          <section className="space-y-4 bg-white px-4 py-4 md:rounded-2xl md:border md:border-gray-100 md:p-6">
             {/* PriceBlock */}
             <div className="flex items-center justify-between">
               <div className="space-y-2">
@@ -50,7 +50,7 @@ export default function ProductDetailLoading() {
         </div>
 
         {/* Tabs section */}
-        <section className="mt-2 bg-white px-4 py-5 md:mt-10 md:rounded-3xl md:border md:border-gray-100 md:p-6">
+        <section className="mt-2 bg-white px-4 py-5 md:mt-6 md:rounded-2xl md:border md:border-gray-100 md:p-6">
           <div className="flex gap-3">
             <div className="h-9 w-24 animate-pulse rounded-full bg-gray-100" />
             <div className="h-9 w-24 animate-pulse rounded-full bg-gray-100" />

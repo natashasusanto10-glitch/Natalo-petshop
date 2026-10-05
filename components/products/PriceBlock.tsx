@@ -27,24 +27,15 @@ export function PriceBlock({
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <div className="flex items-baseline gap-1.5 leading-none text-gray-900">
-          <span className="text-base font-bold md:text-lg">Rp</span>
-          <span className="text-3xl font-black tracking-tight md:text-4xl">
-            {formatNumberId(price)}
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-2">
+          <span className={"text-2xl font-extrabold tracking-tight md:text-3xl " + (hasDiscount ? "text-rose-600" : "text-gray-900")}>
+            Rp{formatNumberId(price)}
           </span>
+          {hasDiscount && <>
+            {typeof discountPercent === "number" && discountPercent > 0 && <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-500">-{discountPercent}%</span>}
+            <span className="text-xs text-gray-400 line-through">Rp{formatNumberId(originalPrice!)}</span>
+          </>}
         </div>
-        {hasDiscount && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-gray-400 line-through">
-              Rp{formatNumberId(originalPrice!)}
-            </span>
-            {typeof discountPercent === "number" && discountPercent > 0 && (
-              <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-black text-red-500">
-                -{discountPercent}%
-              </span>
-            )}
-          </div>
-        )}
       </div>
       {showFavorite && (
         <FavoriteButton

@@ -1,3 +1,5 @@
+import { FavoriteButton } from "@/components/FavoriteButton";
+import { FlashSaleCountdown } from "@/components/home/FlashSaleCountdown";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -11,6 +13,10 @@ import { PriceBlock } from "@/components/products/PriceBlock";
 import { SocialProofRow } from "@/components/products/SocialProofRow";
 import { TrustInfoCard } from "@/components/products/TrustInfoCard";
 import { VoucherCard } from "@/components/products/VoucherCard";
+import { ProductCard } from "@/components/ProductCard";
+import { ProductGrid } from "@/components/product/ProductGrid";
+import { getSession } from "@/lib/auth";
+import { attachProductSoldCounts } from "@/lib/product-sold-counts";
 import { ProductTabs } from "@/components/products/ProductTabs";
 import { ProductFeedPostsSection } from "@/components/products/ProductFeedPostsSection";
 import { ProductViewTracker } from "@/components/product/ProductViewTracker";
@@ -65,57 +71,15 @@ export default async function ProductDetailPage({
   // publicly. Metadata and visible HTML must use the same visibility gate.
   if (!product || !shareProduct) return notFound();
 
-  // Voucher load di-pindah ke client-side (VoucherCard fetch sendiri)
-  // supaya halaman ini bisa cacheable di Vercel CDN. getSession() yg dulu
-  // dipakai utk filter voucher per-user juga tidak diperlukan di server.
-  const [productWithCategory, allProducts, soldSummary] = await Promise.all([
+  const session = await getSession("CUSTOMER").catch(() => null);
+  const [productWithCategory, allProducts, soldProducts] = await Promise.all([
     prisma.product.findUnique({ where: { slug }, include: { category: true } }).catch(() => null),
-    getProducts({ category: product.categorySlug ?? undefined, take: 12 }),
-    prisma.orderItem
-      .aggregate({
-        _sum: { quantity: true },
-        where: {
-          productId: product.id,
-          order: {
-            status: {
-              in: [
-                "PAID",
-                "PROCESSING",
-                "READY_FOR_PICKUP",
-                "SHIPPED",
-                "DELIVERED",
-              ],
-            },
-          },
-        },
-      })
-      .catch(() => ({ _sum: { quantity: 0 } })),
+    getProducts({ category: product.categorySlug ?? undefined, take: 13, viewerId: session?.sub }),
+    attachProductSoldCounts([product]),
   ]);
   const favoriteIds: string[] = [];
-  const soldCount = soldSummary._sum.quantity ?? 0;
-
-  const related = allProducts
-    .filter((p) => p.id !== product.id)
-    .sort((a, b) => {
-      const aMatch =
-        productWithCategory?.categoryId &&
-        (a as unknown as { categoryId?: string }).categoryId === productWithCategory.categoryId;
-      const bMatch =
-        productWithCategory?.categoryId &&
-        (b as unknown as { categoryId?: string }).categoryId === productWithCategory.categoryId;
-      if (aMatch && !bMatch) return -1;
-      if (!aMatch && bMatch) return 1;
-      return 0;
-    })
-    .slice(0, 6)
-    .map((p) => ({
-      id: p.id,
-      slug: p.slug,
-      name: p.name,
-      price: p.price,
-      discountPrice: p.discountPrice ?? null,
-      imageUrl: p.imageUrl ?? null,
-    }));
+  const soldCount = soldProducts[0]?.soldCount ?? 0;
+  const related = allProducts.filter((p) => p.id !== product.id).slice(0, 12);
 
   const hasDiscount = product.discountPrice !== null && product.discountPrice < product.price;
   const price = hasDiscount ? product.discountPrice! : product.price;
@@ -215,8 +179,8 @@ export default async function ProductDetailPage({
         </div>
       </div>
 
-      <main className="product-detail-content mx-auto max-w-6xl md:px-4 md:py-10 md:pb-10">
-        <div className="grid gap-2 bg-gray-50 md:grid-cols-2 md:gap-10 md:bg-white">
+      <main className="product-detail-content mx-auto max-w-[1200px] md:px-4 md:py-6 md:pb-10">
+        <div className="grid items-start gap-2 bg-gray-50 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:gap-6 md:bg-white">
           <ProductImageCarousel
             images={productImages}
             alt={product.name}
@@ -224,20 +188,45 @@ export default async function ProductDetailPage({
             video={detailVideo}
           />
 
-          <section className="bg-white px-4 py-4 md:rounded-3xl md:border md:border-gray-100 md:p-6">
-            {/* 1. Blok harga jangkar */}
+          <section className="bg-white px-4 py-4 md:rounded-2xl md:border md:border-gray-100 md:p-5">
+            {/* 6. Variant selector / quantity actions */}
+            {product.hasVariants && product.variantAttrs && product.variants ? (
+              <div id="beli" className="mb-4 scroll-mt-20 rounded-2xl border border-gray-100 p-4">
+                <VariantSelector
+                  product={{ id: product.id, slug: product.slug, name: product.name, imageUrl: product.imageUrl }}
+                  attrs={product.variantAttrs}
+                  variants={product.variants}
+                />
+              </div>
+            ) : (
+              <div id="beli" className="scroll-mt-20">
+                <ProductActions product={product} />
+              </div>
+            )}
+
+
+            {product.flashSaleEndsAt && new Date(product.flashSaleEndsAt).getTime() > Date.now() && (
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white">
+                <span>Flash Sale berakhir dalam</span><FlashSaleCountdown endsAt={new Date(product.flashSaleEndsAt).getTime()} />
+              </div>
+            )}
+            {/* Harga dan identitas produk */}
             <PriceBlock
               productId={product.id}
               price={price}
               originalPrice={hasDiscount ? product.price : null}
               discountPercent={percent}
               initialFavorited={favoriteIds.includes(product.id)}
+              showFavorite={false}
             />
 
             {/* 2. Judul produk — ukuran sedang, weight 600 */}
-            <h1 className="mt-3 line-clamp-2 text-base font-semibold leading-snug text-gray-900 md:text-xl md:font-bold">
+            <div className="mt-3 flex items-start gap-2">
+            <h1 className="flex-1 text-base font-semibold leading-snug text-gray-900 md:text-xl md:font-bold">
               {product.name}
             </h1>
+            <FavoriteButton productId={product.id} initialFavorited={false} size="md" />
+            </div>
 
             {/* 3. Bukti sosial satu baris */}
             <SocialProofRow
@@ -252,21 +241,6 @@ export default async function ProductDetailPage({
             {/* 5. Trust info — garansi + stok */}
             <TrustInfoCard stock={product.stock} outOfStock={outOfStock} />
 
-            {/* 6. Variant selector / quantity actions */}
-            {product.hasVariants && product.variantAttrs && product.variants ? (
-              <div id="beli" className="mt-4 scroll-mt-20 rounded-2xl border border-gray-100 p-4">
-                <VariantSelector
-                  product={{ id: product.id, slug: product.slug, name: product.name, imageUrl: product.imageUrl }}
-                  attrs={product.variantAttrs}
-                  variants={product.variants}
-                />
-              </div>
-            ) : (
-              <div id="beli" className="scroll-mt-20">
-                <ProductActions product={product} />
-              </div>
-            )}
-
             {/* 7. Tombol pembelian inline (desktop only) */}
             <ProductPurchaseButtons
               waHref={waHref}
@@ -280,17 +254,20 @@ export default async function ProductDetailPage({
           </section>
         </div>
 
-        {/* 8. Tabs Deskripsi / Rekomendasi */}
-        <section className="mt-2 bg-white md:mt-10 md:rounded-3xl md:border md:border-gray-100">
-          <ProductTabs description={product.description} related={related} />
-        </section>
-
-        {/* 8.5 Postingan Pelanggan — UGC video review, social proof */}
-        <ProductFeedPostsSection productSlug={product.slug} />
-
-        {/* 9. Ulasan tetap section terpisah di bawah agar tab tidak overload */}
-        <section className="mt-2 bg-white px-4 py-5 md:mt-10 md:rounded-3xl md:border md:border-gray-100 md:p-6">
-          <h2 className="text-base font-black text-gray-900 md:text-xl">Ulasan Produk</h2>
+        <section className="mt-2 bg-white md:mt-6 md:rounded-2xl md:border md:border-gray-100">
+          <ProductTabs
+            description={product.description}
+            information={
+              <div>
+                <h2 className="mb-3 text-base font-bold text-gray-900">Informasi Produk</h2>
+                <dl className="grid grid-cols-[118px_1fr] gap-x-3 gap-y-2 text-sm">
+                  <dt className="text-gray-500">Berat Produk</dt><dd className="font-semibold">{new Intl.NumberFormat("id-ID").format(product.weightGram)} gram</dd>
+                  {product.brand && <><dt className="text-gray-500">Brand</dt><dd className="font-semibold">{product.brand}</dd></>}
+                  {productWithCategory?.category && <><dt className="text-gray-500">Kategori</dt><dd className="font-semibold">{productWithCategory.category.name}</dd></>}
+                </dl>
+              </div>
+            }
+            reviews={<div>          <h2 className="text-base font-black text-gray-900 md:text-xl">Ulasan Produk</h2>
           <div className="mt-4 grid gap-6 md:mt-6 md:gap-8 lg:grid-cols-2">
             <ReviewList productId={product.id} />
             <div className="rounded-2xl border border-gray-100 bg-white p-5">
@@ -301,7 +278,20 @@ export default async function ProductDetailPage({
               </div>
             </div>
           </div>
+</div>}
+          >
+            <ProductFeedPostsSection productSlug={product.slug} />
+          </ProductTabs>
         </section>
+
+        {related.length > 0 && (
+          <section className="mt-2 bg-white px-4 py-5 md:mt-6 md:px-0">
+            <h2 className="mb-3 text-base font-bold text-gray-900">Rekomendasi Produk</h2>
+            <ProductGrid>
+              {related.map((item) => <ProductCard key={item.id} product={item} showCta={false} showRating />)}
+            </ProductGrid>
+          </section>
+        )}
       </main>
 
       {/* Sticky bottom bar — selalu terlihat di mobile */}

@@ -1,22 +1,12 @@
 "use client";
 
-import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
-import { PrefetchOnView } from "@/components/PrefetchOnView";
-import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
-
-type RelatedProduct = {
-  id: string;
-  slug: string;
-  name: string;
-  price: number;
-  discountPrice: number | null;
-  imageUrl: string | null;
-};
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 type Props = {
   description: string;
-  related: RelatedProduct[];
+  information: ReactNode;
+  children: ReactNode;
+  reviews: ReactNode;
 };
 
 function stripMarkdown(input: string) {
@@ -78,62 +68,8 @@ export function MarkdownBody({ body }: { body: string }) {
   );
 }
 
-function formatRupiahShort(n: number) {
-  return `Rp${new Intl.NumberFormat("id-ID").format(n)}`;
-}
-
-function RelatedGrid({ related }: { related: RelatedProduct[] }) {
-  if (related.length === 0) {
-    return (
-      <p className="py-8 text-center text-sm text-gray-500">
-        Belum ada rekomendasi untuk produk ini.
-      </p>
-    );
-  }
-  return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-      {related.map((p) => {
-        const price = p.discountPrice && p.discountPrice < p.price ? p.discountPrice : p.price;
-        return (
-          <PrefetchOnView
-            key={p.id}
-            href={`/products/${p.slug}`}
-            className="group flex flex-col overflow-hidden rounded-xl border border-gray-100 bg-white transition-transform duration-100 active:scale-95 active:bg-gray-50"
-          >
-            <div className="relative aspect-square w-full bg-gray-100">
-              {p.imageUrl ? (
-                <Image
-                  src={p.imageUrl}
-                  alt={p.name}
-                  fill
-                  sizes="(min-width: 768px) 33vw, 50vw"
-                  placeholder="blur"
-                  blurDataURL={IMAGE_BLUR_GRAY}
-                  className="object-cover"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-2xl font-black text-gray-200">
-                  NP
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col gap-1 px-2.5 py-2">
-              <p className="line-clamp-2 text-xs font-semibold leading-snug text-gray-900">
-                {p.name}
-              </p>
-              <p className="text-sm font-black text-natalo-600">
-                {formatRupiahShort(price)}
-              </p>
-            </div>
-          </PrefetchOnView>
-        );
-      })}
-    </div>
-  );
-}
-
-export function ProductTabs({ description, related }: Props) {
-  const [activeTab, setActiveTab] = useState<"deskripsi" | "rekomendasi">("deskripsi");
+export function ProductTabs({ description, information, children, reviews }: Props) {
+  const [activeTab, setActiveTab] = useState<"deskripsi" | "ulasan">("deskripsi");
   const [expanded, setExpanded] = useState(false);
   const summary = useMemo(() => stripMarkdown(description), [description]);
   const isLong = summary.length > 280;
@@ -146,7 +82,7 @@ export function ProductTabs({ description, related }: Props) {
     return headerHeight + tabsHeight;
   }
 
-  function scrollToSection(sectionId: "deskripsi" | "rekomendasi") {
+  function scrollToSection(sectionId: "deskripsi" | "ulasan") {
     const target = document.getElementById(`product-section-${sectionId}`);
     if (!target) return;
 
@@ -157,14 +93,14 @@ export function ProductTabs({ description, related }: Props) {
 
   useEffect(() => {
     const descriptionSection = document.getElementById("product-section-deskripsi");
-    const recommendationSection = document.getElementById("product-section-rekomendasi");
+    const recommendationSection = document.getElementById("product-section-ulasan");
     if (!descriptionSection || !recommendationSection) return;
     let ticking = false;
 
     const updateActiveSection = () => {
       const offset = getStickyOffset() + 16;
       const recommendationTop = recommendationSection.getBoundingClientRect().top;
-      setActiveTab(recommendationTop <= offset ? "rekomendasi" : "deskripsi");
+      setActiveTab(recommendationTop <= offset ? "ulasan" : "deskripsi");
     };
 
     const onScroll = () => {
@@ -184,8 +120,8 @@ export function ProductTabs({ description, related }: Props) {
             .filter((entry) => entry.isIntersecting)
             .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
           const current = visible[0]?.target.id;
-          if (current === "product-section-rekomendasi") {
-            setActiveTab("rekomendasi");
+          if (current === "product-section-ulasan") {
+            setActiveTab("ulasan");
           } else if (current === "product-section-deskripsi") {
             setActiveTab("deskripsi");
           }
@@ -225,14 +161,14 @@ export function ProductTabs({ description, related }: Props) {
       <div className="product-tabs">
         <div className="product-tabs-inner">
         <TabButton
-          label="Deskripsi"
+          label="Detail"
           active={activeTab === "deskripsi"}
           onClick={() => scrollToSection("deskripsi")}
         />
         <TabButton
-          label="Rekomendasi"
-          active={activeTab === "rekomendasi"}
-          onClick={() => scrollToSection("rekomendasi")}
+          label="Ulasan"
+          active={activeTab === "ulasan"}
+          onClick={() => scrollToSection("ulasan")}
         />
         </div>
       </div>
@@ -240,6 +176,8 @@ export function ProductTabs({ description, related }: Props) {
       <div className="px-4 py-4 md:px-6 md:py-6">
         <section id="product-section-deskripsi" className="product-tab-section">
           <>
+            {information}
+            <h2 className="mb-3 mt-6 text-base font-bold text-gray-900">Deskripsi Produk</h2>
             {expanded || !isLong ? (
               <MarkdownBody body={description} />
             ) : (
@@ -260,11 +198,9 @@ export function ProductTabs({ description, related }: Props) {
           </>
         </section>
 
-        <section id="product-section-rekomendasi" className="product-tab-section mt-8 border-t border-gray-100 pt-5 md:mt-10 md:pt-6">
-          <h2 className="mb-3 text-base font-black text-gray-900 md:text-lg">
-            Rekomendasi Produk
-          </h2>
-          <RelatedGrid related={related} />
+        {children}
+        <section id="product-section-ulasan" className="product-tab-section mt-6 border-t border-gray-100 pt-5">
+          {reviews}
         </section>
       </div>
     </div>

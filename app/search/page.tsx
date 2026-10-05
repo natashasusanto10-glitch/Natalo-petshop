@@ -7,35 +7,20 @@ import { Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } fr
 import { useRouter, useSearchParams } from "next/navigation";
 import { BottomSheet } from "@/components/BottomSheet";
 import { PageStatusBar } from "@/components/PageStatusBar";
-import { QuickAddToCart } from "@/components/QuickAddToCart";
+import { ProductCard } from "@/components/ProductCard";
+import { PRODUCT_GRID_CLASS } from "@/components/product/ProductGrid";
+import { searchDocToStoreProduct } from "@/lib/search-doc-to-product";
+import type { ProductSearchDoc } from "@/lib/search";
 import {
   SearchFilters,
   type ActiveFilters,
   type Facets,
 } from "@/components/SearchFilters";
-import { formatRupiah } from "@/lib/format";
 import { buildKeywordOnlySearchHref, buildKeywordOnlySearchParams } from "@/lib/search-url";
+import { formatRupiah } from "@/lib/format";
 import { FilterChip } from "@/components/products/FilterChip";
 
-type SearchItem = {
-  id: string;
-  slug: string;
-  name: string;
-  image_url: string | null;
-  price_min: number;
-  price_max: number;
-  discount_price: number | null;
-  stock: number;
-  total_stock: number;
-  weight_grams: number;
-  brand_name: string | null;
-  brand_slug: string | null;
-  category_name: string | null;
-  avg_rating: number;
-  review_count: number;
-  is_active: boolean;
-  has_variants: boolean;
-};
+type SearchItem = ProductSearchDoc;
 
 type SearchResult = {
   items: SearchItem[];
@@ -378,7 +363,7 @@ function SearchPageContent() {
               </div>
             ) : data ? (
               <>
-                <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+                <div className={PRODUCT_GRID_CLASS}>
                   {data.items.map((item, index) => (
                     <SearchProductCard key={item.id} item={item} priority={index < 2} />
                   ))}
@@ -695,91 +680,12 @@ function SuggestionRow({
 }
 
 function SearchProductCard({ item, priority }: { item: SearchItem; priority?: boolean }) {
-  const href = `/products/${item.slug}`;
-  const displayPrice =
-    item.discount_price !== null && item.discount_price < item.price_min
-      ? item.discount_price
-      : item.price_min;
-  const priceLabel =
-    item.price_min === item.price_max
-      ? formatRupiah(displayPrice)
-      : `Mulai ${formatRupiah(displayPrice)}`;
-  const outOfStock = item.total_stock <= 0;
-  const label = item.brand_name ?? item.category_name ?? "Natalo Petshop";
-
-  return (
-    <article className="group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition active:scale-[0.99] md:hover:shadow-md">
-      <Link href={href} className="flex min-w-0 flex-1 flex-col">
-        <div className="relative aspect-square overflow-hidden bg-gray-100">
-          {item.image_url ? (
-            <Image
-              src={item.image_url}
-              alt={item.name}
-              fill
-              priority={priority}
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              placeholder="blur"
-              blurDataURL={IMAGE_BLUR_GRAY}
-              className="object-cover transition duration-300 group-hover:scale-105"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-3xl font-black text-gray-200">
-              NP
-            </div>
-          )}
-          <span
-            className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-black ${
-              outOfStock ? "bg-gray-900/80 text-white" : "bg-emerald-500 text-white"
-            }`}
-          >
-            {outOfStock ? "Habis" : "Tersedia"}
-          </span>
-        </div>
-
-        <div className="flex min-w-0 flex-1 flex-col p-2.5">
-          <p className="truncate text-[10px] font-black uppercase tracking-wide text-natalo-500">
-            {label}
-          </p>
-          <h2 className="mt-1 line-clamp-2 min-h-[2.35rem] text-xs font-bold leading-snug text-gray-900 md:text-sm">
-            {item.name}
-          </h2>
-          <div className="mt-2">
-            <p className="truncate text-sm font-black leading-tight text-natalo-600 md:text-base">
-              {priceLabel}
-            </p>
-            {item.review_count > 0 && (
-              <p className="mt-0.5 text-[11px] font-semibold text-gray-400">
-                Rating {item.avg_rating.toFixed(1)} ({item.review_count})
-              </p>
-            )}
-          </div>
-        </div>
-      </Link>
-
-      <div className="px-2.5 pb-2.5">
-        <QuickAddToCart
-          product={{
-            id: item.id,
-            slug: item.slug,
-            name: item.name,
-            price: item.price_min,
-            discountPrice: item.discount_price,
-            stock: item.stock ?? item.total_stock,
-            weightGram: item.weight_grams,
-            imageUrl: item.image_url,
-            isActive: item.is_active,
-            hasVariants: item.has_variants,
-          }}
-          className="h-8 py-0 text-[11px]"
-        />
-      </div>
-    </article>
-  );
+  return <ProductCard product={searchDocToStoreProduct(item)} priority={priority} showCta={false} showRating />;
 }
 
 function SearchGridSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+    <div className={PRODUCT_GRID_CLASS}>
       {Array.from({ length: 8 }).map((_, index) => (
         <div key={index} className="overflow-hidden rounded-xl border border-gray-100 bg-white">
           <div className="aspect-square animate-pulse bg-gray-100" />
