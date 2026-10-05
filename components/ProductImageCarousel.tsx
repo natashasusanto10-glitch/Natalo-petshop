@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
+import { useProductDetailState } from "@/components/products/ProductDetailState";
 
 // Lazy load ProductImageViewer — pakai Swiper (~50KB) yang cuma di-render
 // saat user tap image untuk zoom view. Tanpa dynamic import, Swiper masuk
@@ -68,7 +69,8 @@ function formatClock(totalSeconds: number | null): string | null {
  *   dipetakan dari index slide (dikurangi 1 kalau ada slide video).
  */
 export function ProductImageCarousel({ images, alt, transitionName, video, showThumbnails = true }: Props) {
-  const safeImages = images.filter(Boolean);
+  const variantImage = useProductDetailState()?.variant?.imageUrl;
+  const safeImages = variantImage ? [variantImage, ...images.filter(src => src && src !== variantImage)] : images.filter(Boolean);
   const imageIndexOffset = video ? 1 : 0;
 
   const slides: Slide[] = [
@@ -89,6 +91,16 @@ export function ProductImageCarousel({ images, alt, transitionName, video, showT
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [errored, setErrored] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    if (!variantImage) return;
+    const index = video ? 1 : 0;
+    setErrored({});
+    setActive(index);
+    videoElRef.current?.pause();
+    setVideoPlaying(false);
+    containerRef.current?.scrollTo({ left: index * containerRef.current.clientWidth, behavior: "instant" });
+  }, [variantImage, video]);
 
   // Pakai IntersectionObserver untuk deteksi slide mana yg sedang di-view.
   // Threshold 0.6 supaya hanya slide yg dominan terlihat yg di-set active.
