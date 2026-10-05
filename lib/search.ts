@@ -45,17 +45,12 @@ export const meili = new Meilisearch({
 export const productIndex = meili.index(INDEX_NAME);
 
 /**
- * Meilisearch hanya aktif kalau host di-set dan tidak menunjuk ke localhost
- * di environment production (Vercel). Tanpa gate ini, deploy Vercel akan
- * coba connect ke localhost:7700 dan men-spam error log setiap request.
+ * Database-only policy shared by search, suggestions, facets and index hooks.
+ * Retain the integration for compatibility, but never connect to Meilisearch.
  */
 export function isMeiliEnabled() {
-  if (!HOST) return false;
-  const isVercel = process.env.VERCEL === "1";
-  if (isVercel && (HOST.includes("localhost") || HOST.includes("127.0.0.1"))) {
-    return false;
-  }
-  return true;
+  // Natalo uses PostgreSQL for search; no external search subscription.
+  return false;
 }
 
 export type ProductSearchDoc = {
@@ -790,38 +785,7 @@ async function searchProductsFromMeili(opts: NormalizedSearchOptions) {
 }
 
 /**
- * Cari kandidat product IDs via pg_trgm similarity + ILIKE.
- * Pakai GIN trigram index di Product.searchText. Return urut by similarity.
- */
-async function trigramCandidateIds(query: string, limit = 500): Promise<string[]> {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT id
-    FROM "Product"
-    WHERE "isActive" = true
-      AND (
-        "searchText" ILIKE ${"%" + q + "%"}
-        OR "searchText" % ${q}
-        OR similarity("searchText", ${q}) > 0.15
-      )
-    ORDER BY
-      CASE WHEN lower("name") = ${q} THEN 0
-           WHEN "searchText" ILIKE ${q + "%"} THEN 1
-           WHEN "searchText" ILIKE ${"%" + q + "%"} THEN 2
-           ELSE 3
-      END,
-      similarity("searchText", ${q}) DESC,
-      "createdAt" DESC
-    LIMIT ${limit}
-  `);
-
-  return rows.map((row) => row.id);
-}
-
-/**
- * Batas baris yang diambil per query untuk permintaan search TANPA kata kunci.
+ * Batas baris yang diambil per query pencarian database.
  *
  * Untuk sort berbasis penjualan (best_seller/trending) batas ini hanya mengenai
  * EKOR — kepala diambil lewat id-nya sendiri jadi tidak pernah terpotong.
@@ -849,29 +813,12 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
   const start = Date.now();
   const q = opts.q.trim();
 
-  let candidateIds: string[] | undefined;
-  if (q.length >= 2) {
-    candidateIds = await trigramCandidateIds(q, 500);
-    if (candidateIds.length === 0) {
-      return {
-        items: [],
-        total: 0,
-        page: Math.max(1, opts.page),
-        per_page: Math.max(1, Math.min(60, opts.perPage)),
-        facets: buildSearchFacets([]),
-        took_ms: Date.now() - start,
-        source: "database" as const,
-      };
-    }
-  }
-
   const where: Prisma.ProductWhereInput = {
     isActive: true,
     // Produk yang masih setengah jadi (creationState "creating") TIDAK boleh
     // bocor ke pelanggan. /api/products sudah pakai guard ini; search belum,
     // jadi produk stuck bisa muncul di /search. Samakan.
     ...productIsVisibleWhere(),
-    ...(candidateIds ? { id: { in: candidateIds } } : {}),
     ...(opts.categorySlug.length > 0 ? { category: { slug: { in: opts.categorySlug } } } : {}),
     ...(opts.brandSlug.length > 0 ? { brand: { slug: { in: opts.brandSlug } } } : {}),
   };
@@ -897,7 +844,7 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
     ? discountOnlyWhere()
     : undefined;
 
-  const andFilters = [priceWhere, stockWhere, ratingWhere, discountWhere].filter(
+  const andFilters = [productSearchWhere(q), priceWhere, stockWhere, ratingWhere, discountWhere].filter(
     (f): f is Prisma.ProductWhereInput => Boolean(f),
   );
   if (andFilters.length > 0) where.AND = andFilters;
@@ -929,7 +876,7 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
   // best-seller lama hilang diam-diam begitu katalog lewat CATALOG_FETCH_CAP:
   // query ranking menaruhnya di peringkat 1, tapi pengambilan "terbaru dulu"
   // tidak ikut membawanya sehingga produknya lenyap dari hasil.
-  const useRankedHead = !candidateIds && rankedIds.length > 0;
+  const useRankedHead = rankedIds.length > 0;
 
   const rankedHeadPromise = useRankedHead
     ? prisma.product.findMany({
@@ -945,7 +892,7 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
     where: useRankedHead ? { ...where, id: { notIn: rankedIds } } : where,
     include: getProductSearchInclude(),
     orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-    take: candidateIds ? undefined : CATALOG_FETCH_CAP,
+    take: CATALOG_FETCH_CAP,
   });
 
   const [rankedHead, tail] = await Promise.all([rankedHeadPromise, tailPromise]);
@@ -954,7 +901,7 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
   // Kepala selalu utuh; yang masih bisa terpotong hanya EKOR (produk yang belum
   // pernah terjual) — dan itu cuma terasa di halaman-halaman dalam. Jangan gagal
   // diam-diam.
-  if (!candidateIds && tail.length >= CATALOG_FETCH_CAP) {
+  if (tail.length >= CATALOG_FETCH_CAP) {
     console.warn(
       `[searchProductsFromDb] Ekor katalog menyentuh batas ${CATALOG_FETCH_CAP} baris. ` +
         "Produk yang belum pernah terjual bisa terpotong di halaman dalam, dan `total` ikut terpotong. " +
@@ -973,15 +920,9 @@ async function searchProductsFromDb(opts: NormalizedSearchOptions) {
       )
     : allDocs;
 
-  // Kalau ada candidateIds, sort sesuai urutan kandidat (sudah by similarity).
-  // Kalau opts.sort bukan "relevance", override dengan compareSearchItems.
+  // Both web and Flutter match tokens through productSearchWhere().
   let items: ProductSearchDoc[];
-  if (candidateIds && opts.sort === "relevance") {
-    const orderMap = new Map(candidateIds.map((id, i) => [id, i]));
-    items = [...docs].sort(
-      (a, b) => (orderMap.get(a.id) ?? Infinity) - (orderMap.get(b.id) ?? Infinity),
-    );
-  } else if (rankedIds.length > 0) {
+  if (rankedIds.length > 0) {
     items = orderDocsBySalesRank(docs, rankedIds, compareSearchItems(opts.sort, q));
   } else {
     items = [...docs].sort(compareSearchItems(opts.sort, q));
