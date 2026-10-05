@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { uploadAdminImage } from "@/lib/admin-image-upload";
+import { VariantPhotoField } from "./VariantPhotoField";
 import { Button } from "@/components/admin/ui";
 import { NumberInput } from "@/components/admin/ui/NumberInput";
 import { LayoutMotion } from "@/components/admin/ui/Motion";
 import {
   variantPersistenceMode,
-  type VariantPersistenceMode,
 } from "@/lib/product/variant-editor";
 export { variantPersistenceMode } from "@/lib/product/variant-editor";
 
@@ -831,9 +830,10 @@ export function VariantEditor({
                     className="admin-variant-card"
                   >
                     <div className="mb-4 flex items-center gap-3">
-                      <VariantImageCell
+                      <VariantPhotoField
                         onBusyChange={(busy) => uploadBusy(row.tempId, busy)}
                         imageUrl={row.imageUrl}
+                        label={row.optionValues.join(" / ")}
                         onChange={(url) =>
                           updateRow(row.tempId, "imageUrl", url)
                         }
@@ -914,7 +914,6 @@ export function VariantEditor({
                       {nonEmptyAttrs.map((attr) => (
                         <th key={attr.tempId}>{attr.name}</th>
                       ))}
-                      <th>Foto</th>
                       <th>Harga</th>
                       <th>Stok</th>
                       <th>SKU</th>
@@ -926,19 +925,20 @@ export function VariantEditor({
                     {rows.map((row) => (
                       <tr key={row.tempId}>
                         {row.optionValues.map((value, i) => (
-                          <td key={i}>{value}</td>
+                          <td key={i}>
+                            <div className="flex items-center gap-4">
+                              {i === 0 && (
+                                <VariantPhotoField
+                                  onBusyChange={(busy) => uploadBusy(row.tempId, busy)}
+                                  imageUrl={row.imageUrl}
+                                  label={row.optionValues.join(" / ")}
+                                  onChange={(url) => updateRow(row.tempId, "imageUrl", url)}
+                                />
+                              )}
+                              <span>{value}</span>
+                            </div>
+                          </td>
                         ))}
-                        <td>
-                          <VariantImageCell
-                            onBusyChange={(busy) =>
-                              uploadBusy(row.tempId, busy)
-                            }
-                            imageUrl={row.imageUrl}
-                            onChange={(url) =>
-                              updateRow(row.tempId, "imageUrl", url)
-                            }
-                          />
-                        </td>
                         {(["price", "stock", "sku", "weightGram"] as const).map(
                           (field) => (
                             <td key={field}>
@@ -1051,110 +1051,6 @@ export function VariantEditor({
           {saveMsg.text}
         </p>
       )}
-    </div>
-  );
-}
-
-// ── Sub-component: image upload cell per variant row ───────────
-/**
- * Slot upload gambar prominent per variant. Click → file picker →
- * POST /api/admin/upload (UploadThing) → set imageUrl state.
- * Style: square placeholder 64×64 dengan dashed border kalau kosong,
- * preview gambar dengan tombol × hapus kalau sudah ada.
- */
-function VariantImageCell({
-  imageUrl,
-  onChange,
-  onBusyChange,
-}: {
-  onBusyChange?(busy: boolean): void;
-  imageUrl: string;
-  onChange: (url: string) => void;
-}) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
-
-  async function handleFile(file: File) {
-    // Batas ukuran TIDAK dicek di sini — kompresi jalan dulu di
-    // uploadAdminImage, dan batasnya diperiksa SETELAH kompresi. Dulu
-    // pengecekan mentah di sini menolak PNG 1,7 MB padahal setelah
-    // dikompresi ukurannya tinggal ratusan KB dan sebenarnya muat.
-    setError("");
-    setUploading(true);
-    onBusyChange?.(true);
-    try {
-      onChange(await uploadAdminImage(file));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload gagal");
-    } finally {
-      setUploading(false);
-      onBusyChange?.(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
-  if (imageUrl) {
-    return (
-      <div className="relative inline-block">
-        <img
-          src={imageUrl}
-          alt="Foto varian"
-          className="h-16 w-16 rounded-lg border border-zinc-200 object-cover"
-        />
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          className="absolute -right-1.5 -top-1.5 flex h-10 w-10 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white hover:bg-red-600"
-          title="Hapus foto"
-          aria-label="Hapus foto varian"
-        >
-          ×
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => fileRef.current?.click()}
-        disabled={uploading}
-        className="flex h-16 w-16 items-center justify-center rounded-lg border-2 border-dashed border-zinc-300 bg-white text-zinc-400 transition hover:border-natalo-400 hover:text-natalo-600 disabled:cursor-wait disabled:opacity-50"
-        title="Tambah foto varian"
-        aria-label="Tambah foto varian"
-      >
-        {uploading ? (
-          <span className="text-[10px] font-bold">...</span>
-        ) : (
-          <svg
-            width="22"
-            height="22"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <polyline points="21 15 16 10 5 21" />
-          </svg>
-        )}
-      </button>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleFile(f);
-        }}
-      />
-      {error && <p className="mt-1 text-[10px] text-red-500">{error}</p>}
     </div>
   );
 }

@@ -15,7 +15,7 @@ const photo=(color,name)=>`data:image/svg+xml,${encodeURIComponent(`<svg xmlns="
 const images=[photo("#e3f0ed","NATALO"),photo("#e8eefb","Chicken"),photo("#fff0d9","Beef")];
 const categories=[{id:"cat-1",name:"Makanan Kucing"},{id:"cat-2",name:"Kandang & Carrier"},{id:"cat-3",name:"Obat & Suplemen"}]; const brands=[{id:"brand-1",name:"Royal Canin"},{id:"brand-2",name:"Animal & Co"}];
 const attrs=[{id:"attr-1",name:"Rasa",position:0,options:[{id:"opt-1",value:"Chicken",position:0},{id:"opt-2",value:"Beef",position:1}]}];
-const variants=attrs[0].options.map((option,index)=>({id:`variant-${index}`,price:875000,stock:50,weightGram:500,sku:`NAT-${index+1}`,imageUrl:null,isActive:true,options:[{optionId:option.id}]}));
+const variants=attrs[0].options.map((option,index)=>({id:`variant-${index}`,price:875000,stock:50,weightGram:500,sku:`NAT-${index+1}`,imageUrl:images[index+1],isActive:true,options:[{optionId:option.id}]}));
 const base={name:"Animal & Co Snack Treat Premium",description:"Camilan hewan dengan bahan pilihan untuk kebutuhan harian.",imageUrl:images[0],gallery:images.slice(1),categoryId:"cat-1",brandId:"brand-2",price:875000,stock:100,weightGram:500,sku:null,isActive:true,discountPrice:null,memberPrice:null,avgRating:0,reviewCount:0,discountItems:[],hasVariants:true,variantAttrs:attrs,variants,videoGuid:null,videoStatus:null,videoThumbnailUrl:null,videoDurationSec:null};
 const single={...base,id:"review-single",name:"Tisu Basah Hewan Isi 80 Lembar",hasVariants:false,variantAttrs:[],variants:[],price:12100,stock:200,sku:"RUNBELLE"};
 const varied={...base,id:"review-variant"};

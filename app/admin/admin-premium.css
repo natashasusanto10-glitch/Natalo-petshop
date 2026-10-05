@@ -2964,3 +2964,14 @@
   .admin-customer-stats .admin-stat-value { font-size: 24px; margin-block: 4px; }
   .admin-customer-stats .admin-stat-bottom { display: none; }
 }
+.variant-photo-field { position: relative; width: 80px; flex-shrink: 0; padding-bottom: 14px; }
+.variant-photo-thumbnail { width: 76px; height: 76px; padding: 5px; border: 1px solid #dfe6ef; border-radius: 10px; background: white; cursor: pointer; }
+.variant-photo-thumbnail img { width: 100%; height: 100%; object-fit: contain; }
+.variant-photo-thumbnail.is-empty { border-style: dashed; color: #6b89b1; font-size: 24px; }
+.variant-photo-tools { position: absolute; bottom: 0; left: -4px; display: flex; background: white; border: 1px solid #e2e8f0; border-radius: 9px; box-shadow: 0 3px 10px #162b4915; opacity: 0; pointer-events: none; transform: translateY(3px); transition: opacity 160ms, transform 160ms; }
+.variant-photo-tools button { display: grid; place-items: center; width: 44px; height: 36px; background: transparent; color: #235dcc; border: 0; cursor: pointer; border-radius: 8px; }
+.variant-photo-tools button:last-child { color: #aa4141; }
+.variant-photo-field:hover .variant-photo-tools, .variant-photo-field:focus-within .variant-photo-tools { opacity: 1; pointer-events: auto; transform: none; }
+.variant-photo-field button:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+@media (hover: none) { .variant-photo-field { padding-bottom: 28px; } .variant-photo-tools { opacity: 1; pointer-events: auto; transform: none; } .variant-photo-tools button { height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .variant-photo-tools { transition: none; } }
