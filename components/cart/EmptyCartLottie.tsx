@@ -1,81 +1,50 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import type { AnimationItem } from "lottie-web";
 
-const CART_LOTTIE_SRC = "/assets/lottie/empty_cart_natalo_blue.json";
-const CART_FALLBACK_SRC = "/assets/images/empty_cart_pets_fullcolor.png";
+const SOURCE = "/assets/lottie/cart-pets-basket-v1.json";
+const STILL = "/assets/images/cart-pets-basket-v1.png";
 
 export function EmptyCartLottie() {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const animationRef = useRef<AnimationItem | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const container = useRef<HTMLDivElement>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadAnimation() {
+    const abort = new AbortController();
+    let animation: AnimationItem | undefined;
+    let observer: IntersectionObserver | undefined;
+    let inView = true;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => {
+      if (!animation) return;
+      if (reduced.matches) animation.goToAndStop(144, true);
+      else if (document.hidden || !inView) animation.pause();
+      else animation.play();
+    };
+    async function load() {
       try {
-        const [lottie, response] = await Promise.all([
-          import("lottie-web"),
-          fetch(CART_LOTTIE_SRC, { cache: "force-cache" }),
-        ]);
-
-        if (!response.ok) throw new Error("Empty cart Lottie asset not found");
+        const [player, response] = await Promise.all([import("lottie-web"), fetch(SOURCE, { signal: abort.signal, cache: "force-cache" })]);
+        if (!response.ok) throw new Error("Cart animation unavailable");
         const animationData = await response.json();
-        if (cancelled || !containerRef.current) return;
-
-        const animation = lottie.default.loadAnimation({
-          container: containerRef.current,
-          renderer: "svg",
-          loop: true,
-          autoplay: true,
-          animationData,
-          rendererSettings: {
-            progressiveLoad: true,
-            preserveAspectRatio: "xMidYMid meet",
-          },
-        });
-
-        animationRef.current = animation;
-        animation.addEventListener("DOMLoaded", () => {
-          if (!cancelled) setStatus("ready");
-        });
-        animation.addEventListener("data_failed", () => {
-          if (!cancelled) setStatus("error");
-        });
+        if (abort.signal.aborted || !container.current) return;
+        animation = player.default.loadAnimation({ container: container.current, renderer: "svg", autoplay: false, loop: true, animationData });
+        animation.addEventListener("DOMLoaded", () => { if (!abort.signal.aborted) { setReady(true); sync(); } });
+        animation.addEventListener("data_failed", () => { if (!abort.signal.aborted) setReady(false); });
+        observer = new IntersectionObserver(entries => { inView = entries[0]?.isIntersecting ?? false; sync(); });
+        observer.observe(container.current);
       } catch {
-        if (!cancelled) setStatus("error");
+        // Keep the matching static illustration visible when loading fails.
       }
     }
-
-    void loadAnimation();
-
-    return () => {
-      cancelled = true;
-      animationRef.current?.destroy();
-      animationRef.current = null;
-    };
+    reduced.addEventListener("change", sync);
+    document.addEventListener("visibilitychange", sync);
+    void load();
+    return () => { abort.abort(); observer?.disconnect(); animation?.destroy(); reduced.removeEventListener("change", sync); document.removeEventListener("visibilitychange", sync); };
   }, []);
 
-  return (
-    <div className="relative mx-auto mb-5 aspect-[1.27/1] w-full max-w-[280px] overflow-visible">
-      <div
-        ref={containerRef}
-        className={`absolute inset-0 h-full w-full ${status === "error" ? "hidden" : ""}`}
-        aria-hidden="true"
-      />
-      {status !== "ready" ? (
-        <Image
-          src={CART_FALLBACK_SRC}
-          alt=""
-          width={1016}
-          height={797}
-          className="absolute inset-0 h-full w-full object-contain"
-          aria-hidden="true"
-        />
-      ) : null}
-    </div>
-  );
+  return <div className="relative mx-auto mb-5 aspect-[640/460] w-full max-w-[280px]" aria-hidden="true">
+    <div ref={container} className={`absolute inset-0 ${ready ? "" : "invisible"}`} />
+    {!ready && <img src={STILL} alt="" width={640} height={460} className="h-full w-full object-contain" />}
+  </div>;
 }

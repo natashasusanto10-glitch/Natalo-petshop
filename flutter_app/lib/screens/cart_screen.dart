@@ -19,6 +19,7 @@ import '../utils/chrome_autohide.dart';
 import '../utils/formatters.dart';
 import '../utils/haptics.dart';
 import '../widgets/animated_counter.dart';
+import '../widgets/empty_cart_animation.dart';
 import '../widgets/app_chat_button.dart';
 import '../widgets/cart_checkout_pill.dart';
 import '../widgets/cart_scroll_view.dart';
@@ -3433,14 +3434,7 @@ class _EmptyCartCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          SizedBox(
-            height: 245,
-            width: double.infinity,
-            child: Image.asset(
-              'assets/illustrations/empty_cart_natalo_exact.png',
-              fit: BoxFit.contain,
-            ),
-          ),
+          const EmptyCartAnimation(),
           const SizedBox(height: 10),
           Text(
             'Keranjang kamu masih kosong',
