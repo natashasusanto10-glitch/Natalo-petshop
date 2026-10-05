@@ -164,7 +164,7 @@ export function ProductImageCarousel({ images, alt, transitionName, video, showT
   }
 
   return (
-    <>
+    <div className="min-w-0 w-full">
       <div className="relative mx-auto aspect-square w-full max-h-[360px] overflow-hidden bg-white md:max-h-none md:rounded-3xl">
         <div
           ref={containerRef}
@@ -371,6 +371,6 @@ export function ProductImageCarousel({ images, alt, transitionName, video, showT
         open={isImageViewerOpen}
         onClose={() => setIsImageViewerOpen(false)}
       />
-    </>
+    </div>
   );
 }
