@@ -49,7 +49,8 @@ export function StickyAddToCartBar({ initialState, waHref }: Props) {
       : "Beli Sekarang";
 
   return (
-    <div className="product-bottom-cta md:hidden">
+    <div className="md:hidden">
+    <div className="product-bottom-cta">
       <div className="flex w-full gap-2">
         <ExternalLink
           href={waHref}
@@ -76,6 +77,7 @@ export function StickyAddToCartBar({ initialState, waHref }: Props) {
           {buyLabel}
         </button>
       </div>
+    </div>
     </div>
   );
 }
