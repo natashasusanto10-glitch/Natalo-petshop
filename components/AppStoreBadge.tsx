@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { isCapacitorNative } from "@/lib/native-platform";
+import { APP_STORE_URL } from "@/components/open-in-app";
 
 /**
  * App Store badge — promote download Natalo Petshop iOS app dari App Store.
@@ -20,8 +21,6 @@ import { isCapacitorNative } from "@/lib/native-platform";
  *
  * App ID 6767888044 dari App Store Connect.
  */
-
-const APP_STORE_URL = "https://apps.apple.com/id/app/natalo-petshop/id6767888044";
 
 type Variant = "default" | "compact" | "outlined";
 

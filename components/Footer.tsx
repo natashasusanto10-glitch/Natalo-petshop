@@ -2,6 +2,7 @@ import Link from "next/link";
 import { OperatingHours } from "@/components/OperatingHours";
 import { ExternalLink } from "@/components/ExternalLink";
 import { AppStoreBadge } from "@/components/AppStoreBadge";
+import { PlayStoreBadge } from "@/components/PlayStoreBadge";
 
 function InstagramIcon() {
   return (
@@ -99,8 +100,9 @@ export function Footer() {
               <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
                 Tersedia di
               </p>
-              <div className="mt-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 <AppStoreBadge />
+                <PlayStoreBadge />
               </div>
             </div>
           </div>
