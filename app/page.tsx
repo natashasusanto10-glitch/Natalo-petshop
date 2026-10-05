@@ -828,50 +828,9 @@ export default async function HomePage() {
             )}
           </div>
           <ProductGrid className="mt-3 product-grid">
-            {flashSaleProducts.map((p) => {
-              const finalPrice = p.discountPrice!;
-              const off = discountPercent(p.price, p.discountPrice);
-              return (
-                <Link
-                  key={p.id}
-                  href={`/products/${p.slug}`}
-                  className="apple-reveal min-w-0 overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
-                >
-                  <div className="relative aspect-square w-full bg-white p-2">
-                    {p.imageUrl ? (
-                      <Image
-                        src={p.imageUrl}
-                        alt={p.name}
-                        fill
-                        loading="lazy"
-                        sizes="(max-width: 640px) 33vw, 150px"
-                        placeholder="blur"
-                        blurDataURL={IMAGE_BLUR_GRAY}
-                        className="object-contain p-2"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-zinc-300">
-                        <HomeIcon name="box" className="h-10 w-10" />
-                      </div>
-                    )}
-                    <span className="absolute left-1.5 top-1.5 rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-black text-white">
-                      -{off}%
-                    </span>
-                  </div>
-                  <div className="p-2">
-                    <p className="line-clamp-2 min-h-[2.1rem] text-[11px] font-bold leading-snug text-zinc-700">{p.name}</p>
-                    <div className="mt-1">
-                      <p className="truncate text-[13px] font-black leading-tight text-[#1E5FBF]">
-                        {formatRupiah(finalPrice)}
-                      </p>
-                    </div>
-                    <p className="truncate text-[10px] text-zinc-400 line-through">
-                      {formatRupiah(p.price)}
-                    </p>
-                  </div>
-                </Link>
-              );
-            })}
+            {flashSaleProducts.map((product) => (
+              <HomeProductCard key={product.id} product={product} badge="Promo" />
+            ))}
           </ProductGrid>
         </PageContainer>
       )}

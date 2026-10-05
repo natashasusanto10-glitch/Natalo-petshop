@@ -1,16 +1,23 @@
+import { formatRupiah } from "@/lib/format";
 import type { ProductVoucherPreview } from "@/lib/product-vouchers";
 
 type Props = {
+  savingsAmount?: number;
   voucherPreview?: ProductVoucherPreview | null;
   shippingVoucherPreview?: ProductVoucherPreview | null;
 };
 
-export function ProductVoucherBadges({ voucherPreview, shippingVoucherPreview }: Props) {
-  if (!voucherPreview && !shippingVoucherPreview) return null;
+export function ProductVoucherBadges({ voucherPreview, shippingVoucherPreview, savingsAmount = 0 }: Props) {
+  const savingsLabel = savingsAmount > 0 ? `Hemat ${formatRupiah(savingsAmount)}` : null;
+  const hasProductVoucherLabel = Boolean(voucherPreview?.badgeLabel.trim());
+  if (!voucherPreview && !shippingVoucherPreview && !savingsLabel) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1" data-product-vouchers>
-      {[shippingVoucherPreview, voucherPreview].map(voucher => {
-        if (!voucher) return null;
+      {!hasProductVoucherLabel && savingsLabel && (
+        <span data-product-savings className="inline-flex max-w-full items-center rounded-md border border-rose-200 bg-rose-50 px-1.5 py-1 text-[10px] font-bold leading-tight text-rose-700">{savingsLabel}</span>
+      )}
+      {[voucherPreview, shippingVoucherPreview].map(voucher => {
+        if (!voucher || (voucher === voucherPreview && !hasProductVoucherLabel && savingsLabel)) return null;
         const shipping = voucher.discountScope === "SHIPPING";
         const label = voucher.badgeLabel.trim() || (shipping ? "Gratis Ongkir" : "Voucher produk");
         const details = [voucher.sheetTitle, voucher.sheetSubtitle,

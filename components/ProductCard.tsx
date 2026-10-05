@@ -104,7 +104,7 @@ export function ProductCard({
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col pt-3">
-            <ProductVoucherBadges voucherPreview={product.voucherPreview} shippingVoucherPreview={product.shippingVoucherPreview} />
+            <ProductVoucherBadges savingsAmount={hasMarkdown ? Math.round(product.price - displayPrice) : 0} voucherPreview={product.voucherPreview} shippingVoucherPreview={product.shippingVoucherPreview} />
             {/* Nama produk — max 2 baris, deskripsi panjang TIDAK ada di card
                 (lihat detail produk). */}
             <h3 className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-[#222]">
@@ -114,7 +114,7 @@ export function ProductCard({
             <ProductSalesMeta soldCount={product.soldCount} avgRating={product.avgRating} reviewCount={product.reviewCount} showRating />
 
             <div className="mt-2">
-              <p className="text-base font-black leading-tight text-[#1E5FBF]">
+              <p className={`text-base font-black leading-tight ${hasMarkdown ? "text-[#E11D48]" : "text-[#1E5FBF]"}`}>
                 {formatRupiah(displayPrice)}
               </p>
               {hasMarkdown && (
@@ -216,7 +216,7 @@ export function ProductCard({
           </h3>
 
           <div className="mt-2">
-            <p className="truncate text-[14px] font-black leading-tight text-[#1E5FBF] sm:text-base">
+            <p className={`truncate text-[14px] font-black leading-tight sm:text-base ${hasMarkdown ? "text-[#E11D48]" : "text-[#1E5FBF]"}`}>
               {formatRupiah(displayPrice)}
             </p>
             {hasMarkdown && (
@@ -226,7 +226,7 @@ export function ProductCard({
             )}
           </div>
 
-          <ProductVoucherBadges voucherPreview={product.voucherPreview} shippingVoucherPreview={product.shippingVoucherPreview} />
+          <ProductVoucherBadges savingsAmount={hasMarkdown ? Math.round(product.price - displayPrice) : 0} voucherPreview={product.voucherPreview} shippingVoucherPreview={product.shippingVoucherPreview} />
           <ProductSalesMeta soldCount={product.soldCount} avgRating={product.avgRating} reviewCount={product.reviewCount} showRating={showRating} />
         </div>
       </ProductCardLink>

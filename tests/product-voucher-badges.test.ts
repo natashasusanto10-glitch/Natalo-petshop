@@ -36,3 +36,22 @@ test("discount and shipping use the system labels and show their conditions", ()
   assert.match(html, /data-voucher-scope="PRODUCT"/);
   assert.equal((html.match(/data-voucher-scope=/g) ?? []).length, 2);
 });
+
+
+test("product markdown shows savings even with only a shipping voucher", () => {
+  const html = renderToStaticMarkup(createElement(ProductVoucherBadges, { savingsAmount: 2800, shippingVoucherPreview: shipping }));
+  assert.match(html, /Hemat Rp(?:&nbsp;|&#xA0;| | )2.800/);
+  assert.match(html, /Gratis Ongkir/);
+});
+
+test("product voucher label takes precedence over markdown savings, like Flutter", () => {
+  const html = renderToStaticMarkup(createElement(ProductVoucherBadges, { savingsAmount: 2800, voucherPreview: discount }));
+  assert.match(html, /Hemat s.d. Rp50.000/);
+  assert.doesNotMatch(html, /2.800/);
+});
+
+test("shipping voucher alone does not claim product savings", () => {
+  const html = renderToStaticMarkup(createElement(ProductVoucherBadges, { shippingVoucherPreview: shipping }));
+  assert.match(html, /Gratis Ongkir/);
+  assert.doesNotMatch(html, /Hemat/);
+});
