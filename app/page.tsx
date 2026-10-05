@@ -800,12 +800,12 @@ export default async function HomePage() {
 
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
-        <div className="grid grid-cols-4 gap-x-2 gap-y-2 md:grid-cols-8 md:gap-3">
+        <div className="grid grid-cols-4 gap-x-2 gap-y-3.5 md:grid-cols-8 md:gap-3">
           {SHORTCUT_ITEMS.map(item => (
             <Link key={item.artwork} href={item.href}
-              className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1 transition active:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 md:gap-2 md:py-2 md:hover:bg-blue-50/50">
+              className="flex min-w-0 flex-col items-center gap-1.5 rounded-xl px-1 transition active:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 md:gap-2 md:py-2 md:hover:bg-blue-50/50">
               <AnimatedShortcutIcon artwork={item.artwork} />
-              <span className="text-center text-[11px] font-medium leading-tight text-zinc-700 md:text-sm">
+              <span className="text-center text-[10.5px] font-medium leading-[1.12] text-zinc-700 md:text-sm">
                 {item.label}
               </span>
             </Link>
@@ -881,75 +881,13 @@ export default async function HomePage() {
         <div className="apple-reveal">
           <SectionHeader title="🏆 Produk Terlaris" href="/products?popular=best-seller" ctaLabel="Lihat semua" />
         </div>
-        <div className="md:hidden">
-        <div className="apple-reveal mt-3 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {bestSellers.map((p, i) => {
-            const finalPrice = p.memberPrice ?? p.discountPrice ?? p.price;
-            const hasMarkdown =
-              (p.memberPrice != null && p.memberPrice < p.price) ||
-              (p.discountPrice != null && p.discountPrice < p.price);
-            return (
-              <Link
-                key={p.id}
-                href={`/products/${p.slug}`}
-                className="relative w-[42vw] min-w-[124px] max-w-[150px] shrink-0 snap-start overflow-hidden rounded-2xl border border-[#eef3fb] bg-white shadow-sm active:opacity-90"
-              >
-                {i < 3 && (
-                  <span
-                    className={`absolute left-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black shadow ${
-                      i === 0
-                        ? "bg-amber-400 text-white"
-                        : i === 1
-                          ? "bg-zinc-300 text-zinc-700"
-                          : "bg-blue-300 text-white"
-                    }`}
-                    aria-label={`Peringkat ${i + 1}`}
-                  >
-                    {i + 1}
-                  </span>
-                )}
-                <div className="relative aspect-square w-full bg-white p-2">
-                  {p.imageUrl ? (
-                    <Image
-                      src={p.imageUrl}
-                      alt={p.name}
-                      fill
-                      loading="lazy"
-                      sizes="(max-width: 640px) 42vw, 150px"
-                      placeholder="blur"
-                      blurDataURL={IMAGE_BLUR_GRAY}
-                      className="object-contain p-2"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-zinc-300">
-                      <HomeIcon name="box" className="h-10 w-10" />
-                    </div>
-                  )}
-                </div>
-                <div className="p-2">
-                  <p className="line-clamp-2 min-h-[2.1rem] text-[11px] font-bold leading-snug text-zinc-700">
-                    {p.name}
-                  </p>
-                  <div className="mt-1 flex items-center justify-between gap-1">
-                    <p className="min-w-0 truncate text-[13px] font-black leading-tight text-[#1E5FBF]">
-                      {formatRupiah(finalPrice)}
-                    </p>
-                    {p.avgRating > 0 && (
-                      <span className="shrink-0 text-[10px] font-bold text-amber-500">★ {p.avgRating.toFixed(1)}</span>
-                    )}
-                  </div>
-                  {hasMarkdown && (
-                    <p className="text-[10px] text-zinc-400 line-through">
-                      {formatRupiah(p.price)}
-                    </p>
-                  )}
-                </div>
-              </Link>
-            );
-          })}
+        <div className="apple-reveal mt-3 flex snap-x snap-mandatory items-stretch gap-2 overflow-x-auto pb-2 md:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {bestSellers.map((product, index) => (
+            <div key={product.id} className="flex w-[44vw] min-w-[150px] max-w-[180px] shrink-0 snap-start [&>div]:w-full">
+              <HomeProductCard product={product} rankBadge={index + 1} />
+            </div>
+          ))}
         </div>
-        </div>
-
         <div className="mt-3 hidden md:block">
           <ResponsiveGrid compact cols={{ base: 2, sm: 3, lg: 6 }} className="product-grid">
             {bestSellers.map((p, i) => (
