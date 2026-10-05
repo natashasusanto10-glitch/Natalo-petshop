@@ -14,6 +14,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/bottom_nav.dart';
 import '../widgets/compact_commerce_product_card.dart';
+import '../widgets/empty_wishlist_animation.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/skeleton_product_card.dart';
 
@@ -647,7 +648,7 @@ class _WishlistEmptyCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const _WishlistIllustration(),
+          const EmptyWishlistAnimation(),
           const SizedBox(height: 10),
           Text(
             'Wishlist kamu masih kosong',
@@ -786,57 +787,5 @@ class _LookAgainFooter extends StatelessWidget {
       );
     }
     return const SizedBox(height: 24);
-  }
-}
-
-/// Wishlist illustration: same petshop family as empty cart, but with a clear
-/// wishlist heart marker on the Natalo bag.
-class _WishlistIllustration extends StatelessWidget {
-  const _WishlistIllustration();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 245,
-      width: double.infinity,
-      child: Center(
-        child: AspectRatio(
-          aspectRatio: 640 / 335,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth;
-              final height = constraints.maxHeight;
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.asset(
-                    'assets/images/empty_wishlist_natalo.png',
-                    fit: BoxFit.contain,
-                  ),
-                  Positioned(
-                    left: width * 0.43,
-                    top: height * 0.54,
-                    child: Container(
-                      width: width * 0.15,
-                      height: width * 0.13,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0475D8).withValues(alpha: 0.88),
-                        borderRadius: BorderRadius.circular(width * 0.04),
-                      ),
-                      child: Icon(
-                        Icons.favorite_rounded,
-                        color: Colors.white,
-                        size: width * 0.13,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    );
   }
 }
