@@ -7,8 +7,15 @@ export type VoucherItem = {
   id: string;
   title: string;
   description: string | null;
-  label: string;
-  type: "member";
+  label?: string;
+  badgeLabel?: string;
+  sheetTitle?: string;
+  sheetSubtitle?: string;
+  type: "member" | "PUBLIC_PRODUCT_DISCOUNT" | "PUBLIC_FREE_SHIPPING";
+  discountScope?: "PRODUCT" | "SHIPPING";
+  targetUser?: "ALL_MEMBERS" | "NEW_MEMBER";
+  maxDiscountAmount?: number | null;
+  brandName?: string | null;
   discountPercent: number | null;
   discountAmount: number | null;
   minimumOrder: number;
@@ -30,6 +37,7 @@ type Props = {
   vouchers?: VoucherItem[];
   /** Product slug — wajib kalau vouchers tidak di-pass (untuk client fetch). */
   productSlug?: string;
+  savingsAmount?: number;
 };
 
 function formatRupiahShort(n: number) {
@@ -37,6 +45,7 @@ function formatRupiahShort(n: number) {
 }
 
 function describeBenefit(v: VoucherItem) {
+  if (v.sheetTitle) return v.sheetTitle;
   if (v.title) return v.title;
   if (v.kind === "FREE_SHIPPING") return "Gratis Ongkir";
   if (v.discountPercent && v.discountPercent > 0) {
@@ -66,7 +75,16 @@ function describeExpiry(iso: string | null) {
   return `s/d ${d.toLocaleDateString("id-ID", { day: "numeric", month: "short" })}`;
 }
 
-export function VoucherCard({ vouchers: vouchersProp, productSlug }: Props) {
+export function isVisibleProductVoucher(voucher: VoucherItem) {
+  return (
+    ["member", "PUBLIC_PRODUCT_DISCOUNT", "PUBLIC_FREE_SHIPPING"].includes(voucher.type) &&
+    voucher.visibility !== "private" && !voucher.isPrivate && !voucher.isManualOnly &&
+    !voucher.usedByCurrentUser && voucher.isActive !== false && !voucher.isExpired &&
+    (!voucher.expiresAt || new Date(voucher.expiresAt).getTime() > Date.now())
+  );
+}
+
+export function VoucherCard({ vouchers: vouchersProp, productSlug, savingsAmount = 0 }: Props) {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   // Kalau vouchers tidak di-pass server-side, fetch sendiri client-side
@@ -98,17 +116,7 @@ export function VoucherCard({ vouchers: vouchersProp, productSlug }: Props) {
     };
   }, [vouchersProp, productSlug]);
 
-  const visibleProductVouchers = vouchers.filter((voucher) => {
-    return (
-      voucher.type === "member" &&
-      voucher.visibility !== "private" &&
-      !voucher.isPrivate &&
-      !voucher.isManualOnly &&
-      !voucher.usedByCurrentUser &&
-      voucher.isActive !== false &&
-      !voucher.isExpired
-    );
-  });
+  const visibleProductVouchers = vouchers.filter(isVisibleProductVoucher);
 
   function closeVoucher() {
     setOpen(false);
@@ -142,7 +150,7 @@ export function VoucherCard({ vouchers: vouchersProp, productSlug }: Props) {
 
   // Jangan render kalau belum ada voucher (fetch belum balik atau memang
   // kosong). Early return WAJIB setelah semua hooks di-declare di atas.
-  if (visibleProductVouchers.length === 0) return null;
+  if (visibleProductVouchers.length === 0 && savingsAmount <= 0) return null;
 
   function handleUse() {
     closeVoucher();
@@ -154,10 +162,6 @@ export function VoucherCard({ vouchers: vouchersProp, productSlug }: Props) {
     }, 80);
   }
 
-  const teaser =
-    visibleProductVouchers.length > 0
-      ? describeBenefit(visibleProductVouchers[0])
-      : "Lihat penawaran member";
   const count = visibleProductVouchers.length;
 
   const voucherPortal =
@@ -210,8 +214,10 @@ export function VoucherCard({ vouchers: vouchersProp, productSlug }: Props) {
                                 {describeMin(v)}
                               </p>
                               <p className="mt-0.5 text-[11px] font-bold text-orange-700">
-                                {v.label}
+                                {v.brandName ? `Khusus ${v.brandName}` : v.targetUser === "NEW_MEMBER" ? "Khusus member baru" : "Voucher member"}
                               </p>
+                              {v.maxDiscountAmount && v.maxDiscountAmount > 0 ? <p className="mt-0.5 text-xs text-gray-500">Maks. potongan {formatRupiahShort(v.maxDiscountAmount)}</p> : null}
+                              {v.description && <p className="mt-1 text-xs text-gray-500">{v.description}</p>}
                               {expiry && (
                                 <p className="mt-0.5 text-[11px] font-bold text-orange-600">
                                   {expiry}
@@ -223,7 +229,7 @@ export function VoucherCard({ vouchers: vouchersProp, productSlug }: Props) {
                               onClick={handleUse}
                               className="shrink-0 px-4 text-sm font-extrabold text-natalo-600 transition active:bg-natalo-50"
                             >
-                              Pakai
+                              Belanja
                             </button>
                           </li>
                         );
@@ -240,40 +246,23 @@ export function VoucherCard({ vouchers: vouchersProp, productSlug }: Props) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="mt-4 flex w-full items-center gap-3 rounded-xl border border-dashed border-orange-300 bg-orange-50/60 px-4 py-3 text-left transition active:bg-orange-100"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-      >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-500">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            className="h-5 w-5"
-            aria-hidden="true"
-          >
-            <path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z" strokeLinejoin="round" />
-            <path d="M9 9v6" strokeLinecap="round" strokeDasharray="2 2" />
-          </svg>
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-extrabold text-gray-900">
-            Pakai Voucher
-          </span>
-          <span className="block truncate text-xs text-gray-500">
-            {count > 0 ? `${count} tersedia - ${teaser}` : teaser}
-          </span>
-        </span>
-        <span className="text-orange-500" aria-hidden>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
-            <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
-      </button>
+      <section className="mt-4 rounded-xl bg-rose-50/50 p-3" aria-label="Promo dan voucher produk">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="text-xs font-semibold text-gray-700">Promo & Voucher</h2>
+          {count > 0 && <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open} className="py-1 text-xs font-semibold text-rose-600">Lihat semua ({count}) ›</button>}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {savingsAmount > 0 && <span className="rounded-md bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white">Hemat {formatRupiahShort(savingsAmount)}</span>}
+          {visibleProductVouchers.slice(0, 3).map(v => {
+            const shipping = v.discountScope === "SHIPPING" || v.kind === "FREE_SHIPPING" || v.type === "PUBLIC_FREE_SHIPPING";
+            return <button key={v.id} type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" className={`rounded-md border border-dashed px-2.5 py-1.5 text-left text-xs font-semibold ${shipping ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-rose-300 bg-rose-50 text-rose-600"}`}>
+              {v.badgeLabel || describeBenefit(v)}
+              <span className="mt-0.5 block text-[10px] font-normal">{describeMin(v)}</span>
+            </button>;
+          })}
+        </div>
+        {count > 0 && <p className="mt-2 text-[10px] text-gray-500">Voucher digunakan saat checkout. Syarat berlaku.</p>}
+      </section>
 
       {voucherPortal}
     </>

@@ -232,7 +232,7 @@ export default async function ProductDetailPage({
             />
 
             {/* 4. Voucher card */}
-            <VoucherCard productSlug={slug} />
+            <VoucherCard productSlug={slug} savingsAmount={hasDiscount ? Math.round(product.price - price) : 0} />
 
             {/* 5. Trust info — garansi + stok */}
             <TrustInfoCard stock={product.stock} outOfStock={outOfStock} />
