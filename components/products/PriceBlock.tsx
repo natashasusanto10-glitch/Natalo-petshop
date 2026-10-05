@@ -1,4 +1,7 @@
+"use client";
+
 import { FavoriteButton } from "@/components/FavoriteButton";
+import { useProductDetailState } from "./ProductDetailState";
 
 type Props = {
   productId: string;
@@ -21,6 +24,12 @@ export function PriceBlock({
   initialFavorited,
   showFavorite = true,
 }: Props) {
+  const variant = useProductDetailState()?.variant;
+  if (variant) {
+    price = variant.price;
+    originalPrice = null;
+    discountPercent = null;
+  }
   const hasDiscount =
     typeof originalPrice === "number" && originalPrice > price;
 

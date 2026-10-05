@@ -1,9 +1,18 @@
+"use client";
+
+import { useProductDetailState } from "./ProductDetailState";
+
 type Props = {
   stock: number;
   outOfStock: boolean;
 };
 
 export function TrustInfoCard({ stock, outOfStock }: Props) {
+  const variant = useProductDetailState()?.variant;
+  if (variant) {
+    stock = variant.stock;
+    outOfStock = stock <= 0;
+  }
   return (
     <div className="mt-4 divide-y divide-gray-100 rounded-2xl border border-gray-100 bg-white">
       <div className="flex items-center gap-3 px-4 py-3">

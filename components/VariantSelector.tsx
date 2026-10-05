@@ -8,6 +8,7 @@ import { addItemToCart } from "@/lib/cart-actions";
 import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
 import { ProductQuantitySelector } from "@/components/products/ProductQuantitySelector";
 import { hapticTap } from "@/lib/native/haptics";
+import { useProductDetailState } from "@/components/products/ProductDetailState";
 
 const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
 
@@ -22,6 +23,7 @@ interface Props {
 
 export function VariantSelector({ product, attrs, variants, onVariantImage }: Props) {
   const router = useRouter();
+  const setDetailVariant = useProductDetailState()?.setVariant;
   // State
   // selected[attributeId] = optionId
   const [selected, setSelected] = useState<Record<string, string>>({});
@@ -50,6 +52,10 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
       ) ?? null
     );
   }, [allSelected, selected, sortedAttrs, variants]);
+
+  useEffect(() => {
+    setDetailVariant?.(currentVariant);
+  }, [currentVariant, setDetailVariant]);
 
   // Harga tampil: range sebelum pilih, single setelah pilih
   const priceDisplay = useMemo(() => {
@@ -242,7 +248,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
     <>
       <div className="space-y-5">
         {/* Harga */}
-        <div className="rounded-2xl bg-gray-50 p-5">
+        {!setDetailVariant && <div className="rounded-2xl bg-gray-50 p-5">
           <p className="text-3xl font-black text-natalo-600">{priceDisplay}</p>
           <p className="mt-1 text-sm text-gray-400">
             Stok:{" "}
@@ -252,7 +258,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
                 : `${currentVariant.stock} tersedia`
               : `${stockDisplay} total semua varian`}
           </p>
-        </div>
+        </div>}
 
         {/* Pilihan atribut */}
         <div className="space-y-4">

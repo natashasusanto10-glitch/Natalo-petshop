@@ -13,6 +13,8 @@ import { PriceBlock } from "@/components/products/PriceBlock";
 import { SocialProofRow } from "@/components/products/SocialProofRow";
 import { TrustInfoCard } from "@/components/products/TrustInfoCard";
 import { VoucherCard } from "@/components/products/VoucherCard";
+import { ProductDetailState } from "@/components/products/ProductDetailState";
+import { ProductShippingPreview } from "@/components/products/ProductShippingPreview";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { getSession } from "@/lib/auth";
@@ -180,7 +182,7 @@ export default async function ProductDetailPage({
       </div>
 
       <main className="product-detail-content mx-auto max-w-[1200px] md:px-4 md:py-6 md:pb-10">
-        <div className="grid items-start gap-2 bg-gray-50 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:gap-6 md:bg-white">
+        <ProductDetailState key={slug}><div className="grid items-start gap-2 bg-gray-50 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:gap-6 md:bg-white">
           <ProductImageCarousel
             images={productImages}
             alt={product.name}
@@ -216,6 +218,7 @@ export default async function ProductDetailPage({
               showFavorite={false}
             />
 
+            <VoucherCard productSlug={slug} savingsAmount={hasDiscount ? Math.round(product.price - price) : 0} />
             {/* 2. Judul produk — ukuran sedang, weight 600 */}
             <div className="mt-3 flex items-start gap-2">
             <h1 className="flex-1 text-base font-semibold leading-snug text-gray-900 md:text-xl md:font-bold">
@@ -231,8 +234,7 @@ export default async function ProductDetailPage({
               soldCount={soldCount}
             />
 
-            {/* 4. Voucher card */}
-            <VoucherCard productSlug={slug} savingsAmount={hasDiscount ? Math.round(product.price - price) : 0} />
+            <ProductShippingPreview name={product.name} price={price} weightGram={product.weightGram} hasVariants={product.hasVariants} />
 
             {/* 5. Trust info — garansi + stok */}
             <TrustInfoCard stock={product.stock} outOfStock={outOfStock} />
@@ -249,7 +251,7 @@ export default async function ProductDetailPage({
               }}
             />
           </section>
-        </div>
+        </div></ProductDetailState>
 
         <section className="mt-2 bg-white md:mt-6 md:rounded-2xl md:border md:border-gray-100">
           <ProductTabs

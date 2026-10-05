@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useProductDetailState } from "./ProductDetailState";
 
 export type VoucherItem = {
   id: string;
@@ -85,6 +86,8 @@ export function isVisibleProductVoucher(voucher: VoucherItem) {
 }
 
 export function VoucherCard({ vouchers: vouchersProp, productSlug, savingsAmount = 0 }: Props) {
+  const variant = useProductDetailState()?.variant;
+  if (variant) savingsAmount = 0;
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   // Kalau vouchers tidak di-pass server-side, fetch sendiri client-side
@@ -246,22 +249,17 @@ export function VoucherCard({ vouchers: vouchersProp, productSlug, savingsAmount
 
   return (
     <>
-      <section className="mt-4 rounded-xl bg-rose-50/50 p-3" aria-label="Promo dan voucher produk">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="text-xs font-semibold text-gray-700">Promo & Voucher</h2>
-          {count > 0 && <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open} className="py-1 text-xs font-semibold text-rose-600">Lihat semua ({count}) ›</button>}
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <section className="mt-3 flex items-center gap-2" aria-label="Promo dan voucher produk">
+        <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1">
           {savingsAmount > 0 && <span className="rounded-md bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white">Hemat {formatRupiahShort(savingsAmount)}</span>}
-          {visibleProductVouchers.slice(0, 3).map(v => {
+          {visibleProductVouchers.map(v => {
             const shipping = v.discountScope === "SHIPPING" || v.kind === "FREE_SHIPPING" || v.type === "PUBLIC_FREE_SHIPPING";
-            return <button key={v.id} type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" className={`rounded-md border border-dashed px-2.5 py-1.5 text-left text-xs font-semibold ${shipping ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-rose-300 bg-rose-50 text-rose-600"}`}>
+            return <button key={v.id} type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" title={`${describeBenefit(v)} · ${describeMin(v)}`} className={`shrink-0 whitespace-nowrap rounded-md border border-dashed px-2.5 py-1.5 text-left text-xs font-semibold ${shipping ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-rose-300 bg-rose-50 text-rose-600"}`}>
               {v.badgeLabel || describeBenefit(v)}
-              <span className="mt-0.5 block text-[10px] font-normal">{describeMin(v)}</span>
             </button>;
           })}
         </div>
-        {count > 0 && <p className="mt-2 text-[10px] text-gray-500">Voucher digunakan saat checkout. Syarat berlaku.</p>}
+        {count > 0 && <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open} className="shrink-0 py-2 text-xs font-semibold text-rose-600">Lihat semua ({count}) ›</button>}
       </section>
 
       {voucherPortal}

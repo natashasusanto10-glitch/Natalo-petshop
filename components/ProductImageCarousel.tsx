@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { IMAGE_BLUR_GRAY } from "@/lib/image-placeholder";
+import { useProductDetailState } from "@/components/products/ProductDetailState";
 
 // Lazy load ProductImageViewer — pakai Swiper (~50KB) yang cuma di-render
 // saat user tap image untuk zoom view. Tanpa dynamic import, Swiper masuk
@@ -15,6 +16,7 @@ const ProductImageViewer = dynamic(
 );
 
 type Props = {
+  showThumbnails?: boolean;
   images: string[];
   alt: string;
   /**
@@ -66,8 +68,9 @@ function formatClock(totalSeconds: number | null): string | null {
  * - Zoom viewer (ProductImageViewer) HANYA untuk slide gambar — index-nya
  *   dipetakan dari index slide (dikurangi 1 kalau ada slide video).
  */
-export function ProductImageCarousel({ images, alt, transitionName, video }: Props) {
-  const safeImages = images.filter(Boolean);
+export function ProductImageCarousel({ images, alt, transitionName, video, showThumbnails = true }: Props) {
+  const variantImage = useProductDetailState()?.variant?.imageUrl;
+  const safeImages = variantImage ? [variantImage, ...images.filter(src => src && src !== variantImage)] : images.filter(Boolean);
   const imageIndexOffset = video ? 1 : 0;
 
   const slides: Slide[] = [
@@ -88,6 +91,16 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [errored, setErrored] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    if (!variantImage) return;
+    const index = video ? 1 : 0;
+    setErrored({});
+    setActive(index);
+    videoElRef.current?.pause();
+    setVideoPlaying(false);
+    containerRef.current?.scrollTo({ left: index * containerRef.current.clientWidth, behavior: "instant" });
+  }, [variantImage, video]);
 
   // Pakai IntersectionObserver untuk deteksi slide mana yg sedang di-view.
   // Threshold 0.6 supaya hanya slide yg dominan terlihat yg di-set active.
@@ -128,9 +141,9 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
   }, [active, video]);
 
   function goTo(index: number) {
-    const slide = slideRefs.current[index];
-    if (slide) {
-      slide.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+    const container = containerRef.current;
+    if (container) {
+      container.scrollTo({ left: index * container.clientWidth, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
     }
   }
 
@@ -331,6 +344,26 @@ export function ProductImageCarousel({ images, alt, transitionName, video }: Pro
           </>
         )}
       </div>
+
+      {showThumbnails && showIndicators && (
+        <div className="mt-3 flex gap-2 overflow-x-auto px-1 pb-2" aria-label="Foto dan video produk">
+          {slides.map((slide, index) => (
+            <button
+              key={`thumbnail-${index}`}
+              type="button"
+              aria-label={slide.kind === "video" ? "Lihat video produk" : `Lihat foto produk ${index - imageIndexOffset + 1}`}
+              aria-pressed={active === index}
+              onClick={() => goTo(index)}
+              className={`relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-lg border-2 bg-white transition-colors duration-150 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${active === index ? "border-blue-600" : "border-transparent hover:border-blue-300"}`}
+            >
+              {slide.kind === "image" && errored[index] ? <span className="text-xs text-gray-400">Foto</span> : (
+                <Image src={slide.kind === "image" ? slide.src : video!.thumbnailUrl} alt="" fill sizes="72px" className="object-contain" onError={() => setErrored(previous => ({ ...previous, [index]: true }))} />
+              )}
+              {slide.kind === "video" && <span className="absolute inset-0 flex items-center justify-center bg-black/20"><svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 text-white" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg></span>}
+            </button>
+          ))}
+        </div>
+      )}
 
       <ProductImageViewer
         images={safeImages}
