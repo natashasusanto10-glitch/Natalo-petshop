@@ -10,6 +10,8 @@ type Summary = {
   productsUpserted: number;
   variantsUpserted: number;
   skipped: number;
+  searchIndex?: { failed: number };
+  staleDeactivated?: { count: number };
 };
 
 type BatchResponse = {
@@ -20,6 +22,7 @@ type BatchResponse = {
   nextOffset: number;
   done: boolean;
   summary: Summary;
+  issues?: { name: string; reason: string }[];
 };
 
 const DEFAULT_BATCH_SIZE = 80;
@@ -37,39 +40,34 @@ export default function ImportProductsPage() {
     variantsUpserted: 0,
     skipped: 0,
   });
+  const [searchFailures, setSearchFailures] = useState(0);
+  const [archived, setArchived] = useState(0);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [batchSize, setBatchSize] = useState(DEFAULT_BATCH_SIZE);
+  const [preview, setPreview] = useState<{ total: number; categories: number; brands: number; samples: string[] } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [archiveMissing, setArchiveMissing] = useState(false);
   const cancelRef = useRef(false);
-
-  // Reset state
-  const [resetOpen, setResetOpen] = useState(false);
-  const [resetConfirmText, setResetConfirmText] = useState("");
-  const [resetWipeOrders, setResetWipeOrders] = useState(false);
-  const [resetWipeTaxonomy, setResetWipeTaxonomy] = useState(false);
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetSummary, setResetSummary] = useState<{
-    totalBefore: number;
-    archived: number;
-    deleted: number;
-    remaining: number;
-    cartItemsCleared: number;
-    ordersDeleted: number;
-    categoriesDeleted: number;
-    brandsDeleted: number;
-    remainingCategories: number;
-    remainingBrands: number;
-  } | null>(null);
-  const [resetError, setResetError] = useState<string | null>(null);
 
   function appendLog(line: string) {
     setLogs((prev) => [...prev.slice(-100), line]);
   }
 
+  async function loadPreview() {
+    setPreviewLoading(true); setError(null);
+    try {
+      const response = await fetch("/api/admin/products/import", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Pratinjau gagal dimuat.");
+      setPreview(result);
+    } catch { setError("Pratinjau sumber gagal dimuat. Coba lagi."); }
+    finally { setPreviewLoading(false); }
+  }
   async function runImport() {
-    if (running) return;
-    setRunning(true);
+    if (running || !preview) return;
+    setRunning(true); setProgress(null); setSearchFailures(0); setArchived(0);
     setError(null);
     setDone(false);
     setLogs([]);
@@ -91,7 +89,7 @@ export default function ImportProductsPage() {
         const res = await fetch("/api/admin/products/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ offset, batchSize }),
+          body: JSON.stringify({ offset, batchSize, archiveMissing }),
         });
 
         if (!res.ok) {
@@ -100,6 +98,9 @@ export default function ImportProductsPage() {
         }
 
         const data = (await res.json()) as BatchResponse;
+        data.issues?.forEach(issue => appendLog(`${issue.name}: ${issue.reason}`));
+        setSearchFailures(prev => prev + (data.summary.searchIndex?.failed ?? 0));
+        setArchived(prev => prev + (data.summary.staleDeactivated?.count ?? 0));
         total = data.totalProducts;
         offset = data.nextOffset;
 
@@ -153,52 +154,7 @@ export default function ImportProductsPage() {
     );
   }
 
-  async function runReset() {
-    if (resetConfirmText !== "HAPUS") return;
-    setResetLoading(true);
-    setResetError(null);
-    setResetSummary(null);
-
-    try {
-      const res = await fetch("/api/admin/products/reset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          confirm: "HAPUS",
-          wipeOrders: resetWipeOrders,
-          wipeTaxonomy: resetWipeTaxonomy,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? `HTTP ${res.status}`);
-      }
-      setResetSummary(data.summary);
-      // Reset progress / done state karena DB sudah berubah
-      setProgress(null);
-      setDone(false);
-      setTotals({
-        categoriesUpserted: 0,
-        brandsUpserted: 0,
-        productsUpserted: 0,
-        variantsUpserted: 0,
-        skipped: 0,
-      });
-      setResetConfirmText("");
-      setResetOpen(false);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Gagal reset.";
-      setResetError(msg);
-    } finally {
-      setResetLoading(false);
-    }
-  }
-
-  const pct =
-    progress && progress.total > 0
-      ? Math.min(100, Math.round((progress.processed / progress.total) * 100))
-      : 0;
-
+  const pct = progress?.total ? Math.round(progress.processed * 100 / progress.total) : 0;
   return (
     <AdminPage maxWidth="lg" className="admin-operational-page">
       <div className="mb-6 flex items-center justify-between gap-3">
@@ -210,14 +166,14 @@ export default function ImportProductsPage() {
             ← Kembali ke daftar produk
           </Link>
           <h1 className="mt-1 text-2xl font-semibold text-zinc-950">
-            Import Produk dari Excel
+            Impor produk
           </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Upsert seluruh produk, kategori, brand, dan varian dari{" "}
+            Perbarui produk, kategori, brand, dan varian dari{" "}
             <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs">
-              prisma/products_import.json
+              prisma/products_import_new.json
             </code>{" "}
-            ke database production.
+            ke katalog.
           </p>
         </div>
       </div>
@@ -228,27 +184,34 @@ export default function ImportProductsPage() {
           <li>
             Pastikan{" "}
             <code className="rounded bg-amber-100 px-1 py-0.5">
-              prisma/products_import.json
+              prisma/products_import_new.json
             </code>{" "}
             sudah ter-update di repo dan sudah di-deploy ke Vercel.
           </li>
           <li>
-            Operasi ini upsert (tidak hapus produk lama). Produk yang slug-nya
-            sama akan ter-update harga/stok/varian-nya.
+            Produk lama tetap disimpan. Produk yang slug-nya
+            sama akan diperbarui harga, stok, dan variannya.
           </li>
           <li>
             Untuk dataset besar (1000+ produk), proses bisa beberapa menit.
-            Halaman ini me-loop call API per batch.
+            Produk diproses bertahap.
           </li>
         </ul>
       </div>
 
+        <section className="my-5 rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
+        <h2 className="font-semibold">Periksa sumber impor</h2>
+        <p className="text-sm text-slate-600">Impor memperbarui produk berdasarkan kode slug dari sumber JSON tersimpan. Produk yang tidak ada di sumber tetap disimpan.</p>
+        <Button type="button" disabled={previewLoading || running} onClick={loadPreview}>{previewLoading ? "Memuat…" : "Pratinjau sumber"}</Button>
+        {preview && <div className="text-sm"><p>{preview.total} produk · {preview.categories} kategori · {preview.brands} brand</p><ul className="mt-2 list-disc pl-5">{preview.samples.map((name, index) => <li key={index}>{name}</li>)}</ul></div>}
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={archiveMissing} disabled={running || !preview} onChange={event => setArchiveMissing(event.target.checked)} />Arsipkan juga produk yang tidak ada dalam sumber impor. Produk tersebut akan disembunyikan dari katalog.</label>
+      </section>
       <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5">
         <div className="flex flex-wrap items-end gap-3">
           <label className="block text-sm">
             <span className="block font-bold text-zinc-700">Batch size</span>
             <input
-              type="number"
+              type="text" inputMode="numeric" pattern="[0-9]+"
               min={10}
               max={200}
               step={10}
@@ -258,17 +221,17 @@ export default function ImportProductsPage() {
                   Math.min(200, Math.max(10, Number(e.target.value) || 80))
                 )
               }
-              disabled={running}
+              disabled={running || !preview}
               className="mt-1 block w-28 rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-natalo-400 disabled:bg-zinc-50"
             />
           </label>
           <p className="text-xs text-zinc-500">
-            Jumlah produk per call API. Kurangi kalau sering timeout.
+            Jumlah produk per tahap. Kurangi jika proses sering gagal.
           </p>
         </div>
 
         <div className="mt-5 flex items-center gap-3">
-          <Button type="button" onClick={runImport} disabled={running}>
+          <Button type="button" onClick={runImport} disabled={running || !preview}>
             {running ? "Memproses..." : done ? "Jalankan Lagi" : "Mulai Import"}
           </Button>
           {running && (
@@ -278,7 +241,8 @@ export default function ImportProductsPage() {
           )}
         </div>
 
-        {/* Progress bar */}
+
+      {/* Progress bar */}
         {progress && (
           <div className="mt-5">
             <div className="flex items-center justify-between text-xs font-bold text-zinc-700">
@@ -307,264 +271,23 @@ export default function ImportProductsPage() {
         {done && !error && (
           <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
             <p className="text-sm font-bold text-emerald-800">
-              ✅ Import selesai — halaman /products & /produk sudah
-              di-revalidate.
+              Impor selesai — periksa ringkasan hasil di bawah.
             </p>
             <ul className="mt-2 space-y-0.5 text-xs text-emerald-900">
-              <li>Kategori upserted: {totals.categoriesUpserted}</li>
-              <li>Brand upserted: {totals.brandsUpserted}</li>
-              <li>Produk upserted: {totals.productsUpserted}</li>
-              <li>Varian upserted: {totals.variantsUpserted}</li>
+              <li>Kategori diperbarui: {totals.categoriesUpserted}</li>
+              <li>Brand diperbarui: {totals.brandsUpserted}</li>
+              <li>Produk diperbarui: {totals.productsUpserted}</li>
+              <li>Varian diperbarui: {totals.variantsUpserted}</li>
+              {archived > 0 && <li>Produk diarsipkan: {archived}</li>}
+              {searchFailures > 0 && <li className="font-semibold text-amber-800">{searchFailures} produk belum tersinkron ke pencarian. Katalog tersimpan, indeks pencarian perlu diperiksa.</li>}
               {totals.skipped > 0 && <li>Dilewati: {totals.skipped}</li>}
             </ul>
           </div>
         )}
       </div>
 
-      {/* Danger zone — reset semua produk */}
-      <div className="mt-8 rounded-2xl border border-red-200 bg-red-50/40 p-5">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              className="h-5 w-5"
-              aria-hidden
-            >
-              <path d="M12 9v4M12 17h.01" strokeLinecap="round" />
-              <path
-                d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-extrabold text-red-900">
-              Reset Semua Produk
-            </p>
-            <p className="mt-1 text-xs text-red-800">
-              Hapus semua produk dari katalog. Produk dengan history pesanan
-              akan di-soft-archive (isActive=false) supaya history tetap aman.
-              Produk lainnya di-hard-delete (cascade ke varian, review,
-              wishlist).
-            </p>
-            <p className="mt-2 text-xs font-bold text-red-900">
-              Tindakan ini tidak bisa di-undo. Pastikan{" "}
-              <code className="rounded bg-red-100 px-1 py-0.5">
-                products_import.json
-              </code>{" "}
-              versi baru sudah siap sebelum reset.
-            </p>
-            <Button
-              type="button"
-              onClick={() => {
-                setResetOpen(true);
-                setResetError(null);
-              }}
-              disabled={running || resetLoading}
-              variant="dangerSoft"
-              className="mt-3"
-            >
-              Reset Semua Produk
-            </Button>
-
-            {resetSummary && (
-              <div className="mt-3 rounded-xl border border-red-200 bg-white p-3">
-                <p className="text-sm font-bold text-red-800">
-                  ✅ Reset selesai
-                </p>
-                <ul className="mt-1.5 space-y-0.5 text-xs text-red-900">
-                  <li>Produk sebelum reset: {resetSummary.totalBefore}</li>
-                  <li>Hard-deleted: {resetSummary.deleted}</li>
-                  <li>
-                    Soft-archived (punya pesanan): {resetSummary.archived}
-                  </li>
-                  <li>Sisa produk di DB: {resetSummary.remaining}</li>
-                  <li>
-                    Cart items dibersihkan: {resetSummary.cartItemsCleared}
-                  </li>
-                  {resetSummary.ordersDeleted > 0 && (
-                    <li>
-                      Order dihapus (cascade ke OrderItem & Review):{" "}
-                      {resetSummary.ordersDeleted}
-                    </li>
-                  )}
-                  {resetSummary.categoriesDeleted > 0 && (
-                    <li>Kategori dihapus: {resetSummary.categoriesDeleted}</li>
-                  )}
-                  {resetSummary.brandsDeleted > 0 && (
-                    <li>Brand dihapus: {resetSummary.brandsDeleted}</li>
-                  )}
-                  <li className="text-zinc-600">
-                    Sisa di DB: {resetSummary.remainingCategories} kategori ·{" "}
-                    {resetSummary.remainingBrands} brand
-                  </li>
-                </ul>
-                <p className="mt-2 text-xs text-red-700">
-                  Klik &ldquo;Mulai Import&rdquo; di atas untuk isi ulang dari{" "}
-                  <code className="rounded bg-red-50 px-1">
-                    products_import.json
-                  </code>
-                  .
-                </p>
-              </div>
-            )}
-            {resetError && (
-              <p className="mt-3 rounded-xl border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700">
-                {resetError}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Modal konfirmasi reset — pakai .voucher-* CSS yg sudah ada */}
-      {resetOpen && (
-        <>
-          <div
-            className="voucher-backdrop"
-            onClick={() => !resetLoading && setResetOpen(false)}
-          />
-          <div
-            className="voucher-safe-area"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Konfirmasi reset"
-          >
-            <div className="voucher-sheet md:max-w-md">
-              <div className="border-b border-zinc-100 px-4 py-3">
-                <h2 className="text-base font-extrabold text-red-900">
-                  Konfirmasi Reset
-                </h2>
-              </div>
-              <div className="space-y-3 p-4">
-                <p className="text-sm text-zinc-700">Tindakan ini akan:</p>
-                <ul className="ml-4 list-disc space-y-1 text-sm text-zinc-700">
-                  <li>Hapus seluruh produk yang tidak punya pesanan</li>
-                  <li>
-                    {resetWipeOrders
-                      ? "Hapus semua produk (termasuk yang punya order) — order ikut di-wipe"
-                      : "Soft-archive produk yang punya history pesanan"}
-                  </li>
-                  <li>Bersihkan semua keranjang user</li>
-                  {resetWipeOrders && (
-                    <li className="font-bold text-red-700">
-                      Hapus SEMUA order, OrderItem, dan Review (cascade)
-                    </li>
-                  )}
-                </ul>
-
-                <label className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-900">
-                  <input
-                    type="checkbox"
-                    checked={resetWipeOrders}
-                    onChange={(e) => setResetWipeOrders(e.target.checked)}
-                    disabled={resetLoading}
-                    className="mt-0.5 h-4 w-4 rounded border-red-300 accent-red-600"
-                  />
-                  <span>
-                    <span className="font-bold">
-                      Hapus juga semua data order
-                    </span>
-                    <span className="mt-0.5 block text-xs text-red-800">
-                      Pakai ini hanya kalau order yang ada masih dummy/testing.
-                      Cascade akan hapus OrderItem &amp; Review terkait.
-                    </span>
-                  </span>
-                </label>
-
-                <label className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-900">
-                  <input
-                    type="checkbox"
-                    checked={resetWipeTaxonomy}
-                    onChange={(e) => setResetWipeTaxonomy(e.target.checked)}
-                    disabled={resetLoading}
-                    className="mt-0.5 h-4 w-4 rounded border-red-300 accent-red-600"
-                  />
-                  <span>
-                    <span className="font-bold">
-                      Hapus juga semua kategori &amp; brand
-                    </span>
-                    <span className="mt-0.5 block text-xs text-red-800">
-                      Bersihkan total — kategori &amp; brand akan dibuat ulang
-                      otomatis saat Anda klik &ldquo;Mulai Import&rdquo;.
-                    </span>
-                  </span>
-                </label>
-
-                <p className="text-sm font-bold text-red-700">
-                  Ketik{" "}
-                  <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-white">
-                    HAPUS
-                  </code>{" "}
-                  untuk konfirmasi.
-                </p>
-                <input
-                  type="text"
-                  value={resetConfirmText}
-                  // BUG FIX: CSS `uppercase` cuma visual transform — tidak
-                  // ubah underlying value. User ngetik "hapus" lihat di
-                  // layar "HAPUS" tapi state tetap "hapus" → button stay
-                  // disabled. Auto-uppercase di onChange supaya state
-                  // match display, button enable saat user ngetik 5 huruf
-                  // apapun case-nya.
-                  onChange={(e) =>
-                    setResetConfirmText(e.target.value.toUpperCase())
-                  }
-                  placeholder="HAPUS"
-                  disabled={resetLoading}
-                  autoFocus
-                  className="block w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm uppercase tracking-wide outline-none focus:border-red-400 disabled:bg-zinc-50"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && resetConfirmText === "HAPUS") {
-                      e.preventDefault();
-                      void runReset();
-                    }
-                    if (e.key === "Escape" && !resetLoading) {
-                      setResetOpen(false);
-                    }
-                  }}
-                />
-
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    type="button"
-                    onClick={() => setResetOpen(false)}
-                    disabled={resetLoading}
-                    variant="secondary"
-                    className="flex-1"
-                  >
-                    Batal
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={runReset}
-                    disabled={resetLoading || resetConfirmText !== "HAPUS"}
-                    variant="danger"
-                    className="flex-1"
-                  >
-                    {resetLoading ? "Menghapus..." : "Konfirmasi Reset"}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Log */}
-      {logs.length > 0 && (
-        <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-950 p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-zinc-400">
-            Log
-          </p>
-          <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-zinc-100">
-            {logs.join("\n")}
-          </pre>
-        </div>
-      )}
+      {logs.length > 0 && <details className="mt-4 rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer text-sm font-semibold">Rincian proses</summary><ul className="mt-3 space-y-1 text-xs text-slate-600">{logs.map((line, index) => <li key={index}>{line}</li>)}</ul></details>}
+      <p className="mt-6 text-sm text-slate-500">Penghapusan data tersedia terpisah di <Link className="underline" href="/admin/danger-zone">Pengaturan data</Link>.</p>
     </AdminPage>
   );
 }

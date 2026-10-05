@@ -145,12 +145,14 @@ export default function AIVoucherSuggestButton() {
         // Format ke local datetime-local format.
         const pad = (n: number) => String(n).padStart(2, "0");
         const formatted = `${expireDate.getFullYear()}-${pad(expireDate.getMonth() + 1)}-${pad(expireDate.getDate())}T${pad(expireDate.getHours())}:${pad(expireDate.getMinutes())}`;
-        setField("expiresAt", formatted);
+        const expiryInput = document.querySelector<HTMLInputElement>('[name="expiresAt"]');
+        setField("expiresAt", expiryInput?.type === "date" ? formatted.slice(0, 10) : formatted);
       }
     } catch {
       // Skip kalau parse fail.
     }
 
+    window.dispatchEvent(new CustomEvent("voucher-suggestion", { detail: suggestion }));
     close();
     // Scroll to top form supaya user lihat field ke-isi.
     window.scrollTo({ top: 0, behavior: "smooth" });

@@ -1,3 +1,6 @@
+import { VoucherDiscountFields } from "../../components/admin/VoucherDiscountFields";
+import { VoucherTargetPicker } from "../../components/admin/VoucherTargetPicker";
+import ImportProductsPage from "../../app/admin/(protected)/products/import/page";
 import { CategoriesView } from "../../components/admin/views/CategoriesView";
 import { StockView } from "../../components/admin/views/StockView";
 import React from "react";
@@ -277,6 +280,15 @@ let feedReviewPosts = [
   },
 ];
 export function operationalFixtureFetch(path, options) {
+  if (path.startsWith("/api/admin/voucher-targets")) {
+    const kind = new URL(path, "http://localhost").searchParams.get("kind");
+    const query = new URL(path, "http://localhost").searchParams.get("q") || "";
+    if (kind === "user" && query.length < 2) return Response.json({ options: [], total: 0 });
+    const list = kind === "category" ? [{ id: "cat-1", name: "Kandang & Carrier", key: "kandang" }, { id: "cat-2", name: "Obat & Suplemen", key: "obat-suplemen" }] : kind === "product" ? [{ id: "product-1", name: "Kaniva Salmon & Tuna" }] : [{ id: "user-1", name: "Pelanggan contoh" }];
+    return Response.json({ options: list, total: list.length });
+  }
+  if (path === "/api/admin/products/import") return (options?.method ?? "GET") === "GET" ? Response.json({ total: 2, categories: 1, brands: 1, samples: ["Produk contoh A", "Produk contoh B"] }) : Response.json({ error: "Review lokal: penyimpanan impor dinonaktifkan." }, { status: 400 });
+
   const method = options.method || "GET";
   if (path.startsWith("/api/admin/feed/posts") && method === "GET") {
     if (location.search.includes("review-failure"))
@@ -412,6 +424,9 @@ export function operationalFixtureFetch(path, options) {
   return null;
 }
 export function operationalPage(path) {
+  if (path === "/admin/products/import") return <ImportProductsPage />;
+  if (path === "/admin/vouchers/new") return <AdminPage maxWidth="lg"><PageHeader title="Buat voucher" subtitle="Review aturan dan target voucher" /><form className="mt-6 space-y-4" onSubmit={event => event.preventDefault()}><VoucherDiscountFields /><VoucherTargetPicker kind="user" name="eligibleUserIds" label="Member" hint="Kosongkan untuk semua member." /><VoucherTargetPicker kind="product" name="eligibleProductIds" label="Produk" hint="Kosongkan jika tidak dibatasi." /><VoucherTargetPicker kind="category" name="eligibleCategoryIds" label="Kategori" hint="Kosongkan jika tidak dibatasi." /></form></AdminPage>;
+
   const query = new URLSearchParams(location.search);
   const emptyDashboard = query.has("review-empty");
   if (path === "/admin/dashboard")
@@ -714,8 +729,8 @@ export function operationalPage(path) {
         ordersThisMonth={64}
         ordersLastMonth={53}
         topProducts={[
-          { name: "Royal Canin Indoor Adult 2 kg", _sum: { quantity: 124 } },
-          { name: product.name, _sum: { quantity: 96 } },
+          { id: "report-product-1", name: "Royal Canin Indoor Adult 2 kg", quantity: 124 },
+          { id: product.id, name: product.name, quantity: 96 },
         ]}
         statusMap={{
           PENDING: 12,

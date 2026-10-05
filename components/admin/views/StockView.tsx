@@ -30,6 +30,7 @@ function variantLabel(options: Array<{ option: { value: string } }>): string {
 }
 
 export type StockViewProps = {
+  search?: string;
   productTotal: number;
   productLow: number;
   productOut: number;
@@ -59,9 +60,11 @@ export type StockViewProps = {
     tab?: StockTab;
     filter?: StockFilter;
     page?: number;
+    q?: string;
   }) => string;
 };
 export function StockView({
+  search = "",
   productTotal,
   productLow,
   productOut,
@@ -81,7 +84,7 @@ export function StockView({
   return (
     <AdminPage
       maxWidth="lg"
-      className="admin-operational-page admin-refined-page"
+      className="admin-operational-page admin-refined-page admin-stock-page"
     >
       <PageHeader
         eyebrow="Inventori"
@@ -94,7 +97,7 @@ export function StockView({
         }
       />
 
-      <section className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+      <section className="admin-stock-stats mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         <StatCard
           label="Produk Aktif"
           value={productTotal}
@@ -132,6 +135,11 @@ export function StockView({
       </section>
 
       <section className="admin-list-workspace" aria-label="Daftar stok">
+        <form method="get" action="/admin/stock" className="mb-4 flex flex-wrap items-end gap-2">
+          <input type="hidden" name="tab" value={tab} /><input type="hidden" name="filter" value={filter} />
+          <label className="flex-1 min-w-48 text-sm font-medium">Cari produk atau SKU<input type="search" name="q" defaultValue={search} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
+          <Button type="submit" size="sm">Cari</Button>{search && <Button href={buildUrl({ q: "" })} variant="secondary" size="sm">Atur ulang</Button>}
+        </form>
         {/* Tab produk vs varian. Daftar produk memakai stok total; daftar varian
           memecahnya per kombinasi, supaya terlihat varian MANA yang menipis —
           pertanyaan yang tidak bisa dijawab angka total. */}
@@ -191,7 +199,7 @@ export function StockView({
             <EmptyState
               icon={filter === "semua" ? "📭" : "✅"}
               title={
-                filter === "habis"
+                search ? "Tidak ada hasil pencarian" : filter === "habis"
                   ? "Tidak ada yang habis — aman"
                   : filter === "menipis"
                   ? "Tidak ada yang menipis — aman"
@@ -200,7 +208,7 @@ export function StockView({
                   : "Belum ada produk"
               }
               description={
-                filter === "semua"
+                search ? "Coba nama produk atau SKU lainnya." : filter === "semua"
                   ? "Tambahkan produk untuk mulai memantau stok."
                   : "Coba filter lain untuk melihat sisa daftarnya."
               }
@@ -287,7 +295,7 @@ function StockTable({ rows }: { rows: StockRow[] }) {
                     {row.stock}
                   </p>
                   <div className="mt-1">
-                    <Badge variant={tone.badge}>{tone.label}</Badge>
+                    <span className="inline-flex whitespace-nowrap"><Badge variant={tone.badge}>{tone.label}</Badge></span>
                   </div>
                 </div>
               </div>
@@ -359,9 +367,9 @@ function StockTable({ rows }: { rows: StockRow[] }) {
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <Badge variant={tone.badge} size="md">
+                      <span className="inline-flex whitespace-nowrap"><Badge variant={tone.badge} size="md">
                         {tone.label}
-                      </Badge>
+                      </Badge></span>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end">

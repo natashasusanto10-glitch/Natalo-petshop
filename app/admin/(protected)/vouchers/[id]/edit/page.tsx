@@ -1,7 +1,11 @@
+import { VoucherDiscountFields } from "@/components/admin/VoucherDiscountFields";
+import { VoucherTargetPicker } from "@/components/admin/VoucherTargetPicker";
+import { voucherFormError } from "@/lib/admin/voucher-form";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { VoucherType, VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requireAdminSession } from "@/lib/session-guards";
 import { AdminPage, Button, SubmitButton } from "@/components/admin/ui";
 import { isLoyaltyClaimVoucher } from "@/lib/voucher-kind";
 import BrandTargetPicker from "../../BrandTargetPicker";
@@ -22,6 +26,7 @@ export default async function AdminVoucherEditPage({
 
   async function updateVoucher(formData: FormData) {
     "use server";
+    await requireAdminSession();
 
     const name = String(formData.get("name") || "").trim() || null;
     const code = String(formData.get("code") || "")
@@ -42,20 +47,17 @@ export default async function AdminVoucherEditPage({
     const discountScope =
       type === "PUBLIC_FREE_SHIPPING" ? "SHIPPING" : "PRODUCT";
     const discountPercent = formData.get("discountPercent")
-      ? parseInt(String(formData.get("discountPercent")), 10)
+      ? Number(formData.get("discountPercent"))
       : null;
     let discountAmount = formData.get("discountAmount")
-      ? parseInt(String(formData.get("discountAmount")), 10)
+      ? Number(formData.get("discountAmount"))
       : null;
     const maxDiscountAmount = formData.get("maxDiscountAmount")
-      ? parseInt(String(formData.get("maxDiscountAmount")), 10)
+      ? Number(formData.get("maxDiscountAmount"))
       : null;
-    const minimumOrder = parseInt(
-      String(formData.get("minimumOrder") || "0"),
-      10
-    );
+    const minimumOrder = Number(formData.get("minimumOrder") || "0");
     const maxUsageRaw = String(formData.get("maxUsage") || "").trim();
-    const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
+    const maxUsage = maxUsageRaw ? Number(maxUsageRaw) : null;
     const usageLimitPerUserRaw = String(
       formData.get("usageLimitPerUser") ?? ""
     ).trim();
@@ -95,7 +97,7 @@ export default async function AdminVoucherEditPage({
       discountAmount = maxDiscountAmount;
     }
 
-    if (!code) return;
+
     const kind:
       | "PRODUCT_DISCOUNT"
       | "FREE_SHIPPING"
@@ -114,7 +116,7 @@ export default async function AdminVoucherEditPage({
     const parsedUsageLimitPerUser =
       usageLimitPerUserRaw === ""
         ? defaultUsageLimitPerUser
-        : parseInt(usageLimitPerUserRaw, 10);
+        : Number(usageLimitPerUserRaw);
     const usageLimitPerUser = Number.isFinite(parsedUsageLimitPerUser)
       ? Math.max(0, parsedUsageLimitPerUser)
       : defaultUsageLimitPerUser;
@@ -129,7 +131,8 @@ export default async function AdminVoucherEditPage({
         : selectedUsageLimitPeriod === VoucherUserUsageLimitPeriod.NONE
         ? VoucherUserUsageLimitPeriod.LIFETIME
         : selectedUsageLimitPeriod;
-    if (!isFreeShipping && !discountPercent && !discountAmount) return;
+    const validationError = voucherFormError({ code, discountPercent, discountAmount, maxDiscountAmount, minimumOrder, startsAt, expiresAt, maxUsage, usageLimitPerUser: parsedUsageLimitPerUser });
+    if (validationError) redirect(`/admin/vouchers/${id}/edit?error=${encodeURIComponent(validationError)}`);
 
     // Form checkbox value — "on" = checked, null/missing = unchecked.
     const isActive = formData.get("isActive") === "on";
@@ -204,6 +207,7 @@ export default async function AdminVoucherEditPage({
         {voucher.maxUsage !== null && ` dari ${voucher.maxUsage}`}.
       </p>
 
+      {error && error !== "exists" && error !== "maxusage" && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {error === "exists" && (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
           Kode voucher tersebut sudah dipakai voucher lain.
@@ -244,67 +248,8 @@ export default async function AdminVoucherEditPage({
           defaultValue={voucher.description ?? ""}
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Diskon persen (%)"
-            name="discountPercent"
-            type="number"
-            defaultValue={voucher.discountPercent?.toString() ?? ""}
-            hint="Isi salah satu atau keduanya"
-          />
-          <Field
-            label="Diskon nominal (Rp)"
-            name="discountAmount"
-            type="number"
-            defaultValue={voucher.discountAmount?.toString() ?? ""}
-          />
-          <Field
-            label="Maks. diskon / potongan ongkir"
-            name="maxDiscountAmount"
-            type="number"
-            defaultValue={voucher.maxDiscountAmount?.toString() ?? ""}
-            hint="Untuk persen atau gratis ongkir, isi batas maksimal potongan."
-          />
-        </div>
-
-        <Field
-          label="Minimum belanja (Rp)"
-          name="minimumOrder"
-          type="number"
-          defaultValue={voucher.minimumOrder.toString()}
-          placeholder="0 = tidak ada minimum"
-        />
-
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">
-            Tipe voucher Natalo
-          </label>
-          <select
-            name="type"
-            defaultValue={voucher.type}
-            className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
-          >
-            <option value="PUBLIC_FREE_SHIPPING">Public Gratis Ongkir</option>
-            <option value="PUBLIC_PRODUCT_DISCOUNT">
-              Public Diskon Produk
-            </option>
-            <option value="LOYALTY_POINT_CLAIM">Loyalty Point Claim</option>
-            <option value="PRIVATE_MANUAL_CODE">Private / Manual Code</option>
-          </select>
-          <p className="mt-1 text-xs text-zinc-600">
-            Private voucher tidak muncul di list public dan hanya bisa dipakai
-            lewat input kode manual.
-          </p>
-        </div>
-
-        <Field
-          label="Eligible user IDs untuk private voucher"
-          name="eligibleUserIds"
-          defaultValue={voucher.eligibleUserIds.join(", ")}
-          placeholder="user_123, user_456"
-          hint="Kosongkan jika private code boleh dipakai semua member login."
-        />
-
+        <VoucherDiscountFields defaultType={voucher.type} defaultPercent={voucher.discountPercent} defaultAmount={voucher.discountAmount} defaultCap={voucher.maxDiscountAmount} defaultMinimum={voucher.minimumOrder} />
+        <VoucherTargetPicker kind="user" name="eligibleUserIds" label="Member yang dapat memakai voucher" defaultIds={voucher.eligibleUserIds} hint="Kosongkan untuk semua member yang memenuhi syarat." />
         <BrandTargetPicker defaultSelectedIds={voucher.eligibleBrandIds} />
 
         <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3">
@@ -312,20 +257,8 @@ export default async function AdminVoucherEditPage({
             Lanjutan — target produk / kategori spesifik
           </summary>
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            <Field
-              label="Target product IDs"
-              name="eligibleProductIds"
-              defaultValue={voucher.eligibleProductIds.join(", ")}
-              placeholder="product_123, product_456"
-              hint="Untuk voucher SATU produk spesifik, bukan seluruh brand. Field Target brand di atas cukup untuk kebanyakan kasus."
-            />
-            <Field
-              label="Target kategori IDs / slug"
-              name="eligibleCategoryIds"
-              defaultValue={voucher.eligibleCategoryIds.join(", ")}
-              placeholder="cat-food, category_123"
-              hint="Opsional. Bisa isi ID kategori atau slug kategori."
-            />
+            <VoucherTargetPicker kind="product" name="eligibleProductIds" label="Produk" defaultIds={voucher.eligibleProductIds} hint="Kosongkan jika tidak dibatasi." />
+            <VoucherTargetPicker kind="category" name="eligibleCategoryIds" label="Kategori" defaultIds={voucher.eligibleCategoryIds} hint="Kosongkan jika tidak dibatasi." />
           </div>
         </details>
 

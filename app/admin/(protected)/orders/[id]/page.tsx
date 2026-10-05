@@ -208,7 +208,7 @@ export default async function AdminOrderDetailPage({
                     /CANCELLED). Reuse RefundFormClient untuk kasus
                     kompleks (full form di section bawah). */}
                 {order.status !== "CANCELLED" &&
-                  order.status !== "REFUNDED" && (
+                  order.status !== "REFUNDED" && order.status !== "DELIVERED" && (
                     <div className="mt-2 flex justify-end">
                       <ItemOutOfStockButton
                         itemId={item.id}
@@ -313,7 +313,7 @@ export default async function AdminOrderDetailPage({
                 transfer/Midtrans/dst. Kalau 0, admin tahu order full
                 ke-cover saldo refund + voucher, gak ada yang nunggu. */}
             <div className="flex justify-between border-t border-zinc-200 pt-3 mt-2 text-lg font-semibold text-zinc-950">
-              <span>Total Bayar Tunai</span>
+              <span>Pembayaran di luar saldo</span>
               <span
                 className={
                   order.total === 0 ? "text-emerald-600" : "text-zinc-950"
@@ -542,7 +542,7 @@ export default async function AdminOrderDetailPage({
                 </p>
                 <p>
                   <span className="font-semibold">Status pickup:</span>{" "}
-                  {order.pickupStatus ?? "-"}
+                  {({ WAITING_PAYMENT: "Menunggu pembayaran", PREPARING: "Sedang disiapkan", PENDING: "Menunggu penjemputan", READY: "Siap diambil", READY_FOR_PICKUP: "Siap diambil", PICKED_UP: "Sudah diambil", CANCELLED: "Dibatalkan" } as Record<string, string>)[order.pickupStatus ?? ""] ?? (order.pickupStatus ? "Status belum dikenali" : "Belum dijadwalkan")}
                 </p>
                 {order.pickupCode && (
                   <p>
@@ -992,7 +992,7 @@ function PaymentMethodLine({
         <p>
           <span className="font-semibold">Metode bayar:</span>{" "}
           <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-bold text-purple-700">
-            🎁💳 Hybrid Saldo + Tunai
+            🎁💳 Hybrid Saldo + pembayaran eksternal
           </span>
         </p>
         <ul className="mt-1.5 ml-3 space-y-0.5 text-xs text-zinc-600">

@@ -49,17 +49,12 @@ export default async function FlashSaleListPage({
   const search = q?.trim() ?? "";
 
   const now = new Date();
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  // For "expired" filter, only show last 30 hari history (avoid pulling
-  // years of history).
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
   const whereStatus =
     status === "ongoing"
       ? { flashSaleEndsAt: { gt: now } }
       : status === "expired"
-      ? { flashSaleEndsAt: { lt: now, gt: thirtyDaysAgo } }
-      : { flashSaleEndsAt: { gt: sevenDaysAgo } }; // "all" default — active + recent 7d
+      ? { flashSaleEndsAt: { lte: now } }
+      : { flashSaleEndsAt: { not: null } }; // Data Flash Sale terakhir yang masih tersimpan.
 
   // Satu objek `where` dipakai bersama oleh daftar DAN penghitungnya, supaya
   // angka "menampilkan N dari M" tidak bisa lepas dari filter yang aktif.
@@ -90,7 +85,7 @@ export default async function FlashSaleListPage({
       prisma.product.count({ where: listWhere }),
       prisma.product.count({ where: { flashSaleEndsAt: { gt: now } } }),
       prisma.product.count({
-        where: { flashSaleEndsAt: { lt: now, gt: thirtyDaysAgo } },
+        where: { flashSaleEndsAt: { lte: now } },
       }),
       prisma.product.count({ where: { flashSaleEndsAt: { not: null } } }),
     ]);

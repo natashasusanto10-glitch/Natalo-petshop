@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { requireAdminSession } from "@/lib/session-guards";
 import { AdminPage, Button, SubmitButton } from "@/components/admin/ui";
 
 function toSlug(name: string) {
@@ -14,6 +15,7 @@ function toSlug(name: string) {
 export default function AdminCategoryNewPage() {
   async function createCategory(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const name = String(formData.get("name") || "").trim();
     if (!name) return;
 

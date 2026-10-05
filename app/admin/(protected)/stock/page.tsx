@@ -1,3 +1,4 @@
+import { productSearchWhere } from "@/lib/search";
 /**
  * /admin/stock — pemantauan stok (MONITORING-only).
  *
@@ -37,15 +38,16 @@ const PAGE_SIZE = 25;
 export default async function AdminStockPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; filter?: string; page?: string }>;
+  searchParams: Promise<{ tab?: string; filter?: string; page?: string; q?: string }>;
 }) {
   const sp = await searchParams;
   const tab = parseStockTab(sp.tab);
   const filter = parseStockFilter(sp.filter);
   const page = parsePageParam(sp.page);
 
-  const productWhere = productStockWhere(filter);
-  const varianWhere = variantStockWhere(filter);
+  const search = sp.q?.trim().slice(0, 100) ?? "";
+  const productWhere = { AND: [productStockWhere(filter), productSearchWhere(search) ?? {}] };
+  const varianWhere = { AND: [variantStockWhere(filter), search ? { OR: [{ sku: { contains: search, mode: "insensitive" as const } }, { product: productSearchWhere(search) ?? {} }] } : {}] };
   const skip = (page - 1) * PAGE_SIZE;
 
   const [
@@ -104,6 +106,7 @@ export default async function AdminStockPage({
     tab?: StockTab;
     filter?: StockFilter;
     page?: number;
+    q?: string;
   }) => {
     const next = new URLSearchParams();
     const t = overrides.tab ?? tab;
@@ -114,6 +117,8 @@ export default async function AdminStockPage({
     if (t !== "produk") next.set("tab", t);
     if (f !== "semua") next.set("filter", f);
     if (p > 1) next.set("page", String(p));
+    const query = overrides.q ?? search;
+    if (query) next.set("q", query);
     const str = next.toString();
     return `/admin/stock${str ? `?${str}` : ""}`;
   };
@@ -124,6 +129,7 @@ export default async function AdminStockPage({
   return (
     <StockView
       {...{
+        search,
         productTotal,
         productLow,
         productOut,

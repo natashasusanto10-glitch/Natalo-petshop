@@ -4,6 +4,7 @@ import { AdminPage } from "@/components/admin/ui/AdminPage";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface EligibleProduct {
   id: string;
@@ -16,7 +17,7 @@ interface EligibleProduct {
 interface Props {
   products: EligibleProduct[];
   /** Server action passed dari page.tsx (server component). */
-  action: (formData: FormData) => void;
+  action: (formData: FormData) => Promise<{ error?: string; success?: boolean }>;
 }
 
 /**
@@ -27,6 +28,9 @@ interface Props {
  * upgrade ke server-side search via /api endpoint.
  */
 export function FlashSaleNewForm({ products, action }: Props) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -97,16 +101,28 @@ export function FlashSaleNewForm({ products, action }: Props) {
         section dengan countdown timer.
       </p>
 
-      <form action={action} className="mt-6 space-y-5">
+      {error && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      <form onSubmit={async event => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        if (pending) return;
+        setPending(true); setError("");
+        try {
+          const result = await action(data);
+          if (result?.error) setError(result.error);
+          else if (result?.success) { router.push("/admin/diskon/flash-sale"); router.refresh(); }
+        } catch { setError("Gagal menyimpan. Coba lagi."); }
+        finally { setPending(false); }
+      }} className="mt-6 space-y-5">
         {/* Periode + Diskon */}
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="block text-sm font-semibold text-zinc-700">
+            <label htmlFor="flash-discount" className="block text-sm font-semibold text-zinc-700">
               <span className="mr-1 text-red-500">•</span>Diskon (%)
             </label>
             <input
-              type="number"
-              name="discountPercent"
+              type="text" inputMode="numeric" pattern="[0-9]{1,2}"
+              id="flash-discount" name="discountPercent"
               min={1}
               max={95}
               required
@@ -118,12 +134,12 @@ export function FlashSaleNewForm({ products, action }: Props) {
             </p>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-zinc-700">
-              <span className="mr-1 text-red-500">•</span>Berakhir
+            <label htmlFor="flash-end" className="block text-sm font-semibold text-zinc-700">
+              <span className="mr-1 text-red-500">•</span>Berakhir (WIB)
             </label>
             <input
               type="datetime-local"
-              name="endsAt"
+              id="flash-end" name="endsAt" aria-label="Waktu akhir Flash Sale (WIB)"
               required
               className="mt-1.5 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-natalo-600"
             />
@@ -136,7 +152,7 @@ export function FlashSaleNewForm({ products, action }: Props) {
         {/* Pilih produk (search + multi-checklist) */}
         <div>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <label className="block text-sm font-semibold text-zinc-700">
+            <label htmlFor="flash-search" className="block text-sm font-semibold text-zinc-700">
               <span className="mr-1 text-red-500">•</span>Pilih Produk
             </label>
             <span className="text-xs font-semibold text-zinc-500">
@@ -153,7 +169,7 @@ export function FlashSaleNewForm({ products, action }: Props) {
           <div className="mt-2 flex gap-2">
             <input
               type="text"
-              value={search}
+              id="flash-search" value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="🔍 Cari nama produk..."
               className="flex-1 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
@@ -234,10 +250,10 @@ export function FlashSaleNewForm({ products, action }: Props) {
           </Link>
           <button
             type="submit"
-            disabled={selectedIds.size === 0}
+            disabled={pending || selectedIds.size === 0}
             className="flex-1 rounded-full bg-natalo-600 px-6 py-3 text-sm font-bold text-white hover:bg-natalo-700 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
           >
-            Simpan Flash Sale ({selectedIds.size})
+            {pending ? "Menyimpan…" : `Simpan Flash Sale (${selectedIds.size})`}
           </button>
         </div>
       </form>

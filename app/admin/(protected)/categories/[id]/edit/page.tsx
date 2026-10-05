@@ -1,15 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { requireAdminSession } from "@/lib/session-guards";
+import { revalidatePath } from "next/cache";
 import { AdminPage, Button, SubmitButton } from "@/components/admin/ui";
-
-function toSlug(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-");
-}
 
 export default async function AdminCategoryEditPage({
   params,
@@ -22,19 +16,20 @@ export default async function AdminCategoryEditPage({
 
   async function updateCategory(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const name = String(formData.get("name") || "").trim();
     if (!name) return;
 
-    const slug = toSlug(name);
-    const conflict = await prisma.category.findFirst({
-      where: { slug, NOT: { id } },
-    });
-
     await prisma.category.update({
       where: { id },
-      data: { name, slug: conflict ? `${slug}-${Date.now()}` : slug },
+      // Slug is a stable filter/link key; renaming only changes the label.
+      data: { name },
     });
 
+    revalidatePath("/admin/categories");
+    revalidatePath("/admin/products");
+    revalidatePath("/api/categories");
+    revalidatePath("/");
     redirect("/admin/categories");
   }
 
@@ -56,17 +51,21 @@ export default async function AdminCategoryEditPage({
         className="admin-operational-form mt-5 space-y-5 md:mt-8"
       >
         <div>
-          <label className="block text-sm font-medium text-zinc-700">
+          <label
+            htmlFor="category-name"
+            className="block text-sm font-medium text-zinc-700"
+          >
             Nama kategori <span className="text-red-500">*</span>
           </label>
           <input
+            id="category-name"
             name="name"
             required
             defaultValue={category.name}
             className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
           />
           <p className="mt-1 text-xs text-zinc-600">
-            Slug akan diperbarui otomatis.
+            Nama ditampilkan di katalog. Kode kategori tetap /{category.slug}.
           </p>
         </div>
 

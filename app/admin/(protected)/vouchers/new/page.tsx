@@ -1,16 +1,22 @@
+import { VoucherDiscountFields } from "@/components/admin/VoucherDiscountFields";
+import { VoucherTargetPicker } from "@/components/admin/VoucherTargetPicker";
+import { voucherFormError } from "@/lib/admin/voucher-form";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { VoucherType, VoucherUserUsageLimitPeriod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requireAdminSession } from "@/lib/session-guards";
 import { sendVoucherPromoPush } from "@/lib/push-promo";
 import { AdminPage, Button, SubmitButton } from "@/components/admin/ui";
 import AIVoucherSuggestButton from "./AIVoucherSuggestButton";
 import BrandTargetPicker from "../BrandTargetPicker";
 
-export default async function AdminVoucherNewPage() {
+export default async function AdminVoucherNewPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { error } = await searchParams;
   async function createVoucher(formData: FormData) {
     "use server";
+    await requireAdminSession();
 
     const name = String(formData.get("name") || "").trim() || null;
     const code = String(formData.get("code") || "")
@@ -33,20 +39,17 @@ export default async function AdminVoucherNewPage() {
     const discountScope =
       type === "PUBLIC_FREE_SHIPPING" ? "SHIPPING" : "PRODUCT";
     const discountPercent = formData.get("discountPercent")
-      ? parseInt(String(formData.get("discountPercent")), 10)
+      ? Number(formData.get("discountPercent"))
       : null;
     let discountAmount = formData.get("discountAmount")
-      ? parseInt(String(formData.get("discountAmount")), 10)
+      ? Number(formData.get("discountAmount"))
       : null;
     const maxDiscountAmount = formData.get("maxDiscountAmount")
-      ? parseInt(String(formData.get("maxDiscountAmount")), 10)
+      ? Number(formData.get("maxDiscountAmount"))
       : null;
-    const minimumOrder = parseInt(
-      String(formData.get("minimumOrder") || "0"),
-      10
-    );
+    const minimumOrder = Number(formData.get("minimumOrder") || "0");
     const maxUsageRaw = String(formData.get("maxUsage") || "").trim();
-    const maxUsage = maxUsageRaw ? parseInt(maxUsageRaw, 10) : null;
+    const maxUsage = maxUsageRaw ? Number(maxUsageRaw) : null;
     const usageLimitPerUserRaw = String(
       formData.get("usageLimitPerUser") ?? ""
     ).trim();
@@ -86,7 +89,7 @@ export default async function AdminVoucherNewPage() {
       discountAmount = maxDiscountAmount;
     }
 
-    if (!code) return;
+
     // Derive `kind` dari `type` — kedua field tersimpan di DB untuk
     // backward compat (type lama vs kind baru). Mapping intuitive.
     const kind:
@@ -107,7 +110,7 @@ export default async function AdminVoucherNewPage() {
     const parsedUsageLimitPerUser =
       usageLimitPerUserRaw === ""
         ? defaultUsageLimitPerUser
-        : parseInt(usageLimitPerUserRaw, 10);
+        : Number(usageLimitPerUserRaw);
     const usageLimitPerUser = Number.isFinite(parsedUsageLimitPerUser)
       ? Math.max(0, parsedUsageLimitPerUser)
       : defaultUsageLimitPerUser;
@@ -122,7 +125,8 @@ export default async function AdminVoucherNewPage() {
         : selectedUsageLimitPeriod === VoucherUserUsageLimitPeriod.NONE
         ? VoucherUserUsageLimitPeriod.LIFETIME
         : selectedUsageLimitPeriod;
-    if (!isFreeShipping && !discountPercent && !discountAmount) return;
+    const validationError = voucherFormError({ code, discountPercent, discountAmount, maxDiscountAmount, minimumOrder, startsAt, expiresAt, maxUsage, usageLimitPerUser: parsedUsageLimitPerUser });
+    if (validationError) redirect(`/admin/vouchers/new?error=${encodeURIComponent(validationError)}`);
 
     // Form checkbox — "on" = checked, null/missing = unchecked.
     const isActive = formData.get("isActive") === "on";
@@ -194,6 +198,7 @@ export default async function AdminVoucherNewPage() {
       </h1>
 
       <div className="mt-5">
+        {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error === "exists" ? "Kode voucher sudah digunakan." : error}</p>}
         <AIVoucherSuggestButton />
       </div>
 
@@ -216,65 +221,8 @@ export default async function AdminVoucherNewPage() {
           placeholder="Contoh: Promo Lebaran 2025"
         />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Diskon persen (%)"
-            name="discountPercent"
-            type="number"
-            placeholder="Contoh: 10 untuk 10%"
-            hint="Isi salah satu atau keduanya"
-          />
-          <Field
-            label="Diskon nominal (Rp)"
-            name="discountAmount"
-            type="number"
-            placeholder="Contoh: 15000"
-          />
-          <Field
-            label="Maks. diskon / potongan ongkir"
-            name="maxDiscountAmount"
-            type="number"
-            placeholder="Contoh: 50000"
-            hint="Untuk persen atau gratis ongkir, isi batas maksimal potongan."
-          />
-        </div>
-
-        <Field
-          label="Minimum belanja (Rp)"
-          name="minimumOrder"
-          type="number"
-          placeholder="0 = tidak ada minimum"
-          defaultValue="0"
-        />
-
-        <div>
-          <label className="block text-sm font-medium text-zinc-700">
-            Tipe voucher Natalo
-          </label>
-          <select
-            name="type"
-            defaultValue="PUBLIC_PRODUCT_DISCOUNT"
-            className="mt-1 block w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-600"
-          >
-            <option value="PUBLIC_FREE_SHIPPING">Public Gratis Ongkir</option>
-            <option value="PUBLIC_PRODUCT_DISCOUNT">
-              Public Diskon Produk
-            </option>
-            <option value="PRIVATE_MANUAL_CODE">Private / Manual Code</option>
-          </select>
-          <p className="mt-1 text-xs text-zinc-600">
-            Voucher loyalty point dibuat otomatis dari halaman reward member,
-            bukan dari form public admin ini.
-          </p>
-        </div>
-
-        <Field
-          label="Eligible user IDs untuk private voucher"
-          name="eligibleUserIds"
-          placeholder="user_123, user_456"
-          hint="Kosongkan jika private code boleh dipakai semua member login."
-        />
-
+        <VoucherDiscountFields  />
+        <VoucherTargetPicker kind="user" name="eligibleUserIds" label="Member yang dapat memakai voucher"  hint="Kosongkan untuk semua member yang memenuhi syarat." />
         <BrandTargetPicker />
 
         <details className="rounded-2xl border border-zinc-200 bg-white px-4 py-3">
@@ -282,18 +230,8 @@ export default async function AdminVoucherNewPage() {
             Lanjutan — target produk / kategori spesifik
           </summary>
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            <Field
-              label="Target product IDs"
-              name="eligibleProductIds"
-              placeholder="product_123, product_456"
-              hint="Untuk voucher SATU produk spesifik, bukan seluruh brand. Field Target brand di atas cukup untuk kebanyakan kasus."
-            />
-            <Field
-              label="Target kategori IDs / slug"
-              name="eligibleCategoryIds"
-              placeholder="cat-food, category_123"
-              hint="Opsional. Bisa isi ID kategori atau slug kategori."
-            />
+            <VoucherTargetPicker kind="product" name="eligibleProductIds" label="Produk"  hint="Kosongkan jika tidak dibatasi." />
+            <VoucherTargetPicker kind="category" name="eligibleCategoryIds" label="Kategori"  hint="Kosongkan jika tidak dibatasi." />
           </div>
         </details>
 

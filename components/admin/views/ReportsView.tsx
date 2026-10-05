@@ -16,7 +16,7 @@ export type ReportsViewProps = {
   revenueGrowth: number | null;
   ordersThisMonth: number;
   ordersLastMonth: number;
-  topProducts: Array<{ name: string; _sum: { quantity: number | null } }>;
+  topProducts: Array<{ id: string; name: string; quantity: number }>;
   statusMap: Record<string, number>;
 };
 export function ReportsView({
@@ -76,7 +76,7 @@ export function ReportsView({
         <StatCard
           label="Pendapatan Bulan Lalu"
           value={formatRupiah(lastMonthRevenue)}
-          helper="Periode sebelumnya"
+          helper="Pesanan lunas · termasuk ongkir"
           variant="default"
         />
         <StatCard
@@ -93,16 +93,21 @@ export function ReportsView({
         />
       </section>
 
+      <p className="mt-3 text-xs text-slate-500">
+        Pendapatan dari pesanan lunas, termasuk ongkir, berdasarkan tanggal
+        pesanan (WIB). Pesanan dibatalkan dan refund tidak dihitung.
+      </p>
+
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <SectionCard
           title="Produk Terlaris"
-          subtitle="10 produk dengan jumlah unit tertinggi · semua periode"
+          subtitle="10 produk · unit terjual dari pesanan lunas · semua periode · seluruh varian"
         >
           {topProducts.length > 0 ? (
             <div className="space-y-2">
               {topProducts.map((item, i) => (
                 <div
-                  key={item.name}
+                  key={item.id}
                   className="flex items-center gap-3 rounded-xl bg-zinc-50 px-4 py-3 transition hover:bg-zinc-100"
                 >
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-natalo-50 text-xs font-semibold text-natalo-700">
@@ -112,7 +117,7 @@ export function ReportsView({
                     {item.name}
                   </p>
                   <Badge variant="info" size="md">
-                    {item._sum.quantity ?? 0}×
+                    {item.quantity}×
                   </Badge>
                 </div>
               ))}
@@ -121,7 +126,7 @@ export function ReportsView({
             <EmptyState
               icon="📈"
               title="Belum ada data"
-              description="Akan muncul setelah ada order pertama."
+              description="Akan muncul setelah ada pesanan lunas yang tidak dibatalkan atau di-refund."
             />
           )}
         </SectionCard>

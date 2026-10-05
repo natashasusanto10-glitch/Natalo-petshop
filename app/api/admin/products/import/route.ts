@@ -1,7 +1,7 @@
 /**
  * POST /api/admin/products/import
  *
- * Bulk import produk dari prisma/products_import.json ke database production.
+ * Bulk import produk dari prisma/products_import_new.json ke database production.
  *
  * Karena Vercel functions punya timeout 30s, import dijalankan per-batch.
  * Client mengirim { offset, batchSize } berulang sampai response.done = true.
@@ -33,7 +33,7 @@
  * }
  *
  * Pada batch terakhir (done=true), produk DB yang aktif tapi slug-nya tidak
- * ada di import JSON akan di-deactivate (isActive=false) — supaya produk yang
+ * ada di import JSON, jika archiveMissing diset true, akan di-deactivate (isActive=false) — supaya produk yang
  * sudah dilepas dari catalog (mis. discontinued) hilang dari halaman public.
  * Safeguard: deactivation hanya jalan kalau import JSON >= 50 produk supaya
  * tidak nuke catalog kalau admin upload JSON partial/test.
@@ -86,6 +86,13 @@ interface ImportData {
 const DEFAULT_BATCH_SIZE = 80;
 const MAX_BATCH_SIZE = 200;
 
+export async function GET() {
+  const session = await getSession("ADMIN");
+  if (!session || session.role !== "ADMIN") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const source = importData as ImportData;
+  return NextResponse.json({ total: source.products.length, categories: source.categories.length, brands: source.brands.length, samples: source.products.slice(0, 5).map(product => product.name) }, { headers: { "Cache-Control": "private, no-store" } });
+}
+
 export async function POST(request: NextRequest) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
@@ -98,6 +105,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     offset?: number;
     batchSize?: number;
+    archiveMissing?: boolean;
   };
   const offset = Math.max(0, Math.floor(Number(body.offset) || 0));
   const batchSize = Math.min(
@@ -142,6 +150,7 @@ export async function POST(request: NextRequest) {
   let productsUpserted = 0;
   let variantsUpserted = 0;
   let skipped = 0;
+  const issues: { name: string; reason: string }[] = [];
   const changedProductIds = new Set<string>();
 
   for (const prod of slice) {
@@ -344,6 +353,7 @@ export async function POST(request: NextRequest) {
   // Revalidate halaman public setelah batch terakhir agar harga/stok baru
   // langsung muncul tanpa nunggu ISR cache 60s.
   if (done) {
+    revalidatePath("/admin/products"); revalidatePath("/admin/stock");
     revalidatePath("/products");
     revalidatePath("/produk");
   }
@@ -355,6 +365,7 @@ export async function POST(request: NextRequest) {
     processedSoFar,
     nextOffset,
     done,
+    issues,
     summary: {
       categoriesUpserted: categoriesCreated,
       brandsUpserted: brandsCreated,

@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { requireAdminSession } from "@/lib/session-guards";
 import { deleteProductVideo } from "@/lib/product/product-video";
 import { productIsVisibleWhere } from "@/lib/product/admin-product-form";
 import { productSearchWhere } from "@/lib/search";
@@ -169,6 +170,7 @@ export default async function AdminProductsPage({
 
   async function toggleActive(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const id = String(formData.get("id"));
     const current = formData.get("isActive") === "true";
     await prisma.product.update({
@@ -185,6 +187,7 @@ export default async function AdminProductsPage({
 
   async function deleteProduct(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const id = String(formData.get("id"));
 
     // Cek apakah produk pernah dipesan — kalau iya, refuse

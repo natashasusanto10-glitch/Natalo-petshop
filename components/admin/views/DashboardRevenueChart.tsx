@@ -18,6 +18,12 @@ export function DashboardRevenueChart({
   const points = isToday ? revenue.hourly : revenue.daily;
   const total = isToday ? revenue.todayTotal : revenue.weekTotal;
   const previous = isToday ? revenue.yesterdayTotal : revenue.previousWeekTotal;
+  // React SSR requires a single text child in <title>, including SVG titles.
+  const chartTitle = `${
+    isToday
+      ? "Akumulasi pendapatan hari ini"
+      : "Pendapatan per hari selama tujuh hari terakhir"
+  }. Total ${formatRupiah(total)}. Rincian tersedia di bawah grafik.`;
   const difference =
     previous > 0 ? ((total - previous) / previous) * 100 : null;
   const maximum = Math.max(1, ...points.map((point) => point.total));
@@ -77,12 +83,7 @@ export function DashboardRevenueChart({
           <span>{isToday ? "Akumulasi hari ini" : "Per hari"}</span>
         </div>
         <svg viewBox="-4 0 468 156" role="img" aria-labelledby={titleId}>
-          <title id={titleId}>
-            {isToday
-              ? "Akumulasi pendapatan hari ini"
-              : "Pendapatan per hari selama tujuh hari terakhir"}
-            . Total {formatRupiah(total)}. Rincian tersedia di bawah grafik.
-          </title>
+          <title id={titleId}>{chartTitle}</title>
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop stopColor="#1760da" stopOpacity=".12" />

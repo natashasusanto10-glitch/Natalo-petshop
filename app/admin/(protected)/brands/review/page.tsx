@@ -1,6 +1,9 @@
+import { parsePageParam } from "@/lib/admin/pagination";
+import { productSearchWhere } from "@/lib/search";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { requireAdminSession } from "@/lib/session-guards";
 import { AdminPage, Button, Pagination } from "@/components/admin/ui";
 
 const PAGE_SIZE = 30;
@@ -8,12 +11,14 @@ const PAGE_SIZE = 30;
 export default async function BrandReviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; brand?: string }>;
+  searchParams: Promise<{ page?: string; brand?: string; q?: string }>;
 }) {
-  const { page: pageStr, brand: brandFilter } = await searchParams;
-  const page = Math.max(1, Number(pageStr) || 1);
+  const { page: pageStr, brand: brandFilter, q } = await searchParams;
+  const page = parsePageParam(pageStr);
 
+  const search = q?.trim().slice(0, 100) ?? "";
   const where = {
+    ...productSearchWhere(search),
     brandAutoAssigned: true,
     ...(brandFilter ? { brand: { slug: brandFilter } } : {}),
   };
@@ -41,6 +46,7 @@ export default async function BrandReviewPage({
   // Server Action: konfirmasi assignment (hilangkan flag auto)
   async function confirmBrand(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const productId = String(formData.get("productId"));
     await prisma.product.update({
       where: { id: productId },
@@ -54,6 +60,7 @@ export default async function BrandReviewPage({
   // Server Action: ubah brand
   async function changeBrand(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const productId = String(formData.get("productId"));
     const newBrandId = String(formData.get("brandId"));
     await prisma.product.update({
@@ -71,6 +78,7 @@ export default async function BrandReviewPage({
   // Server Action: bulk confirm semua di brand tertentu
   async function bulkConfirmBrand(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const brandId = String(formData.get("brandId"));
     const affectedProducts = await prisma.product.findMany({
       where: { brandId, brandAutoAssigned: true },
@@ -104,50 +112,13 @@ export default async function BrandReviewPage({
         kalau salah.
       </p>
 
-      {/* Filter by brand chip */}
-      <div className="mt-6 flex flex-wrap gap-2">
-        <Link
-          href="/admin/brands/review"
-          className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-            !brandFilter
-              ? "border-zinc-950 bg-zinc-950 text-white"
-              : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
-          }`}
-        >
-          Semua brand
-        </Link>
-        {brands
-          .filter((b) => (brandCountMap.get(b.id) ?? 0) > 0)
-          .map((b) => {
-            const count = brandCountMap.get(b.id) ?? 0;
-            const active = brandFilter === b.slug;
-            return (
-              <Link
-                key={b.id}
-                href={`/admin/brands/review?brand=${b.slug}`}
-                className={`flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-                  active
-                    ? "border-amber-500 bg-amber-500 text-white"
-                    : "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-400"
-                }`}
-              >
-                {b.name}
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                    active
-                      ? "bg-white/20 text-white"
-                      : "bg-white text-amber-600"
-                  }`}
-                >
-                  {count}
-                </span>
-              </Link>
-            );
-          })}
-      </div>
-
+      <form method="get" className="mt-6 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_1fr_auto]">
+        <label className="text-sm font-medium">Brand<select name="brand" defaultValue={brandFilter ?? ""} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2"><option value="">Semua brand</option>{brands.filter(brand => (brandCountMap.get(brand.id) ?? 0) > 0).map(brand => <option key={brand.id} value={brand.slug}>{brand.name} ({brandCountMap.get(brand.id)})</option>)}</select></label>
+        <label className="text-sm font-medium">Cari produk atau SKU<input type="search" name="q" defaultValue={search} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" /></label>
+        <Button type="submit" className="self-end">Cari</Button>
+      </form>
       {/* Bulk confirm — kalau filter brand aktif */}
-      {brandFilter && (
+      {brandFilter && brands.some(brand => brand.slug === brandFilter) && (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-semibold text-amber-900">
             Yakin semua produk di brand &ldquo;
@@ -155,8 +126,7 @@ export default async function BrandReviewPage({
             benar?
           </p>
           <p className="mt-1 text-xs text-amber-700">
-            Konfirmasi sekaligus akan menghilangkan flag &ldquo;perlu
-            review&rdquo; dari semua produk di brand ini.
+            Konfirmasi menandai semua produk di brand ini sebagai sudah diperiksa, termasuk di luar hasil pencarian.
           </p>
           <form action={bulkConfirmBrand} className="mt-3">
             <input
@@ -177,10 +147,10 @@ export default async function BrandReviewPage({
           <div className="p-12 text-center">
             <span className="text-4xl">🎉</span>
             <p className="mt-3 font-semibold text-zinc-700">
-              Tidak ada yang perlu di-review!
+              Tidak ada produk pada filter ini
             </p>
             <p className="mt-1 text-sm text-zinc-500">
-              Semua brand sudah di-konfirmasi.
+              Coba pencarian atau filter brand lainnya.
             </p>
           </div>
         ) : (
@@ -192,7 +162,7 @@ export default async function BrandReviewPage({
               >
                 <div className="min-w-0">
                   <Link
-                    href={`/admin/products/${p.id}/edit`}
+                    href={`/admin/products/${p.id}/edit`} target="_blank" rel="noopener noreferrer"
                     className="line-clamp-2 font-semibold text-zinc-900 hover:text-natalo-700"
                   >
                     {p.name}
@@ -243,8 +213,8 @@ export default async function BrandReviewPage({
         totalPages={totalPages}
         hrefFor={(target) =>
           `/admin/brands/review?page=${target}${
-            brandFilter ? `&brand=${brandFilter}` : ""
-          }`
+            brandFilter ? `&brand=${encodeURIComponent(brandFilter)}` : ""
+          }${search ? `&q=${encodeURIComponent(search)}` : ""}`
         }
         summary={`${total} produk`}
       />

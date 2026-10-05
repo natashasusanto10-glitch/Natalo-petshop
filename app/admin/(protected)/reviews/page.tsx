@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { requireAdminSession } from "@/lib/session-guards";
 import { Stars } from "@/components/StarRating";
 import { setReviewStatus, upsertAdminReply } from "@/lib/reviews";
 import { getSession } from "@/lib/auth";
@@ -69,6 +70,7 @@ export default async function AdminReviewsPage({
   // ── Server actions ──────────────────────────────────────────
   async function hideReview(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const id = String(formData.get("id"));
     const reason = String(formData.get("reason") ?? "Konten tidak sesuai");
     await setReviewStatus(id, "HIDDEN", reason);
@@ -77,6 +79,7 @@ export default async function AdminReviewsPage({
 
   async function unhideReview(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const id = String(formData.get("id"));
     await setReviewStatus(id, "VISIBLE");
     revalidatePath("/admin/reviews");

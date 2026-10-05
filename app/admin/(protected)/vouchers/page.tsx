@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { requireAdminSession } from "@/lib/session-guards";
 import { formatRupiah } from "@/lib/format";
 import { ConfirmSubmitButton } from "@/components/ConfirmSubmitButton";
 import { voucherUsageLimitLabel } from "@/lib/voucher-helpers";
@@ -79,6 +80,7 @@ export default async function AdminVouchersPage({
 
   async function toggleVoucher(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const id = String(formData.get("id"));
     const current = formData.get("isActive") === "true";
     await prisma.voucher.update({
@@ -90,6 +92,7 @@ export default async function AdminVouchersPage({
 
   async function deleteVoucher(formData: FormData) {
     "use server";
+    await requireAdminSession();
     const id = String(formData.get("id"));
     const voucher = await prisma.voucher.findUnique({
       where: { id },

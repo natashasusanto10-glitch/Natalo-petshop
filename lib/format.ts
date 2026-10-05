@@ -99,3 +99,17 @@ export function jakartaDayRange(daysAgo: number, reference: Date = new Date()) {
     end: new Date(`${y}-${m}-${d}T23:59:59.999+07:00`),
   };
 }
+
+/** Calendar month in WIB; end is exclusive so no final milliseconds are lost. */
+export function jakartaMonthRange(
+  monthsAgo: number = 0,
+  reference: Date = new Date(),
+) {
+  const { y, m } = jakartaDateParts(reference);
+  const year = Number(y);
+  const month = Number(m) - 1 - monthsAgo;
+  return {
+    start: new Date(Date.UTC(year, month, 1, -7)),
+    end: new Date(Date.UTC(year, month + 1, 1, -7)),
+  };
+}
