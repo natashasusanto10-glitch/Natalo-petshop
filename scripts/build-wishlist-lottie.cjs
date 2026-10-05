@@ -31,6 +31,9 @@ function layer(name,shapes,p=[0,0],r=0,options={}){
   layers.push(item); return item.ind;
 }
 layer('Ground', [E(288,423,440,22,'#E9EFF5')]);
+// Lottie parenting inherits transforms, but not opacity. Apply visibility to
+// every pet layer so eyes and paws cannot remain after the head retreats.
+const petVisibility = keys([[0,0],[28,0],[54,100],[145,100],[175,0],[180,0]]);
 const cat=layer('Cat head',[
   P('M -62 -19 L -62 -73 C -62 -85 -49 -78 -24 -53 C -5 -61 15 -60 34 -51 C 59 -81 66 -84 69 -66 L 72 -12 C 83 11 68 49 34 60 C 8 73 -31 67 -53 45 C -76 24 -79 1 -62 -19 Z',C.orange,C.ink,2.5),
   P('M -52 -33 L -51 -64 L -29 -43 Z',C.pink,null),P('M 43 -39 L 61 -65 L 62 -29 Z',C.pink,null),
@@ -42,9 +45,17 @@ const cat=layer('Cat head',[
   P('M 1 29 L 1 35 C -9 44 -17 38 -18 34 M 1 35 C 11 44 20 38 21 33',null,C.ink,2.3),
   P('M -43 24 L -75 15 M -44 33 L -77 33 M 43 21 L 74 11 M 44 31 L 78 28',null,C.ink,2.2),
   P('M -29 62 C -6 72 17 71 37 61 L 34 73 C 15 81 -10 80 -29 72 Z',C.teal,null),
-], [176,129],0,{ks:{p:keys([[0,[176,215,0]],[24,[176,215,0]],[56,[176,129,0]],[142,[176,129,0]],[173,[176,215,0]],[180,[176,215,0]]])}});
+], [176,129],0,{ks:{o:petVisibility,p:keys([[0,[176,290,0]],[24,[176,290,0]],[56,[176,129,0]],[142,[176,129,0]],[173,[176,290,0]],[180,[176,290,0]]])}});
 const blink=keys([[0,[100,100,100]],[83,[100,100,100]],[88,[100,8,100]],[92,[100,100,100]],[180,[100,100,100]]]);
-layer('Cat eyes',[E(-26,6,11,17,C.ink),E(27,6,11,17,C.ink),E(-28,2,3,4,C.white),E(25,2,3,4,C.white)],[0,0],0,{parent:cat,ks:{s:blink}});
+layer('Cat eyes',[E(-26,6,11,17,C.ink),E(27,6,11,17,C.ink),E(-28,2,3,4,C.white),E(25,2,3,4,C.white)],[0,0],0,{parent:cat,ks:{o:petVisibility,s:blink}});
+const dogBody=layer('Dog body',[
+  P('M 57 137 C 86 142 88 111 100 116 C 118 132 101 163 70 162 Z',C.ear,C.ink,2.5),
+  P('M -18 50 C -5 42 29 47 43 57 C 65 81 74 125 73 174 C 87 192 76 211 48 211 L -23 211 C -48 207 -43 191 -32 177 C -42 126 -37 76 -18 50 Z',C.dog,C.ink,2.5),
+  P('M -9 65 C 4 60 22 65 30 80 C 38 113 39 146 25 164 C 8 177 -16 163 -19 137 C -23 108 -18 80 -9 65 Z',C.cream,null),
+  P('M 36 145 C 64 136 78 167 67 193 L 49 204 L 24 201 C 15 178 18 156 36 145 Z',C.dog,C.ink,2.2),
+  E(47,207,53,20,C.cream,C.ink,2.2),
+  P('M 43 207 L 43 214 M 55 207 L 55 214',null,C.ink,1.3),
+],[0,0],0,{ks:{o:petVisibility}});
 const dog=layer('Dog head',[
   P('M -44 -24 C -65 -66 -32 -74 4 -67 C 43 -65 63 -37 60 -1 C 65 36 33 61 -3 59 C -38 58 -59 26 -44 -24 Z',C.dog,C.ink,2.5),
   P('M -32 -55 C -68 -62 -85 -28 -77 6 C -75 30 -60 41 -48 25 C -40 10 -29 -31 -32 -55 Z',C.ear,C.ink,2.5),
@@ -55,8 +66,9 @@ const dog=layer('Dog head',[
   P('M 4 15 C -5 27 -16 22 -18 15 M 4 15 C 15 26 24 22 25 14',null,C.ink,2.5),
   P('M -6 27 C 1 31 10 32 17 26 L 15 37 C 12 48 -2 48 -5 37 Z',C.coral,C.ink,1.5),
   P('M -21 54 C -1 65 22 60 37 49 L 41 59 C 22 75 -2 77 -25 64 Z',C.teal,null),
-], [467,193],0,{ks:{p:keys([[0,[507,226,0]],[27,[507,226,0]],[63,[467,193,0]],[143,[467,193,0]],[174,[507,226,0]],[180,[507,226,0]]]),o:keys([[0,0],[28,0],[54,100],[145,100],[175,0],[180,0]]),r:keys([[0,0],[65,0],[85,9],[103,9],[118,0],[180,0]])}});
-layer('Dog eyes',[E(-24,-14,10,15,C.ink),E(27,-14,10,15,C.ink),E(-26,-17,3,4,C.white),E(25,-17,3,4,C.white)],[0,0],0,{parent:dog,ks:{s:keys([[0,[100,100,100]],[106,[100,100,100]],[111,[100,7,100]],[115,[100,100,100]],[180,[100,100,100]]])}});
+], [467,193],0,{ks:{p:keys([[0,[390,260,0]],[27,[390,260,0]],[63,[467,193,0]],[143,[467,193,0]],[174,[390,260,0]],[180,[390,260,0]]]),o:petVisibility,r:keys([[0,0],[65,0],[85,9],[103,9],[118,0],[180,0]])}});
+layers.find(item=>item.ind===dogBody).parent=dog;
+layer('Dog eyes',[E(-24,-14,10,15,C.ink),E(27,-14,10,15,C.ink),E(-26,-17,3,4,C.white),E(25,-17,3,4,C.white)],[0,0],0,{parent:dog,ks:{o:petVisibility,s:keys([[0,[100,100,100]],[106,[100,100,100]],[111,[100,7,100]],[115,[100,100,100]],[180,[100,100,100]]])}});
 function pouch(fill,icon){
   const shapes=[P('M -45 -67 L 44 -67 L 53 72 C 30 79 -31 79 -52 70 Z',fill,C.ink,1.8),R(-47,-75,93,15,4,fill,C.ink,1.8),R(-35,-32,69,69,12,C.cream),P('M -43 -55 L -34 -38 L -29 -55 Z','#FFFFFF',null)];
   if(icon==='bone')shapes.push(P('M -20 -5 C -31 -17 -20 -26 -12 -17 L 12 -17 C 20 -26 31 -17 20 -5 C 31 6 20 17 12 8 L -12 8 C -20 17 -31 6 -20 -5 Z',C.ink,null));
@@ -71,9 +83,9 @@ for(const [parent,x,y] of [[left,70,-92],[right,66,-102]]){
   layer('Heart outline',[P(heart,null,C.ink,2)],[x,y],0,{parent});
   layer('Saved heart',[P(heart,C.coral,C.coral,2)],[x,y],0,{parent,ks:{o:keys([[0,0],[60,0],[75,100],[146,100],[171,0],[180,0]]),s:keys([[0,[100,100,100]],[70,[100,100,100]],[79,[118,118,100]],[90,[100,100,100]],[180,[100,100,100]]])}});
 }
-// Forepaws remain on the card edges; heads peek behind the foreground cards.
-layer('Cat paws',[E(-29,0,27,22,C.cream,C.ink,2),E(29,0,27,22,C.cream,C.ink,2),P('M -33 0 L -33 7 M -25 0 L -25 8 M 24 0 L 24 7 M 32 0 L 32 7',null,C.ink,1.3)],[0,-122],0,{parent:left});
-layer('Dog paw',[E(0,0,27,39,C.cream,C.ink,2),P('M -3 -9 L 7 -5 M -5 0 L 7 4',null,C.ink,1.3)],[97,-49],0,{parent:right});
+// Forepaws grip the card edges and disappear with the retreating pets.
+layer('Cat paws',[E(-29,0,27,22,C.cream,C.ink,2),E(29,0,27,22,C.cream,C.ink,2),P('M -33 0 L -33 7 M -25 0 L -25 8 M 24 0 L 24 7 M 32 0 L 32 7',null,C.ink,1.3)],[0,-122],0,{parent:left,ks:{o:petVisibility}});
+layer('Dog paw',[E(0,0,27,39,C.cream,C.ink,2),P('M -3 -9 L 7 -5 M -5 0 L 7 4',null,C.ink,1.3)],[97,-49],0,{parent:right,ks:{o:petVisibility}});
 const clean = layers.map(({_shapes,...item})=>item).reverse();
 const data={v:'5.12.2',fr:30,ip:0,op:180,w:640,h:460,nm:'Natalo Wishlist - pets saving product cards',ddd:0,assets:[],layers:clean,markers:[{tm:0,cm:'Cards arrive',dr:30},{tm:30,cm:'Pets peek',dr:30},{tm:60,cm:'Save favorites and blink',dr:60},{tm:120,cm:'Hold then reset',dr:60}]};
 function at(prop,frame=135){if(!prop.a)return prop.k;const k=prop.k;let point=k[0];for(const p of k){if(p.t>frame)break;point=p;}return point.s;}
