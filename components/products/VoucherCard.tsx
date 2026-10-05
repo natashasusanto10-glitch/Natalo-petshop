@@ -251,7 +251,7 @@ export function VoucherCard({ vouchers: vouchersProp, productSlug, savingsAmount
     <>
       <section className="mt-3 flex items-center gap-2" aria-label="Promo dan voucher produk">
         <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1">
-          {savingsAmount > 0 && <span className="rounded-md bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white">Hemat {formatRupiahShort(savingsAmount)}</span>}
+          {savingsAmount > 0 && <span className="shrink-0 whitespace-nowrap rounded-md bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white">Hemat {formatRupiahShort(savingsAmount)}</span>}
           {visibleProductVouchers.map(v => {
             const shipping = v.discountScope === "SHIPPING" || v.kind === "FREE_SHIPPING" || v.type === "PUBLIC_FREE_SHIPPING";
             return <button key={v.id} type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" title={`${describeBenefit(v)} · ${describeMin(v)}`} className={`shrink-0 whitespace-nowrap rounded-md border border-dashed px-2.5 py-1.5 text-left text-xs font-semibold ${shipping ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-rose-300 bg-rose-50 text-rose-600"}`}>
