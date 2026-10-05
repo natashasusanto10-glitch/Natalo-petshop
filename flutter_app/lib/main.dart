@@ -27,6 +27,7 @@ import 'screens/feed_screen.dart';
 import 'screens/hashtag_screen.dart';
 import 'screens/help_center_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/kawan_setia_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/login_otp_screen.dart';
 import 'screens/member_addresses_screen.dart';
@@ -363,6 +364,7 @@ class NataloPetshopApp extends StatelessWidget {
             final page = switch (settings.name) {
               '/onboarding' => const OnboardingScreen(),
               '/' => const HomeScreen(),
+              KawanSetiaScreen.routeName => const KawanSetiaScreen(),
               '/products' when settings.arguments is ProductCatalogArgs =>
                 ProductsScreen(
                   selectedBrand:

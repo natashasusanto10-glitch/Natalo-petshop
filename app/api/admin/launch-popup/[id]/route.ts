@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { withSerializationRetry } from "@/lib/db-retry";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import {
@@ -30,7 +31,7 @@ const updateSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
@@ -53,13 +54,16 @@ export async function PATCH(
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Data tidak valid" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
   const existing = await prisma.launchPopup.findUnique({ where: { id } });
   if (!existing) {
-    return NextResponse.json({ error: "Popup tidak ditemukan" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Popup tidak ditemukan" },
+      { status: 404 }
+    );
   }
 
   // Validasi link kalau linkType/linkValue diubah — pakai nilai final
@@ -69,7 +73,10 @@ export async function PATCH(
     parsed.data.linkValue !== undefined
       ? parsed.data.linkValue
       : existing.linkValue;
-  if (parsed.data.linkType !== undefined || parsed.data.linkValue !== undefined) {
+  if (
+    parsed.data.linkType !== undefined ||
+    parsed.data.linkValue !== undefined
+  ) {
     const linkCheck = validateBannerLink(finalLinkType, finalLinkValue);
     if (!linkCheck.ok) {
       return NextResponse.json({ error: linkCheck.error }, { status: 400 });
@@ -92,35 +99,60 @@ export async function PATCH(
   if (finalStartsAt && finalEndsAt && finalEndsAt <= finalStartsAt) {
     return NextResponse.json(
       { error: "Tanggal berakhir harus setelah tanggal mulai" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
-  const popup = await prisma.launchPopup.update({
-    where: { id },
-    data: {
-      ...(parsed.data.imageUrl !== undefined && { imageUrl: parsed.data.imageUrl }),
-      ...(parsed.data.imageAlt !== undefined && { imageAlt: parsed.data.imageAlt }),
-      ...(parsed.data.linkType !== undefined && { linkType: parsed.data.linkType }),
-      ...(parsed.data.linkValue !== undefined && {
-        linkValue:
-          parsed.data.linkValue && parsed.data.linkValue.length > 0
-            ? parsed.data.linkValue
-            : null,
-      }),
-      ...(parsed.data.audience !== undefined && { audience: parsed.data.audience }),
-      ...(parsed.data.startsAt !== undefined && { startsAt: finalStartsAt }),
-      ...(parsed.data.endsAt !== undefined && { endsAt: finalEndsAt }),
-      ...(parsed.data.isActive !== undefined && { isActive: parsed.data.isActive }),
-    },
-  });
+  const popup = await withSerializationRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        if (parsed.data.isActive === true) {
+          await tx.launchPopup.updateMany({
+            where: { isActive: true, id: { not: id } },
+            data: { isActive: false },
+          });
+        }
+        return tx.launchPopup.update({
+          where: { id },
+          data: {
+            ...(parsed.data.imageUrl !== undefined && {
+              imageUrl: parsed.data.imageUrl,
+            }),
+            ...(parsed.data.imageAlt !== undefined && {
+              imageAlt: parsed.data.imageAlt,
+            }),
+            ...(parsed.data.linkType !== undefined && {
+              linkType: parsed.data.linkType,
+            }),
+            ...(parsed.data.linkValue !== undefined && {
+              linkValue:
+                parsed.data.linkValue && parsed.data.linkValue.length > 0
+                  ? parsed.data.linkValue
+                  : null,
+            }),
+            ...(parsed.data.audience !== undefined && {
+              audience: parsed.data.audience,
+            }),
+            ...(parsed.data.startsAt !== undefined && {
+              startsAt: finalStartsAt,
+            }),
+            ...(parsed.data.endsAt !== undefined && { endsAt: finalEndsAt }),
+            ...(parsed.data.isActive !== undefined && {
+              isActive: parsed.data.isActive,
+            }),
+          },
+        });
+      },
+      { isolationLevel: "Serializable" }
+    )
+  );
 
   return NextResponse.json({ popup });
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const csrfReject = assertSameOrigin(request);
   if (csrfReject) return csrfReject;
@@ -134,7 +166,10 @@ export async function DELETE(
   try {
     await prisma.launchPopup.delete({ where: { id } });
   } catch {
-    return NextResponse.json({ error: "Popup tidak ditemukan" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Popup tidak ditemukan" },
+      { status: 404 }
+    );
   }
   return NextResponse.json({ ok: true });
 }

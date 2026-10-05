@@ -321,6 +321,10 @@ class DeepLinkService {
       nav.pushNamed('/');
       return;
     }
+    if (uri.path == '/services/kawan-setia') {
+      nav.pushNamed('/services/kawan-setia');
+      return;
+    }
     switch (segments.first) {
       case 'feed':
         // /feed/<postId> → buka 1 postingan (deep-link notif "X posting

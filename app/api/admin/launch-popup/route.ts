@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { withSerializationRetry } from "@/lib/db-retry";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import {
@@ -64,11 +65,14 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Data tidak valid" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
-  const linkCheck = validateBannerLink(parsed.data.linkType, parsed.data.linkValue);
+  const linkCheck = validateBannerLink(
+    parsed.data.linkType,
+    parsed.data.linkValue
+  );
   if (!linkCheck.ok) {
     return NextResponse.json({ error: linkCheck.error }, { status: 400 });
   }
@@ -78,25 +82,38 @@ export async function POST(request: NextRequest) {
   if (startsAt && endsAt && endsAt <= startsAt) {
     return NextResponse.json(
       { error: "Tanggal berakhir harus setelah tanggal mulai" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
-  const popup = await prisma.launchPopup.create({
-    data: {
-      imageUrl: parsed.data.imageUrl,
-      imageAlt: parsed.data.imageAlt,
-      linkType: parsed.data.linkType,
-      linkValue:
-        parsed.data.linkValue && parsed.data.linkValue.length > 0
-          ? parsed.data.linkValue
-          : null,
-      audience: parsed.data.audience,
-      startsAt,
-      endsAt,
-      isActive: parsed.data.isActive,
-    },
-  });
+  const popup = await withSerializationRetry(() =>
+    prisma.$transaction(
+      async (tx) => {
+        if (parsed.data.isActive) {
+          await tx.launchPopup.updateMany({
+            where: { isActive: true },
+            data: { isActive: false },
+          });
+        }
+        return tx.launchPopup.create({
+          data: {
+            imageUrl: parsed.data.imageUrl,
+            imageAlt: parsed.data.imageAlt,
+            linkType: parsed.data.linkType,
+            linkValue:
+              parsed.data.linkValue && parsed.data.linkValue.length > 0
+                ? parsed.data.linkValue
+                : null,
+            audience: parsed.data.audience,
+            startsAt,
+            endsAt,
+            isActive: parsed.data.isActive,
+          },
+        });
+      },
+      { isolationLevel: "Serializable" }
+    )
+  );
 
   return NextResponse.json({ popup }, { status: 201 });
 }

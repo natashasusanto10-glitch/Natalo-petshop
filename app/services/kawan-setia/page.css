@@ -1,0 +1,105 @@
+.nat-main-shell:has(.kawan-setia-page) {
+  padding: 0;
+}
+.kawan-setia-page {
+  min-height: 100dvh;
+  background: #fffbf2;
+  color: #172b4d;
+  padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px));
+}
+.kawan-setia-content {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.kawan-setia-hero {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.kawan-setia-services {
+  padding: 24px 20px;
+}
+.kawan-setia-services h1 {
+  font-size: clamp(23px, 5.5vw, 28px);
+  font-weight: 800;
+  line-height: 1.3;
+  margin: 0 0 8px;
+}
+.kawan-setia-services p {
+  margin: 0;
+  line-height: 1.5;
+}
+.kawan-setia-services ul {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 0;
+}
+.kawan-setia-services li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #f0ebdd;
+  border-radius: 18px;
+  background: white;
+}
+.kawan-setia-services h2 {
+  margin: 0 0 5px;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+.kawan-setia-services li p {
+  color: #526078;
+  font-size: 14px;
+}
+.kawan-setia-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #fff2cf;
+}
+.kawan-setia-contact {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #fffbf2;
+  padding: 12px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+}
+.kawan-setia-contact > div {
+  max-width: 560px;
+  margin: 0 auto;
+}
+.kawan-setia-contact p {
+  text-align: center;
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+.kawan-setia-contact a {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  min-height: 56px;
+  border-radius: 28px;
+  background: #168451;
+  color: white;
+  font-size: 16px;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+}
+.kawan-setia-contact a:hover {
+  background: #116d42;
+}
+.kawan-setia-contact a:focus-visible {
+  outline: 3px solid #172b4d;
+  outline-offset: 4px;
+}
