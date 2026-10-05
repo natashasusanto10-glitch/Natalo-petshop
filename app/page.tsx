@@ -674,7 +674,14 @@ export default async function HomePage() {
 
   const homeCategories = popularCategories;
 
-  const flashSaleProducts = flashSaleRows.slice(0, 6);
+  const flashSaleIds = flashSaleRows.slice(0, 6).map((product) => product.id);
+  const flashSaleDetails = flashSaleIds.length
+    ? await getProducts({ includeIds: flashSaleIds, take: flashSaleIds.length, viewerId })
+    : [];
+  const flashSaleProducts = flashSaleIds.flatMap((id) => {
+    const product = flashSaleDetails.find((item) => item.id === id);
+    return product ? [product] : [];
+  });
   const hasMoreFlashSaleProducts = flashSaleRows.length > 6;
   const featuredBrands = mapDbBrandsToCatalogItems(dbFeaturedBrands.filter(brand => brand.logoUrl).slice(0, 8));
 
