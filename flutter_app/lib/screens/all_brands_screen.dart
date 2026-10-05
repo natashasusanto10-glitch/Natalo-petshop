@@ -40,7 +40,7 @@ class _AllBrandsScreenState extends State<AllBrandsScreen> {
     final brands = await productService.fetchBrands();
     if (!mounted) return;
     setState(() {
-      _brands = brands;
+      _brands = sortBrandsByName(brands);
       _loading = false;
       _error =
           brands.isEmpty ? 'Belum ada brand. Tarik ke bawah untuk refresh.' : null;

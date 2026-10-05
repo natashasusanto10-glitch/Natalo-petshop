@@ -15,22 +15,27 @@ import { useAdminConfirm } from "@/components/admin/ui/useAdminConfirm";
  */
 import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  FiEdit2,
-  FiExternalLink,
-  FiPlus,
-  FiRefreshCw,
-  FiTrash2,
-  FiX,
-} from "react-icons/fi";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FiPlus, FiRefreshCw } from "react-icons/fi";
 import { Badge, Button, PageHeader } from "@/components/admin/ui";
-import type { BadgeVariant } from "@/components/admin/ui";
+import { useAdminToast } from "@/components/admin/ui";
+import { AdminDialog } from "@/components/admin/ui/AdminDialog";
+import { AdminFeedPreview, type FeedPreviewProduct } from "./AdminFeedPreview";
+import {
+  FiEye,
+  FiHeart,
+  FiMessageCircle,
+  FiSearch,
+  FiMoreHorizontal,
+  FiPlay,
+  FiShoppingBag,
+} from "react-icons/fi";
 
-type AdminFilter = "all" | "photo" | "video" | "hidden" | "deleted";
+type AdminFilter = "all" | "attention" | "hidden" | "deleted";
 
 type AdminFeedItem = {
   id: string;
+  canEdit?: boolean;
   status: string;
   // Bunny encoding lifecycle. Approve di-block selama ini ≠ "ready" —
   // listFeedPosts filter encodingStatus="ready" untuk public feed, jadi
@@ -48,6 +53,7 @@ type AdminFeedItem = {
   mediaCount: number;
   videoDurationSec: number | null;
   product: { id: string; slug: string; name: string } | null;
+  taggedProducts?: FeedPreviewProduct[];
   promo: {
     originalPrice: number;
     discountPrice: number;
@@ -68,19 +74,37 @@ type AdminFeedItem = {
 type AdminFeedResponse = {
   items: AdminFeedItem[];
   nextCursor: string | null;
-  counts: { total: number; deleted: number; photo: number; video: number };
+  counts: {
+    total: number;
+    deleted: number;
+    photo: number;
+    video: number;
+    ready?: number;
+    processing?: number;
+    failed?: number;
+  };
 };
 
 const FILTERS: { value: AdminFilter; label: string }[] = [
   { value: "all", label: "Semua" },
-  { value: "photo", label: "Foto/Carousel" },
-  { value: "video", label: "Video" },
+  { value: "attention", label: "Perlu perhatian" },
   { value: "hidden", label: "Disembunyikan" },
   { value: "deleted", label: "Sampah" },
 ];
 
 export function AdminFeedClient() {
   const { confirm, confirmation } = useAdminConfirm();
+  const { show } = useAdminToast();
+  const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  const [format, setFormat] = useState("all");
+  const [preview, setPreview] = useState<AdminFeedItem | null>(null);
+  const [hidePost, setHidePost] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [filter, setFilter] = useState<AdminFilter>("all");
   const [items, setItems] = useState<AdminFeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -88,7 +112,7 @@ export function AdminFeedClient() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [counts, setCounts] = useState({
+  const [counts, setCounts] = useState<AdminFeedResponse["counts"]>({
     total: 0,
     deleted: 0,
     photo: 0,
@@ -103,89 +127,110 @@ export function AdminFeedClient() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const isTrashView = filter === "deleted";
+  const queryParameters = useMemo(
+    () => new URLSearchParams({ filter, q: query, format }).toString(),
+    [filter, query, format]
+  );
+  const parametersRef = useRef(queryParameters);
+  const requestVersion = useRef(0);
+  const managementBusy = Boolean(actionBusy || bulkBusy || syncBusy);
 
   // Refetch saat filter berubah. Inline fn supaya exhaustive-deps tidak
   // complain (kalau pakai useCallback yang depend ke `cursor`, akan trigger
   // re-fetch tiap kali cursor di-update — infinite loop).
   useEffect(() => {
     let cancelled = false;
+    parametersRef.current = queryParameters;
+    const version = ++requestVersion.current;
     setLoading(true);
     setCursor(null);
     setItems([]);
     setError(null);
     setSelectedIds(new Set()); // clear bulk selection saat filter ganti
-    fetch(`/api/admin/feed/posts?filter=${filter}`)
+    fetch(`/api/admin/feed/posts?${queryParameters}`)
       .then((r) => {
         if (!r.ok) throw new Error("Gagal memuat");
         return r.json() as Promise<AdminFeedResponse>;
       })
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled || version !== requestVersion.current) return;
         setItems(data.items);
         setCursor(data.nextCursor);
         setHasMore(Boolean(data.nextCursor));
         setCounts(data.counts);
       })
       .catch((err) => {
-        if (cancelled) return;
+        if (cancelled || version !== requestVersion.current) return;
         setError(err instanceof Error ? err.message : "Gagal memuat");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && version === requestVersion.current) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [filter]);
+  }, [queryParameters]);
 
   // Load-more fetcher (terpisah supaya tidak invalidate-and-refetch saat filter sama).
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
+    const version = requestVersion.current;
     try {
       const res = await fetch(
-        `/api/admin/feed/posts?filter=${filter}&cursor=${cursor}`
+        `/api/admin/feed/posts?${queryParameters}&cursor=${encodeURIComponent(
+          cursor
+        )}`
       );
       if (!res.ok) throw new Error("Gagal memuat");
       const data: AdminFeedResponse = await res.json();
+      if (version !== requestVersion.current) return;
       setItems((prev) => [...prev, ...data.items]);
       setCursor(data.nextCursor);
       setHasMore(Boolean(data.nextCursor));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat");
+      if (version === requestVersion.current)
+        setError(err instanceof Error ? err.message : "Gagal memuat");
     } finally {
       setLoadingMore(false);
     }
-  }, [filter, cursor, loadingMore]);
+  }, [queryParameters, cursor, loadingMore]);
 
   // Refetch helper untuk dipakai setelah moderate action — pakai current filter.
   const refetchCurrent = useCallback(async () => {
+    const version = ++requestVersion.current;
+    const parameters = parametersRef.current;
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/feed/posts?filter=${filter}`);
+      const res = await fetch(`/api/admin/feed/posts?${parameters}`);
       if (!res.ok) throw new Error("Gagal memuat");
       const data: AdminFeedResponse = await res.json();
+      if (version !== requestVersion.current) return;
+      setSelectedIds(new Set());
       setItems(data.items);
       setCursor(data.nextCursor);
       setHasMore(Boolean(data.nextCursor));
       setCounts(data.counts);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat");
+      if (version === requestVersion.current)
+        setError(err instanceof Error ? err.message : "Gagal memuat");
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
-  }, [filter]);
+  }, []);
 
   async function moderate(
     postId: string,
-    action: "hide" | "unhide" | "restore"
+    action: "hide" | "unhide" | "restore",
+    suppliedNote?: string
   ) {
-    let note: string | undefined;
-    if (action === "hide") {
-      const input = window.prompt("Alasan menyembunyikan (opsional):");
-      note = input?.trim() || undefined;
+    if (action === "hide" && suppliedNote === undefined) {
+      setNote("");
+      setHidePost(postId);
+      return;
     }
+    const note = suppliedNote?.trim() || undefined;
     setActionBusy(postId);
     try {
       const res = await fetch(`/api/admin/feed/posts/${postId}`, {
@@ -195,10 +240,15 @@ export function AdminFeedClient() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Gagal");
-      // Refetch list supaya counts & status sync
-      refetchCurrent();
+      setHidePost(null);
+      show(
+        action === "hide"
+          ? "Postingan disembunyikan."
+          : "Postingan ditampilkan kembali setelah media siap."
+      );
+      await refetchCurrent();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Gagal");
+      show(err instanceof Error ? err.message : "Gagal", "error");
     } finally {
       setActionBusy(null);
     }
@@ -226,11 +276,16 @@ export function AdminFeedClient() {
         throw new Error(data.error ?? "Gagal hapus");
       }
       setItems((prev) => prev.filter((p) => p.id !== postId));
+      show(
+        isTrashView
+          ? "Postingan dihapus permanen."
+          : "Postingan dipindahkan ke sampah."
+      );
       // Counts (esp. "deleted") akan stale setelah hard delete. Refetch
       // supaya badge "Sampah" up-to-date.
-      refetchCurrent();
+      await refetchCurrent();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Gagal");
+      show(err instanceof Error ? err.message : "Gagal", "error");
     } finally {
       setActionBusy(null);
     }
@@ -287,16 +342,16 @@ export function AdminFeedClient() {
         skipped: 0,
         error: 0,
       };
-      // Show summary toast-ish via alert (bisa diganti toast UI nanti).
+      // Report per-item results without interrupting the workflow.
       const parts: string[] = [];
       parts.push(`${applied} berhasil`);
       if (skipped > 0) parts.push(`${skipped} dilewati`);
       if (errs > 0) parts.push(`${errs} gagal`);
-      window.alert(parts.join(" · "));
+      show(parts.join(" · "), "info");
       setSelectedIds(new Set());
-      refetchCurrent();
+      await refetchCurrent();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Bulk action gagal");
+      show(err instanceof Error ? err.message : "Bulk action gagal", "error");
     } finally {
       setBulkBusy(false);
     }
@@ -339,10 +394,10 @@ export function AdminFeedClient() {
         if (failed > 0) parts.push(`${failed} gagal encoding`);
         if (skipped > 0) parts.push(`${skipped} masih diproses`);
       }
-      window.alert(parts.join(" · "));
-      refetchCurrent();
+      show(parts.join(" · "), "info");
+      await refetchCurrent();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Sync gagal");
+      show(err instanceof Error ? err.message : "Sync gagal", "error");
     } finally {
       setSyncBusy(false);
     }
@@ -372,256 +427,286 @@ export function AdminFeedClient() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="af admin-feed-list">
       {confirmation}
       <PageHeader
         title="Feed"
-        subtitle={`${counts.total} post · ${counts.photo} foto · ${counts.video} video`}
+        subtitle="Kelola cerita, produk, dan interaksi pelanggan."
         actions={
           <>
             <Button
-              type="button"
               variant="secondary"
-              size="sm"
               onClick={syncBunny}
-              disabled={syncBusy}
-              title="Periksa ulang video yang masih diproses"
+              disabled={managementBusy}
             >
               <FiRefreshCw
-                className={`h-3.5 w-3.5 ${syncBusy ? "animate-spin" : ""}`}
+                aria-hidden
+                className={syncBusy ? "animate-spin" : ""}
               />
-              {syncBusy ? "Sync…" : "Periksa video"}
+              {syncBusy ? "Memeriksa…" : "Periksa video"}
             </Button>
-            <Button href="/admin/feed/new" size="sm">
-              <FiPlus className="h-4 w-4" />
-              Buat post
+            <Button href="/admin/feed/new">
+              <FiPlus aria-hidden />
+              Tambah postingan
             </Button>
           </>
         }
       />
-
-      {/* Filter tabs */}
-      <nav
-        role="tablist"
-        aria-label="Filter feed admin"
-        className="-mx-1 flex gap-1.5 overflow-x-auto px-1 py-1"
-      >
-        {FILTERS.map((f) => {
-          const active = filter === f.value;
-          const badge =
-            f.value === "photo"
-              ? counts.photo
-              : f.value === "video"
-              ? counts.video
-              : null;
-          return (
+      <div className="af-stats">
+        {[
+          ["Total postingan", counts.total],
+          ["Postingan tayang", counts.ready],
+          ["Dalam proses", counts.processing],
+          ["Gagal diproses", counts.failed],
+        ].map(([label, count]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong>
+              {typeof count === "number" ? count.toLocaleString("id-ID") : "—"}
+            </strong>
+          </div>
+        ))}
+      </div>
+      <section className="af-panel">
+        <div className="af-toolbar">
+          <label className="af-search">
+            <FiSearch aria-hidden />
+            <span className="sr-only">Cari judul, akun, atau produk</span>
+            <input
+              value={search}
+              maxLength={120}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setSelectedIds(new Set());
+              }}
+              placeholder="Cari judul, akun, atau produk…"
+            />
+          </label>
+          <select
+            aria-label="Format konten"
+            value={format}
+            onChange={(e) => setFormat(e.target.value)}
+          >
+            <option value="all">Semua format</option>
+            <option value="video">Video</option>
+            <option value="photo">Foto / Carousel</option>
+            <option value="promo">Promo</option>
+          </select>
+        </div>
+        <div className="af-tabs" aria-label="Status postingan">
+          {FILTERS.map((f) => (
             <button
               key={f.value}
               type="button"
-              role="tab"
-              aria-selected={active}
+              aria-pressed={filter === f.value}
               onClick={() => setFilter(f.value)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-                active
-                  ? "border-natalo-600 bg-natalo-600 text-white"
-                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
-              }`}
             >
               {f.label}
-              {badge != null && (
-                <span
-                  className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-xs font-semibold ${
-                    active
-                      ? "bg-white text-natalo-700"
-                      : "bg-zinc-200 text-zinc-600"
-                  }`}
-                >
-                  {badge}
-                </span>
-              )}
+              {f.value === "deleted" && <span>{counts.deleted}</span>}
             </button>
-          );
-        })}
-      </nav>
-
-      {loading && (
-        <p className="py-12 text-center text-xs font-bold text-zinc-400">
-          Memuat...
-        </p>
-      )}
-      {error && (
-        <p className="rounded-2xl bg-red-50 p-3 text-center text-sm font-bold text-red-700">
-          {error}
-        </p>
-      )}
-      {!loading && !error && items.length === 0 && (
-        <p className="rounded-2xl border border-dashed border-zinc-200 bg-white p-8 text-center text-xs font-bold text-zinc-500">
-          Tidak ada post di kategori ini.
-        </p>
-      )}
-
-      {/* List — satu kartu dense berisi baris ber-border (bukan kartu
-          bertumpuk terpisah), sejalan dengan halaman admin lain. */}
-      {!loading && !error && items.length > 0 && (
-        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-          <div className="flex items-center gap-2 border-b border-zinc-100 bg-zinc-50 px-3 py-2">
-            <input
-              type="checkbox"
-              checked={allVisibleSelected}
-              onChange={toggleSelectAllVisible}
-              disabled={bulkBusy}
-              className="h-4 w-4 rounded border-zinc-300 text-natalo-600 focus:ring-natalo-400 disabled:opacity-50"
-            />
-            <span className="text-xs font-semibold text-zinc-600">
-              {selectedIds.size > 0
-                ? `${selectedIds.size} dipilih`
-                : "Pilih semua"}
-            </span>
+          ))}
+        </div>
+        {error && (
+          <div className="af-error" role="alert">
+            <p>{error}</p>
+            <Button variant="secondary" onClick={refetchCurrent}>
+              Coba kembali
+            </Button>
           </div>
-          <div className="divide-y divide-zinc-100">
-            {items.map((p) => (
-              <AdminFeedRow
-                key={p.id}
-                post={p}
-                busy={actionBusy === p.id}
-                isTrashView={isTrashView}
-                selected={selectedIds.has(p.id)}
-                onToggleSelect={() => toggleSelected(p.id)}
-                onModerate={(action) => moderate(p.id, action)}
-                onDelete={() => deletePost(p.id)}
-              />
+        )}
+        {loading ? (
+          <div
+            className="af-skeleton"
+            role="status"
+            aria-label="Memuat postingan"
+          >
+            {[1, 2, 3].map((n) => (
+              <div key={n}>
+                <span />
+                <span />
+              </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {hasMore && !loading && (
-        <button
-          type="button"
-          onClick={() => loadMore()}
-          disabled={loadingMore}
-          className="w-full rounded-full border border-zinc-200 bg-white py-3 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50"
-        >
-          {loadingMore ? "Memuat..." : "Muat lebih banyak"}
-        </button>
-      )}
-
-      {/* Bulk action bar — inline di dalam alur konten (mengikuti lebar
-          halaman), BUKAN lagi melayang full-width di bawah viewport. Actions
-          tergantung view: trash view → Restore / Hapus Permanen. View lain
-          → Approve/Reject, Hide, Pindah ke Sampah. */}
-      {selectedIds.size > 0 && (
-        <div className="admin-operational-bulkbar sticky bottom-4 z-10 flex flex-wrap items-center gap-2 rounded-2xl border border-natalo-200 bg-white px-3 py-2.5 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setSelectedIds(new Set())}
-            disabled={bulkBusy}
-            aria-label="Batalkan seleksi"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200 disabled:opacity-50"
-          >
-            <FiX className="h-4 w-4" />
-          </button>
-          <span className="shrink-0 text-xs font-bold text-natalo-700">
-            {selectedIds.size} dipilih
-          </span>
-          <div className="ml-auto flex flex-wrap gap-1.5">
-            {isTrashView ? (
-              <>
-                <BulkBtn
-                  label="Restore"
-                  tone="green"
-                  onClick={() => bulkAction("restore")}
-                  busy={bulkBusy}
+        ) : (
+          <>
+            {items.length > 0 && (
+              <div className="af-table-head">
+                <input
+                  type="checkbox"
+                  aria-label="Pilih semua postingan yang terlihat"
+                  checked={allVisibleSelected}
+                  onChange={toggleSelectAllVisible}
+                  disabled={managementBusy}
                 />
-                <BulkBtn
-                  label="Hapus Permanen"
-                  tone="red"
-                  onClick={() => bulkAction("hard-delete")}
-                  busy={bulkBusy}
-                />
-              </>
-            ) : (
-              <>
-                <BulkBtn
-                  label="Sembunyikan"
-                  tone="gray"
-                  onClick={() => bulkAction("hide")}
-                  busy={bulkBusy}
-                />
-                <BulkBtn
-                  label="Tampilkan"
-                  tone="gray"
-                  onClick={() => bulkAction("unhide")}
-                  busy={bulkBusy}
-                />
-                <BulkBtn
-                  label="Ke Sampah"
-                  tone="red"
-                  onClick={() => bulkAction("soft-delete")}
-                  busy={bulkBusy}
-                />
-              </>
+                <span>Postingan</span>
+                <span>Status</span>
+                <span>Interaksi</span>
+                <span>Aksi</span>
+              </div>
             )}
-          </div>
+            {items.map((post) => (
+              <AdminFeedRow
+                key={post.id}
+                post={post}
+                busy={managementBusy}
+                isTrashView={isTrashView}
+                selected={selectedIds.has(post.id)}
+                onToggleSelect={() => toggleSelected(post.id)}
+                onModerate={(action) => void moderate(post.id, action)}
+                onDelete={() => void deletePost(post.id)}
+                onPreview={() => setPreview(post)}
+              />
+            ))}
+            {!error && items.length === 0 && (
+              <div className="af-empty">
+                <FiSearch aria-hidden />
+                <h2>Tidak ada postingan ditemukan</h2>
+                <p>
+                  {search
+                    ? "Coba kata kunci lain atau ubah filter."
+                    : "Belum ada postingan pada filter ini."}
+                </p>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSearch("");
+                    setFilter("all");
+                    setFormat("all");
+                  }}
+                >
+                  Reset filter
+                </Button>
+              </div>
+            )}
+            {items.length > 0 && (
+              <div className="af-list-footer">
+                {items.length} postingan dimuat
+                <span>Terbaru terlebih dahulu</span>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+      {hasMore && !loading && (
+        <Button
+          variant="secondary"
+          onClick={() => void loadMore()}
+          disabled={loadingMore || managementBusy}
+        >
+          {loadingMore ? "Memuat…" : "Muat lebih banyak"}
+        </Button>
+      )}
+      {selectedIds.size > 0 && (
+        <div className="af-bulk">
+          <strong>{selectedIds.size} dipilih</strong>
+          {(isTrashView
+            ? [
+                ["Pulihkan", "restore"],
+                ["Hapus permanen", "hard-delete"],
+              ]
+            : [
+                ["Sembunyikan", "hide"],
+                ["Tampilkan", "unhide"],
+                ["Ke sampah", "soft-delete"],
+              ]
+          ).map(([label, action]) => (
+            <Button
+              key={action}
+              variant="secondary"
+              disabled={managementBusy}
+              onClick={() =>
+                void bulkAction(action as Parameters<typeof bulkAction>[0])
+              }
+            >
+              {label}
+            </Button>
+          ))}
+          <Button
+            variant="ghost"
+            disabled={managementBusy}
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Batal
+          </Button>
         </div>
       )}
+      <AdminDialog
+        open={Boolean(hidePost)}
+        title="Sembunyikan postingan?"
+        busy={Boolean(actionBusy)}
+        onClose={() => setHidePost(null)}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              disabled={Boolean(actionBusy)}
+              onClick={() => setHidePost(null)}
+            >
+              Batal
+            </Button>
+            <Button
+              disabled={Boolean(actionBusy)}
+              onClick={() => hidePost && void moderate(hidePost, "hide", note)}
+            >
+              {actionBusy ? "Menyimpan…" : "Sembunyikan"}
+            </Button>
+          </>
+        }
+      >
+        <p>Postingan tetap tersimpan dan dapat ditampilkan kembali.</p>
+        <label className="af-note">
+          Alasan (opsional)
+          <textarea
+            value={note}
+            maxLength={500}
+            onChange={(e) => setNote(e.target.value)}
+            rows={3}
+          />
+        </label>
+      </AdminDialog>
+      <AdminDialog
+        open={Boolean(preview)}
+        title="Pratinjau Feed"
+        onClose={() => setPreview(null)}
+        className="af-preview-dialog"
+      >
+        {preview && (
+          <AdminFeedPreview
+            title={preview.title}
+            description={preview.description}
+            thumbnailUrl={preview.thumbnailUrl || preview.firstMediaUrl}
+            videoUrl={preview.videoUrl}
+            products={
+              preview.taggedProducts?.length
+                ? preview.taggedProducts
+                : preview.product
+                ? [preview.product]
+                : []
+            }
+            author={
+              preview.author.role === "ADMIN"
+                ? "Natalo Petshop"
+                : preview.author.name
+            }
+            official={preview.author.role === "ADMIN"}
+            likeCount={preview.likeCount}
+            commentCount={preview.commentCount}
+          />
+        )}
+      </AdminDialog>
     </div>
-  );
-}
-
-function BulkBtn({
-  label,
-  tone,
-  onClick,
-  busy,
-}: {
-  label: string;
-  tone: "green" | "red" | "gray";
-  onClick: () => void;
-  busy: boolean;
-}) {
-  const cls =
-    tone === "green"
-      ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-      : tone === "red"
-      ? "bg-red-50 text-red-700 hover:bg-red-100"
-      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
-      className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${cls}`}
-    >
-      {label}
-    </button>
   );
 }
 
 const KIND_LABEL: Record<string, string> = {
   VIDEO_PRODUCT: "Video produk",
-  USER_VIDEO: "Video",
   VIDEO_ONLY: "Video",
-  PHOTO_CAROUSEL: "Foto",
-  // COMMUNITY = video user (bukan diskusi teks) — mewajibkan video di create.
+  USER_VIDEO: "Video",
   COMMUNITY: "Video",
+  PHOTO_CAROUSEL: "Foto / Carousel",
   PRODUCT_ONLY: "Produk",
   PROMO: "Promo",
 };
-
-const STATUS_META: Record<string, { text: string; variant: BadgeVariant }> = {
-  PENDING_REVIEW: { text: "Menunggu review", variant: "warning" },
-  ACTIVE: { text: "Aktif", variant: "success" },
-  REJECTED: { text: "Ditolak", variant: "danger" },
-  HIDDEN: { text: "Disembunyikan", variant: "neutral" },
-};
-
-const ENCODING_META: Record<string, { text: string; variant: BadgeVariant }> = {
-  uploading: { text: "Upload…", variant: "info" },
-  processing: { text: "Encoding…", variant: "info" },
-  failed: { text: "Encoding gagal", variant: "danger" },
-};
-
 function AdminFeedRow({
   post,
   busy,
@@ -630,216 +715,188 @@ function AdminFeedRow({
   onToggleSelect,
   onModerate,
   onDelete,
+  onPreview,
 }: {
   post: AdminFeedItem;
   busy: boolean;
   isTrashView: boolean;
   selected: boolean;
-  onToggleSelect: () => void;
-  onModerate: (action: "hide" | "unhide" | "restore") => void;
-  onDelete: () => void;
+  onToggleSelect(): void;
+  onModerate(action: "hide" | "unhide" | "restore"): void;
+  onDelete(): void;
+  onPreview(): void;
 }) {
-  const statusMeta = STATUS_META[post.status] ?? {
-    text: post.status,
-    variant: "neutral" as BadgeVariant,
-  };
-  // Encoding badge — sembunyi kalau sudah "ready" (90% kasus). Ditampilkan
-  // hanya saat state non-terminal/error supaya admin tahu kenapa post video
-  // belum muncul di feed (informational; tidak lagi mem-block action apa pun).
-  const encodingMeta = ENCODING_META[post.encodingStatus];
-
   const thumb = post.thumbnailUrl || post.firstMediaUrl;
-  const isVideo =
-    post.kind === "VIDEO_PRODUCT" ||
-    post.kind === "USER_VIDEO" ||
-    post.kind === "VIDEO_ONLY";
-  const isPhoto = post.kind === "PHOTO_CAROUSEL";
-  const kindLabel = KIND_LABEL[post.kind] ?? post.kind;
-
+  const processing = ["uploading", "processing"].includes(post.encodingStatus);
+  const status = isTrashView
+    ? "Sampah"
+    : post.status === "HIDDEN"
+    ? "Disembunyikan"
+    : post.status !== "ACTIVE"
+    ? { PENDING_REVIEW: "Menunggu review", REJECTED: "Ditolak" }[post.status] ||
+      post.status
+    : post.encodingStatus === "failed"
+    ? "Video gagal"
+    : processing
+    ? "Menunggu video"
+    : "Tayang";
+  const productCount = post.taggedProducts?.length || (post.product ? 1 : 0);
   return (
-    <div
-      className={`flex flex-col gap-3 px-3 py-3 transition md:flex-row md:items-center md:gap-4 ${
-        selected ? "bg-natalo-50/60" : "hover:bg-zinc-50/60"
-      }`}
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggleSelect}
-          disabled={busy}
-          aria-label={selected ? "Batal pilih post" : "Pilih post"}
-          className="h-4 w-4 shrink-0 rounded border-zinc-300 text-natalo-600 focus:ring-natalo-400 disabled:opacity-50"
-        />
-
-        {/* Thumbnail kecil — fallback chain:
-            1. thumbnailUrl (video poster, Bunny generate)
-            2. firstMediaUrl (PHOTO_CAROUSEL first image)
-            3. Placeholder dengan icon kind */}
-        <div className="relative h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
+    <article className={`af-row ${selected ? "af-row-selected" : ""}`}>
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={onToggleSelect}
+        disabled={busy}
+        aria-label={`Pilih ${post.title}`}
+      />
+      <div className="af-row-content">
+        <button
+          className="af-thumb"
+          type="button"
+          aria-label={`Pratinjau ${post.title}`}
+          onClick={onPreview}
+        >
           {thumb ? (
-            <>
-              <Image
-                src={thumb}
-                alt=""
-                fill
-                sizes="44px"
-                className="object-cover"
-              />
-              {/* Play icon overlay untuk video — visual cue thumbnail = video */}
-              {isVideo && (
-                <div className="absolute inset-0 grid place-items-center bg-black/20">
-                  <div className="grid h-5 w-5 place-items-center rounded-full bg-white/90">
-                    <svg
-                      className="h-2.5 w-2.5 text-zinc-900"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </div>
-                </div>
-              )}
-              {/* Counter badge untuk multi-photo */}
-              {isPhoto && post.mediaCount > 1 && (
-                <div className="absolute right-0.5 top-0.5 rounded-full bg-black/70 px-1 py-0.5 text-[8px] font-bold text-white">
-                  {post.mediaCount}
-                </div>
-              )}
-            </>
+            <Image
+              src={thumb}
+              fill
+              sizes="64px"
+              alt=""
+              className="object-cover"
+            />
           ) : (
-            <div className="grid h-full place-items-center text-[9px] font-bold text-zinc-300">
-              No thumb
+            <FiShoppingBag aria-hidden />
+          )}
+          {post.kind !== "PHOTO_CAROUSEL" && thumb && (
+            <FiPlay className="af-thumb-play" aria-hidden />
+          )}
+          {post.kind === "PHOTO_CAROUSEL" && post.mediaCount > 1 && (
+            <span className="af-photo-count">{post.mediaCount}</span>
+          )}
+        </button>
+        <div>
+          <small>{KIND_LABEL[post.kind] || post.kind}</small>
+          <h2>{post.title}</h2>
+          <p>
+            {post.author.name}
+            <span>
+              {" "}
+              ·{" "}
+              {new Date(post.createdAt).toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </span>
+          </p>
+          {productCount > 0 && (
+            <div className="af-linked">
+              <FiShoppingBag aria-hidden />
+              {productCount} produk terkait
             </div>
           )}
-        </div>
-
-        {/* Info */}
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-bold text-zinc-900">
-            {post.title}
-          </h3>
-          <p className="mt-0.5 truncate text-xs text-zinc-500">
-            {kindLabel} · {post.author.role === "ADMIN" ? "Admin" : "User"}{" "}
-            {post.author.name} ·{" "}
-            {new Date(post.createdAt).toLocaleDateString("id-ID", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })}
-          </p>
-          <p className="mt-0.5 text-xs text-zinc-400">
-            ♥ {post.likeCount} · 💬 {post.commentCount} · 👁 {post.viewCount}
-          </p>
           {post.moderationNote && (
-            <p className="mt-1 line-clamp-2 rounded-lg bg-zinc-50 px-2 py-1 text-xs italic text-zinc-500">
-              Catatan: {post.moderationNote}
-            </p>
+            <p className="af-moderation-note">Catatan: {post.moderationNote}</p>
           )}
         </div>
       </div>
-
-      {/* Badges + actions — kolom kanan pada desktop, baris tersendiri di mobile. */}
-      <div className="flex shrink-0 items-center gap-2 pl-7 md:pl-0">
-        <div className="flex shrink-0 flex-col items-start gap-1 md:items-end">
-          <Badge variant={statusMeta.variant}>{statusMeta.text}</Badge>
-          {encodingMeta && (
-            <Badge variant={encodingMeta.variant}>{encodingMeta.text}</Badge>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          {!isTrashView && post.status === "ACTIVE" && (
-            <ActionButton
-              label="Sembunyikan"
-              tone="gray"
-              onClick={() => onModerate("hide")}
-              busy={busy}
-            />
-          )}
-          {!isTrashView && post.status === "HIDDEN" && (
-            <ActionButton
-              label="Tampilkan"
-              tone="green"
-              onClick={() => onModerate("unhide")}
-              busy={busy}
-            />
-          )}
-          {isTrashView && (
-            <ActionButton
-              label="Restore"
-              tone="green"
-              onClick={() => onModerate("restore")}
-              busy={busy}
-            />
-          )}
-          {!isTrashView && post.author.role === "ADMIN" && (
-            <Link
-              href={`/admin/feed/${post.id}/edit`}
-              aria-label="Edit"
-              title="Edit"
-              className="grid h-7 w-7 place-items-center rounded-full bg-blue-50 text-blue-700 transition hover:bg-blue-100"
-            >
-              <FiEdit2 className="h-3.5 w-3.5" />
-            </Link>
-          )}
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={busy}
-            aria-label={isTrashView ? "Hapus permanen" : "Hapus"}
-            title={isTrashView ? "Hapus permanen" : "Hapus"}
-            className="grid h-7 w-7 place-items-center rounded-full bg-red-50 text-red-700 transition hover:bg-red-100 disabled:opacity-50"
-          >
-            <FiTrash2 className="h-3.5 w-3.5" />
-          </button>
-          {post.videoUrl && (
-            <a
-              href={post.videoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Buka video"
-              title="Buka video"
-              className="grid h-7 w-7 place-items-center rounded-full bg-zinc-100 text-zinc-600 transition hover:bg-zinc-200"
-            >
-              <FiExternalLink className="h-3.5 w-3.5" />
-            </a>
-          )}
-        </div>
+      <div className="af-row-status">
+        <Badge
+          variant={
+            post.encodingStatus === "failed"
+              ? "danger"
+              : status === "Tayang"
+              ? "success"
+              : "neutral"
+          }
+        >
+          {status}
+        </Badge>
+        <small>
+          {processing
+            ? "Video sedang diproses"
+            : post.encodingStatus === "failed"
+            ? "Periksa pemrosesan video"
+            : "Media siap"}
+        </small>
       </div>
-    </div>
-  );
-}
-
-function ActionButton({
-  label,
-  tone,
-  onClick,
-  busy,
-  disabled,
-  title,
-}: {
-  label: string;
-  tone: "green" | "red" | "gray";
-  onClick: () => void;
-  busy: boolean;
-  disabled?: boolean;
-  title?: string;
-}) {
-  const cls = {
-    green: "bg-emerald-600 text-white hover:bg-emerald-700",
-    red: "bg-red-600 text-white hover:bg-red-700",
-    gray: "bg-zinc-200 text-zinc-700 hover:bg-zinc-300",
-  }[tone];
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy || disabled}
-      title={title}
-      className={`rounded-full px-2.5 py-1.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${cls}`}
-    >
-      {label}
-    </button>
+      <div className="af-metrics">
+        <strong>
+          <FiEye aria-hidden />
+          {post.viewCount.toLocaleString("id-ID")}
+          <span className="sr-only">tayangan</span>
+        </strong>
+        <small>
+          <FiHeart aria-hidden />
+          {post.likeCount}
+          <span className="sr-only">suka</span>
+          <FiMessageCircle aria-hidden />
+          {post.commentCount}
+          <span className="sr-only">komentar</span>
+        </small>
+      </div>
+      <div className="af-actions">
+        {!isTrashView && (post.canEdit ?? post.author.role === "ADMIN") && (
+          <Link href={`/admin/feed/${post.id}/edit`} className="af-edit">
+            Edit<span className="sr-only"> {post.title}</span>
+          </Link>
+        )}
+        <button
+          type="button"
+          aria-label={`Lihat ${post.title}`}
+          onClick={onPreview}
+        >
+          <FiEye aria-hidden />
+        </button>
+        <details>
+          <summary aria-label={`Aksi lainnya ${post.title}`}>
+            <FiMoreHorizontal aria-hidden />
+          </summary>
+          <div>
+            {!isTrashView && post.status === "ACTIVE" && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onModerate("hide")}
+              >
+                Sembunyikan
+              </button>
+            )}
+            {!isTrashView && post.status === "HIDDEN" && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onModerate("unhide")}
+              >
+                Tampilkan kembali
+              </button>
+            )}
+            {isTrashView && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onModerate("restore")}
+              >
+                Pulihkan
+              </button>
+            )}
+            <button
+              type="button"
+              className="af-danger"
+              disabled={busy}
+              onClick={onDelete}
+            >
+              {isTrashView ? "Hapus permanen" : "Pindah ke sampah"}
+            </button>
+            {post.videoUrl && (
+              <a href={post.videoUrl} target="_blank" rel="noopener noreferrer">
+                Buka video asli
+              </a>
+            )}
+          </div>
+        </details>
+      </div>
+    </article>
   );
 }

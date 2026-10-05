@@ -6,6 +6,7 @@ type Props = {
   originalPrice?: number | null;
   discountPercent?: number | null;
   initialFavorited: boolean;
+  showFavorite?: boolean;
 };
 
 function formatNumberId(n: number) {
@@ -18,6 +19,7 @@ export function PriceBlock({
   originalPrice,
   discountPercent,
   initialFavorited,
+  showFavorite = true,
 }: Props) {
   const hasDiscount =
     typeof originalPrice === "number" && originalPrice > price;
@@ -44,11 +46,13 @@ export function PriceBlock({
           </div>
         )}
       </div>
-      <FavoriteButton
-        productId={productId}
-        initialFavorited={initialFavorited}
-        size="md"
-      />
+      {showFavorite && (
+        <FavoriteButton
+          productId={productId}
+          initialFavorited={initialFavorited}
+          size="md"
+        />
+      )}
     </div>
   );
 }

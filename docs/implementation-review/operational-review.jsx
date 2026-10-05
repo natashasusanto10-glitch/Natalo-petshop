@@ -41,6 +41,89 @@ const product = {
   hasVariants: false,
   variants: [],
 };
+const promoReviewProducts = [
+  { ...product, category: { id: "cat-snack", name: "Snack Kucing" } },
+  {
+    id: "promo-varied",
+    name: "MAJES Creamy Cat Treats — Skin & Coat / Digestive",
+    imageUrl: img,
+    category: { id: "cat-snack", name: "Snack Kucing" },
+    price: 20000,
+    stock: 80,
+    hasVariants: true,
+    variants: [
+      {
+        id: "promo-v1",
+        label: "Skin & Coat · 5 pcs",
+        sku: "MJS-SC",
+        price: 20000,
+        stock: 48,
+        imageUrl: img,
+        isBlocked: false,
+      },
+      {
+        id: "promo-v2",
+        label: "Digestive & Urinary · 5 pcs",
+        sku: "MJS-DU",
+        price: 20000,
+        stock: 32,
+        imageUrl: img,
+        isBlocked: false,
+      },
+      {
+        id: "promo-v3",
+        label: "Beef",
+        sku: "MJS-BF",
+        price: 21000,
+        stock: 0,
+        imageUrl: img,
+        isBlocked: true,
+      },
+    ],
+  },
+  {
+    id: "promo-oil",
+    name: "Majes Omega Oil",
+    imageUrl: img,
+    category: { id: "cat-med", name: "Obat & Suplemen" },
+    price: 8650,
+    stock: 98,
+    hasVariants: false,
+    variants: [],
+  },
+];
+const promoReviewInitial = {
+  id: "review-promo",
+  name: "DISKON MAJES",
+  startsAt: "2026-10-04T12:30",
+  endsAt: "2026-10-31T23:59",
+  isActive: true,
+  items: promoReviewProducts
+    .slice(0, 2)
+    .flatMap((p) =>
+      p.hasVariants
+        ? p.variants
+            .slice(0, 2)
+            .map((v) => ({
+              productId: p.id,
+              variantId: v.id,
+              discountedPrice: 18000,
+              isItemActive: true,
+              product: p,
+              variant: v,
+            }))
+        : [
+            {
+              productId: p.id,
+              variantId: null,
+              discountedPrice: 10000,
+              isItemActive: true,
+              product: p,
+              variant: null,
+            },
+          ]
+    ),
+};
 const orders = [
   "PENDING",
   "PAID",
@@ -118,47 +201,161 @@ const stats = [
 ].map((s) => ({ ...s, iconPath: "M4 5h16v15H4zM8 9h8M8 13h5" }));
 function frame(title, content) {
   return (
-    <AdminPage maxWidth="lg" className="admin-operational-page">
+    <AdminPage maxWidth="xl" className="admin-operational-page">
       <PageHeader title={title} subtitle="Data contoh untuk review lokal" />
       <div className="mt-6">{content}</div>
     </AdminPage>
   );
 }
+const feedCover = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="540" height="900"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#598c98"/><stop offset="1" stop-color="#183652"/></linearGradient></defs><rect width="540" height="900" fill="url(#g)"/><circle cx="370" cy="250" r="220" fill="white" opacity=".08"/><rect x="125" y="230" width="290" height="370" rx="28" fill="#fff8e9"/><path d="M125 280h290v75H125z" fill="#173d62"/><text x="270" y="330" text-anchor="middle" fill="white" font-family="Arial" font-size="32" font-weight="bold">NATALO</text><text x="270" y="425" text-anchor="middle" fill="#173d62" font-family="Arial" font-size="24">DAILY CARE</text><text x="270" y="465" text-anchor="middle" fill="#64748b" font-family="Arial" font-size="17">Happy pets</text></svg>'
+)}`;
+const feedBase = {
+  id: "post-demo",
+  status: "ACTIVE",
+  encodingStatus: "ready",
+  kind: "PHOTO_CAROUSEL",
+  tab: "FEED",
+  title: "Tips memilih makanan kucing",
+  description: "Sesuaikan kebutuhan nutrisi dengan usia dan aktivitas hewan.",
+  videoUrl: null,
+  thumbnailUrl: feedCover,
+  firstMediaUrl: feedCover,
+  mediaCount: 3,
+  videoDurationSec: null,
+  product: null,
+  promo: null,
+  likeCount: 12,
+  commentCount: 2,
+  viewCount: 180,
+  author: { id: "demo", name: "Natalo Petshop", role: "ADMIN" },
+  moderatedBy: null,
+  moderatedAt: null,
+  moderationNote: null,
+  publishedAt: now.toISOString(),
+  createdAt: now.toISOString(),
+};
+let feedReviewPosts = [
+  {
+    ...feedBase,
+    canEdit: true,
+    kind: "VIDEO_PRODUCT",
+    title: "Nutrisi lengkap untuk teman kecilmu",
+    product,
+    taggedProducts: [{ ...product, promoPrice: null }],
+  },
+  {
+    ...feedBase,
+    id: "post-processing",
+    title: "Rutinitas perawatan harian",
+    encodingStatus: "processing",
+    kind: "VIDEO_PRODUCT",
+    canEdit: false,
+  },
+  {
+    ...feedBase,
+    id: "post-failed",
+    title: "Tips memilih camilan anjing",
+    encodingStatus: "failed",
+    kind: "VIDEO_ONLY",
+    canEdit: false,
+  },
+  {
+    ...feedBase,
+    id: "post-hidden",
+    title: "Promo akhir pekan",
+    status: "HIDDEN",
+    kind: "PROMO",
+    canEdit: false,
+  },
+  {
+    ...feedBase,
+    id: "post-community",
+    title: "Saatnya bermain bersama Milo",
+    author: { id: "customer", name: "Dinda & Milo", role: "CUSTOMER" },
+    canEdit: false,
+  },
+];
 export function operationalFixtureFetch(path, options) {
   const method = options.method || "GET";
-  if (path.startsWith("/api/admin/feed/posts") && method === "GET")
+  if (path.startsWith("/api/admin/feed/posts") && method === "GET") {
+    if (location.search.includes("review-failure"))
+      return Response.json(
+        { error: "Simulasi gagal memuat Feed" },
+        { status: 503 }
+      );
+    const params = new URL(path, location.origin).searchParams;
+    const filter = params.get("filter"),
+      format = params.get("format"),
+      q = (params.get("q") || "").toLowerCase();
+    const active = feedReviewPosts.filter((p) => !p.deletedAt);
+    const items = feedReviewPosts.filter(
+      (p) =>
+        (filter === "deleted" ? Boolean(p.deletedAt) : !p.deletedAt) &&
+        (filter !== "hidden" || p.status === "HIDDEN") &&
+        (filter !== "attention" || p.encodingStatus !== "ready") &&
+        (format !== "photo" || p.kind === "PHOTO_CAROUSEL") &&
+        (format !== "video" ||
+          ["VIDEO_ONLY", "VIDEO_PRODUCT", "COMMUNITY"].includes(p.kind)) &&
+        (format !== "promo" || p.kind === "PROMO") &&
+        (p.title + " " + p.author.name + " " + (p.product?.name || ""))
+          .toLowerCase()
+          .includes(q)
+    );
     return Response.json({
-      items: [
-        {
-          id: "post-demo",
-          status: "ACTIVE",
-          encodingStatus: "ready",
-          kind: "PHOTO_CAROUSEL",
-          tab: "FEED",
-          title: "Tips memilih makanan kucing",
-          description:
-            "Sesuaikan kebutuhan nutrisi dengan usia dan aktivitas hewan.",
-          videoUrl: null,
-          thumbnailUrl: img,
-          firstMediaUrl: img,
-          mediaCount: 3,
-          videoDurationSec: null,
-          product: null,
-          promo: null,
-          likeCount: 12,
-          commentCount: 2,
-          viewCount: 180,
-          author: { id: "demo", name: "Natalo Petshop", role: "ADMIN" },
-          moderatedBy: null,
-          moderatedAt: null,
-          moderationNote: null,
-          publishedAt: now.toISOString(),
-          createdAt: now.toISOString(),
-        },
-      ],
+      items,
       nextCursor: null,
-      counts: { total: 1, deleted: 0, photo: 1, video: 0 },
+      counts: {
+        total: active.length,
+        deleted: feedReviewPosts.length - active.length,
+        photo: active.filter((p) => p.kind === "PHOTO_CAROUSEL").length,
+        video: active.filter((p) => p.kind.includes("VIDEO")).length,
+        ready: active.filter(
+          (p) => p.status === "ACTIVE" && p.encodingStatus === "ready"
+        ).length,
+        processing: active.filter((p) => p.encodingStatus === "processing")
+          .length,
+        failed: active.filter((p) => p.encodingStatus === "failed").length,
+      },
     });
+  }
+  if (path.startsWith("/api/admin/feed/posts/") && method === "PATCH") {
+    const id = path.split("/").pop(),
+      body = JSON.parse(options.body || "{}");
+    feedReviewPosts = feedReviewPosts.map((p) =>
+      p.id === id
+        ? {
+            ...p,
+            status: body.action === "hide" ? "HIDDEN" : "ACTIVE",
+            deletedAt: body.action === "restore" ? null : p.deletedAt,
+            moderationNote: body.note || null,
+          }
+        : p
+    );
+    return Response.json({ ok: true });
+  }
+  if (path.startsWith("/api/admin/feed/posts/") && method === "DELETE") {
+    const id = new URL(path, location.origin).pathname.split("/").pop();
+    feedReviewPosts = path.includes("hard=1")
+      ? feedReviewPosts.filter((p) => p.id !== id)
+      : feedReviewPosts.map((p) =>
+          p.id === id ? { ...p, deletedAt: now.toISOString() } : p
+        );
+    return Response.json({ ok: true });
+  }
+  if (path.startsWith("/api/admin/products?") && method === "GET") {
+    if (location.search.includes("review-failure"))
+      return Response.json(
+        { error: "Simulasi gagal mencari produk" },
+        { status: 503 }
+      );
+    const q = (
+      new URL(path, location.origin).searchParams.get("q") || ""
+    ).toLowerCase();
+    return Response.json({
+      products: product.name.toLowerCase().includes(q) ? [product] : [],
+    });
+  }
   if (path.startsWith("/api/admin/feed/reports") && method === "GET")
     return Response.json({
       reports: [],
@@ -166,18 +363,40 @@ export function operationalFixtureFetch(path, options) {
       filter: "pending",
       counts: { pending: 0, resolved: 0, dismissed: 0 },
     });
+  if (path === "/api/categories" && method === "GET")
+    return Response.json({
+      categories: [
+        { id: "cat-snack", name: "Snack Kucing" },
+        { id: "cat-med", name: "Obat & Suplemen" },
+      ],
+    });
   if (path.includes("eligible-products") && method === "GET") {
     if (location.search.includes("review-failure"))
       return Response.json(
         { error: "Simulasi gagal memuat produk" },
         { status: 503 }
       );
-    const search =
-      new URL(path, location.origin).searchParams.get("q")?.toLowerCase() || "";
+    const params = new URL(path, location.origin).searchParams;
+    const search = params.get("q")?.toLowerCase() || "";
+    const category = params.get("categoryId");
     return Response.json({
-      products: product.name.toLowerCase().includes(search) ? [product] : [],
+      products: promoReviewProducts.filter(
+        (p) =>
+          p.name.toLowerCase().includes(search) &&
+          (!category || p.category.id === category)
+      ),
     });
   }
+  if (
+    path.startsWith("/api/admin/discounts/promo-toko") &&
+    ["PUT", "POST"].includes(method)
+  )
+    return Response.json(
+      location.search.includes("review-failure")
+        ? { error: "Simulasi gagal menyimpan promo" }
+        : { ok: true },
+      { status: location.search.includes("review-failure") ? 503 : 200 }
+    );
   if (
     path.startsWith("/api/admin/banners") ||
     path.startsWith("/api/admin/launch-popup")
@@ -594,37 +813,44 @@ export function operationalPage(path) {
     return frame("Broadcast notifikasi", <BroadcastForm />);
   if (path === "/admin/feed")
     return (
-      <AdminPage maxWidth="lg" className="admin-operational-page">
+      <AdminPage maxWidth="xl" className="admin-operational-page">
         <AdminFeedClient />
       </AdminPage>
     );
   if (path === "/admin/feed/new")
     return (
-      <AdminPage maxWidth="lg" className="admin-operational-page">
+      <AdminPage maxWidth="xl" className="admin-operational-page">
         <AdminFeedCreateClient />
       </AdminPage>
     );
   if (path === "/admin/feed/post-demo/edit")
-    return frame(
-      "Edit konten",
-      <AdminEditFeedPostClient
-        postId="post-demo"
-        initialTitle="Tips memilih makanan kucing"
-        initialDescription="Sesuaikan kebutuhan nutrisi."
-        initialProducts={[]}
-        thumbnailUrl={img}
-        videoDurationSec={null}
-        kind="VIDEO_ONLY"
-        tab="FEED"
-      />
+    return (
+      <AdminPage maxWidth="xl" className="admin-operational-page">
+        <AdminEditFeedPostClient
+          postId="post-demo"
+          initialTitle="Nutrisi lengkap untuk teman kecilmu"
+          initialDescription="Sesuaikan kebutuhan nutrisi dengan usia dan aktivitas hewan."
+          initialProducts={[
+            { productId: product.id, ...product, promoPrice: null },
+          ]}
+          thumbnailUrl={feedCover}
+          videoDurationSec={27}
+          kind="VIDEO_PRODUCT"
+          tab="FEED"
+        />
+      </AdminPage>
     );
   if (path === "/admin/feed/reports")
     return (
-      <AdminPage maxWidth="lg" className="admin-operational-page">
+      <AdminPage maxWidth="xl" className="admin-operational-page">
         <AdminReportsClient />
       </AdminPage>
     );
   if (path === "/admin/diskon/promo-toko/new") return <PromoTokoForm />;
+  if (path === "/admin/diskon/promo-toko/review-promo/edit")
+    return (
+      <PromoTokoForm initial={promoReviewInitial} excludeId="review-promo" />
+    );
   if (path === "/admin/diskon/flash-sale/new")
     return (
       <FlashSaleNewForm

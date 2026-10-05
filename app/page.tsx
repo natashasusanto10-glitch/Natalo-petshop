@@ -669,7 +669,7 @@ export default async function HomePage() {
           isActive: true,
           name: { not: "" },
         },
-        orderBy: [{ position: "asc" }, { createdAt: "desc" }, { name: "asc" }],
+        orderBy: [{ position: "asc" }, { name: "asc" }],
         select: {
           id: true,
           name: true,
@@ -692,7 +692,7 @@ export default async function HomePage() {
 
   const flashSaleProducts = flashSaleRows.slice(0, 6);
   const hasMoreFlashSaleProducts = flashSaleRows.length > 6;
-  const featuredBrands = mapDbBrandsToCatalogItems(dbFeaturedBrands);
+  const featuredBrands = mapDbBrandsToCatalogItems(dbFeaturedBrands.filter(brand => brand.logoUrl).slice(0, 8));
 
   const recommendedProducts = getHomeRecommendations(availableHomeProducts);
   const recommendedIds = recommendedProducts.map((product) => product.id);

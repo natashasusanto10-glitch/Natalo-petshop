@@ -1,14 +1,14 @@
 "use client";
 
-import { AdminPage } from "@/components/admin/ui/AdminPage";
+import { AdminPage, PageHeader, Button } from "@/components/admin/ui";
+import { useAdminConfirm } from "@/components/admin/ui/useAdminConfirm";
+import { FiPlus, FiTrash2, FiSearch } from "react-icons/fi";
 
 import { NumberInput } from "@/components/admin/ui/NumberInput";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { AdminDialog } from "@/components/admin/ui/AdminDialog";
-import { formatRupiah } from "@/lib/format";
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -86,7 +86,8 @@ const emptyInitial: InitialData = {
 /**
  * Form Promo Toko — create + edit shared component.
  *
- * Layout 2 section ala Shopee Seller:
+ * Grouped product/variant editor with a searchable picker and bulk discounts.
+ * Layout:
  *  1. Informasi Dasar (Nama Promo + Periode)
  *  2. Produk dalam Promo Toko (tabel editable per-item)
  *     - Empty state: [+ Tambah Produk] button → buka modal product picker
@@ -97,6 +98,11 @@ const emptyInitial: InitialData = {
  */
 export function PromoTokoForm({ initial, excludeId }: Props) {
   const router = useRouter();
+  const formFields = useRef<HTMLFieldSetElement>(null);
+  const { confirm: confirmLeave, confirmation } = useAdminConfirm();
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [bulkPercent, setBulkPercent] = useState("10");
+  const [feedback, setFeedback] = useState("");
   const isEdit = !!initial?.id;
   const data = initial ?? emptyInitial;
 
@@ -156,7 +162,12 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
   // Validasi tiap item — harga diskon harus > 0 dan <= harga awal.
   for (const item of items) {
     const basePrice = item.variant?.price ?? item.product.price;
-    if (item.isItemActive && item.discountedPrice <= 0) {
+    if (
+      !Number.isFinite(item.discountedPrice) ||
+      !Number.isInteger(item.discountedPrice) ||
+      item.discountedPrice > 999_999_999 ||
+      (item.isItemActive && item.discountedPrice <= 0)
+    ) {
       errors.itemPrice = "Semua produk aktif harus punya harga diskon > 0";
       break;
     }
@@ -196,6 +207,11 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
   }
 
   function removeItem(productId: string, variantId: string | null) {
+    setSelectedItems((previous) => {
+      const next = new Set(previous);
+      next.delete(`${productId}::${variantId ?? ""}`);
+      return next;
+    });
     setItems((prev) =>
       prev.filter(
         (i) => !(i.productId === productId && i.variantId === variantId)
@@ -206,6 +222,12 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
   /** Hapus seluruh produk (semua variannya juga). Dipakai untuk
    *  parent row Hapus action. */
   function removeProduct(productId: string) {
+    setSelectedItems(
+      (previous) =>
+        new Set(
+          [...previous].filter((key) => !key.startsWith(`${productId}::`))
+        )
+    );
     setItems((prev) => prev.filter((i) => i.productId !== productId));
   }
 
@@ -225,12 +247,69 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
     }
   }
 
+  const selectedCount = items.filter((item) =>
+    selectedItems.has(itemKey(item))
+  ).length;
+  function toggleItem(key: string) {
+    setSelectedItems((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  function applyBulk() {
+    const percent = Number(bulkPercent);
+    if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) {
+      setError("Diskon harus lebih dari 0 dan kurang dari 100%.");
+      return;
+    }
+    setError("");
+    setItems((previous) =>
+      previous.map((item) =>
+        selectedItems.has(itemKey(item))
+          ? {
+              ...item,
+              discountedPrice: Math.max(
+                1,
+                Math.round(
+                  (item.variant?.price ?? item.product.price) *
+                    (1 - percent / 100)
+                )
+              ),
+            }
+          : item
+      )
+    );
+    setFeedback(`Diskon ${percent}% diterapkan pada ${selectedCount} pilihan.`);
+  }
+  async function leaveForm() {
+    if (submitting) return;
+    const dirty =
+      name !== data.name ||
+      startsAt !== data.startsAt ||
+      endsAt !== data.endsAt ||
+      JSON.stringify(items) !== JSON.stringify(data.items) ||
+      notifyCustomers;
+    if (
+      dirty &&
+      !(await confirmLeave(
+        "Tinggalkan form? Perubahan yang belum disimpan akan hilang."
+      ))
+    )
+      return;
+    router.push("/admin/diskon/promo-toko");
+  }
   async function handleSubmit() {
+    if (submitting) return;
     setShowFieldErrors(true);
     setError("");
     if (!canSubmit) {
-      setError(
-        "Gagal menyimpan karena terdapat kesalahan, edit dahulu dan coba lagi."
+      setError("Periksa isian yang ditandai sebelum menyimpan.");
+      requestAnimationFrame(() =>
+        formFields.current
+          ?.querySelector<HTMLInputElement>('input[aria-invalid="true"]')
+          ?.focus()
       );
       return;
     }
@@ -277,297 +356,290 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
   }
 
   return (
-    <AdminPage maxWidth="lg" className="admin-operational-page">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-1 text-xs text-zinc-500">
-        <Link href="/admin/diskon" className="hover:text-zinc-900">
-          Buat Diskon
-        </Link>
-        <span>›</span>
-        <Link href="/admin/diskon/promo-toko" className="hover:text-zinc-900">
-          Promo Toko
-        </Link>
-        <span>›</span>
-        <span className="text-zinc-900">
-          {isEdit ? "Edit Promo Toko" : "Buat Promo Toko"}
-        </span>
-      </nav>
-
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
-        {isEdit ? "Edit Promo Toko" : "Buat Promo Toko"}
-      </h1>
-
-      {/* ─── Section 1: Informasi Dasar ──────────────────────────── */}
-      <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 md:p-6">
-        <h2 className="text-base font-bold text-zinc-900">Informasi Dasar</h2>
-
-        <div className="mt-4 space-y-4">
-          {/* Nama Promo */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-            <label className="w-full text-sm font-semibold text-zinc-700 sm:w-48 sm:pt-3">
-              Nama Promo Toko
-            </label>
-            <div className="flex-1">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Cth. Promo Hari Pet Nasional"
-                  aria-label="Nama promo toko"
-                  maxLength={150}
-                  className={`block w-full rounded-xl border bg-white px-4 py-3 pr-16 text-sm outline-none focus:border-natalo-600 ${
-                    showFieldErrors && errors.name
-                      ? "border-red-400"
-                      : "border-zinc-300"
-                  }`}
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-zinc-400">
-                  {name.length}/150
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-amber-600">
-                Nama Promo Toko tidak diperlihatkan ke Pembeli.
-              </p>
+    <AdminPage maxWidth="xl" className="pt admin-operational-page">
+      <button
+        type="button"
+        className="pt-back"
+        disabled={submitting}
+        onClick={() => void leaveForm()}
+      >
+        ← Promo Toko
+      </button>
+      <PageHeader
+        title={isEdit ? "Edit Promo Toko" : "Buat Promo Toko"}
+        subtitle="Atur periode dan harga spesial untuk produk pilihan."
+      />
+      <fieldset
+        disabled={submitting}
+        className="pt-form-fields"
+        ref={formFields}
+      >
+        <section className="pt-panel">
+          <div className="pt-panel-title">
+            <h2>Informasi dasar</h2>
+            <span>Nama promo hanya terlihat oleh admin</span>
+          </div>
+          <div className="pt-fields">
+            <label>
+              Nama promo
+              <input
+                value={name}
+                maxLength={150}
+                onChange={(e) => setName(e.target.value)}
+                aria-invalid={showFieldErrors && Boolean(errors.name)}
+              />
               {showFieldErrors && errors.name && (
-                <p className="mt-1 text-xs text-red-500">{errors.name}</p>
+                <em className="pt-field-error">{errors.name}</em>
               )}
-            </div>
-          </div>
-
-          {/* Periode */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-            <label className="w-full text-sm font-semibold text-zinc-700 sm:w-48 sm:pt-3">
-              Periode Promo Toko
             </label>
-            <div className="min-w-0 flex-1">
-              <div className="grid min-w-0 grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-                <input
-                  aria-label="Periode promo"
-                  type="datetime-local"
-                  value={startsAt}
-                  onChange={(e) => setStartsAt(e.target.value)}
-                  disabled={isOngoing}
-                  title={
-                    isOngoing
-                      ? "Promo sudah berjalan — waktu mulai tidak bisa diubah"
-                      : undefined
-                  }
-                  className={`min-w-0 w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-500 ${
-                    showFieldErrors && errors.startsAt
-                      ? "border-red-400"
-                      : "border-zinc-300"
-                  }`}
-                />
-                <span
-                  className="hidden self-center text-zinc-400 xl:block"
-                  aria-hidden="true"
+            <label>
+              Mulai
+              <input
+                type="datetime-local"
+                value={startsAt}
+                disabled={isOngoing}
+                onChange={(e) => setStartsAt(e.target.value)}
+                aria-invalid={showFieldErrors && Boolean(errors.startsAt)}
+              />
+              {showFieldErrors && errors.startsAt && (
+                <em className="pt-field-error">{errors.startsAt}</em>
+              )}
+            </label>
+            <label>
+              Berakhir
+              <input
+                type="datetime-local"
+                value={endsAt}
+                onChange={(e) => setEndsAt(e.target.value)}
+                aria-invalid={showFieldErrors && Boolean(errors.endsAt)}
+              />
+              {showFieldErrors && errors.endsAt && (
+                <em className="pt-field-error">{errors.endsAt}</em>
+              )}
+            </label>
+          </div>
+          {isOngoing && (
+            <p className="pt-muted pt-ongoing">
+              Promo sedang berjalan. Waktu mulai tidak dapat diubah.
+            </p>
+          )}
+          {!isEdit && !isOngoing && (
+            <div className="pt-period">
+              <span>Durasi cepat</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setStartsAt(nowDateTimeLocal());
+                  if (!endsAt) setEndsAt(daysFromNowDateTimeLocal(7));
+                }}
+              >
+                Mulai sekarang
+              </button>
+              {[7, 30, 90].map((days) => (
+                <button
+                  type="button"
+                  key={days}
+                  onClick={() => {
+                    const start = startsAt ? new Date(startsAt) : new Date();
+                    if (!startsAt) setStartsAt(toDateTimeLocalString(start));
+                    const finish = new Date(start.getTime() + days * 86400000);
+                    setEndsAt(toDateTimeLocalString(finish));
+                  }}
                 >
-                  —
-                </span>
-                <input
-                  aria-label="Akhir periode promo"
-                  type="datetime-local"
-                  value={endsAt}
-                  onChange={(e) => setEndsAt(e.target.value)}
-                  className={`min-w-0 w-full rounded-xl border bg-white px-4 py-3 text-sm outline-none focus:border-natalo-600 ${
-                    showFieldErrors && errors.endsAt
-                      ? "border-red-400"
-                      : "border-zinc-300"
-                  }`}
-                />
-              </div>
-              {isOngoing && (
-                <p className="mt-1 text-xs text-amber-700">
-                  🔒 Promo sedang berjalan. Waktu mulai dikunci — hanya bisa
-                  ubah waktu berakhir (akhiri lebih awal atau perpanjang sampai
-                  maks 90 hari dari mulai).
-                </p>
-              )}
-              <p className="mt-1 text-xs text-amber-600">
-                Periode Promo harus kurang dari 90 hari.
-              </p>
-              {/* Quick-fill preset buttons — bantu admin set periode
-                  tanpa harus type manual. Edit tetap manual via input
-                  datetime-local di atas. Hide saat ongoing (tidak
-                  applicable karena startsAt dikunci). */}
-              {!isEdit && !isOngoing && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="text-xs font-semibold text-zinc-500">
-                    Quick:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStartsAt(nowDateTimeLocal());
-                      if (!endsAt) setEndsAt(daysFromNowDateTimeLocal(7));
-                    }}
-                    className="rounded-full bg-natalo-50 px-3 py-1 text-xs font-bold text-natalo-700 hover:bg-natalo-100"
-                  >
-                    Mulai sekarang
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const now = new Date();
-                      setStartsAt(nowDateTimeLocal());
-                      setEndsAt(daysFromNowDateTimeLocal(7));
-                      void now;
-                    }}
-                    className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700 hover:bg-zinc-200"
-                  >
-                    7 hari
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStartsAt(nowDateTimeLocal());
-                      setEndsAt(daysFromNowDateTimeLocal(30));
-                    }}
-                    className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700 hover:bg-zinc-200"
-                  >
-                    30 hari
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStartsAt(nowDateTimeLocal());
-                      setEndsAt(daysFromNowDateTimeLocal(90));
-                    }}
-                    className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700 hover:bg-zinc-200"
-                  >
-                    90 hari (max)
-                  </button>
-                </div>
-              )}
-              {showFieldErrors && (errors.startsAt || errors.endsAt) && (
-                <p className="mt-1 text-xs text-red-500">
-                  {errors.startsAt || errors.endsAt}
-                </p>
-              )}
+                  {days} hari
+                </button>
+              ))}
+              <span className="pt-muted">Maksimal 90 hari</span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Section 2: Produk dalam Promo Toko ──────────────────── */}
-      <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 md:p-6">
-        <div className="flex items-baseline justify-between">
-          <div>
-            <h2 className="text-base font-bold text-zinc-900">
-              Produk dalam Promo Toko
-            </h2>
-            {items.length === 0 && (
-              <p className="mt-0.5 text-xs text-zinc-500">
-                Tambahkan produk ke dalam Promo Toko dan atur harga diskon
+          )}
+        </section>
+        <section className="pt-panel">
+          <div className="pt-panel-title">
+            <div>
+              <h2>Produk dalam promo</h2>
+              <p>
+                {groupedItems.length} produk · {items.length} pilihan
+                produk/variasi
               </p>
-            )}
-            {items.length > 0 && (
-              <p className="mt-0.5 text-xs text-zinc-500">
-                {items.length} total produk/varian dipromosikan
-              </p>
-            )}
+            </div>
+            <Button variant="secondary" onClick={() => setPickerOpen(true)}>
+              <FiPlus /> Tambah produk
+            </Button>
           </div>
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            className="rounded-lg border border-natalo-600 px-4 py-2 text-sm font-bold text-natalo-700 hover:bg-natalo-50"
-          >
-            + Tambah Produk
-          </button>
-        </div>
-
-        {/* Table */}
-        {groupedItems.length > 0 && (
-          <div className="mt-4 overflow-x-auto rounded-xl border border-zinc-200">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-50 text-xs font-bold uppercase tracking-wide text-zinc-500">
-                <tr>
-                  <th className="px-3 py-3 text-left">Nama Produk</th>
-                  <th className="px-3 py-3 text-left">Harga Awal</th>
-                  <th className="px-3 py-3 text-left">Harga Diskon</th>
-                  <th className="px-3 py-3 text-left">Diskon</th>
-                  <th className="px-3 py-3 text-left">Stok</th>
-                  <th className="px-3 py-3 text-center">Aktif</th>
-                  <th className="px-3 py-3 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {groupedItems.map((group) => {
-                  const hasVariants =
-                    group.items.length > 1 || group.items[0].variantId !== null;
-                  return (
-                    <ProductGroupRow
-                      key={group.product.id}
-                      product={group.product}
-                      items={group.items}
-                      hasVariants={hasVariants}
-                      onUpdate={updateItem}
-                      onRemoveProduct={removeProduct}
-                      onRemoveItem={removeItem}
+          {items.length > 0 && (
+            <>
+              <div className="pt-bulk">
+                <div>
+                  <strong>Perubahan massal</strong>
+                  <p>{selectedCount} dipilih</p>
+                </div>
+                <label className="pt-mobile-select">
+                  <input
+                    type="checkbox"
+                    aria-label="Pilih semua item promo pada mobile"
+                    checked={
+                      items.length > 0 &&
+                      items.every((item) => selectedItems.has(itemKey(item)))
+                    }
+                    onChange={(e) =>
+                      setSelectedItems(
+                        new Set(e.target.checked ? items.map(itemKey) : [])
+                      )
+                    }
+                  />
+                  Pilih semua
+                </label>
+                <label>
+                  Diskon (%)
+                  <input
+                    aria-label="Diskon massal"
+                    inputMode="decimal"
+                    value={bulkPercent}
+                    maxLength={5}
+                    onChange={(e) => {
+                      if (/^\d*(?:[.,]\d{0,2})?$/.test(e.target.value))
+                        setBulkPercent(e.target.value.replace(",", "."));
+                    }}
+                  />
+                </label>
+                <Button
+                  variant="secondary"
+                  disabled={!selectedCount}
+                  onClick={applyBulk}
+                >
+                  Terapkan
+                </Button>
+                <button
+                  className="pt-text"
+                  type="button"
+                  disabled={!selectedCount}
+                  onClick={() => {
+                    setItems((previous) =>
+                      previous.filter(
+                        (item) => !selectedItems.has(itemKey(item))
+                      )
+                    );
+                    setSelectedItems(new Set());
+                  }}
+                >
+                  Hapus pilihan
+                </button>
+              </div>
+              <div className="pt-table-head">
+                <label>
+                  <input
+                    type="checkbox"
+                    aria-label="Pilih semua item promo"
+                    checked={
+                      items.length > 0 &&
+                      items.every((item) => selectedItems.has(itemKey(item)))
+                    }
+                    onChange={(e) =>
+                      setSelectedItems(
+                        new Set(e.target.checked ? items.map(itemKey) : [])
+                      )
+                    }
+                  />
+                  Produk / variasi
+                </label>
+                <span>Harga awal</span>
+                <span>Harga promo</span>
+                <span>Diskon (%)</span>
+                <span>Stok</span>
+                <span>Aktif</span>
+                <span />
+              </div>
+            </>
+          )}
+          <div className="pt-groups">
+            {groupedItems.map((group) => (
+              <article key={group.product.id} className="pt-group">
+                <header>
+                  {group.product.imageUrl && (
+                    <img
+                      src={group.product.imageUrl}
+                      width={36}
+                      height={44}
+                      alt=""
+                      loading="lazy"
                     />
-                  );
-                })}
-              </tbody>
-            </table>
+                  )}
+                  <div>
+                    <strong>{group.product.name}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="pt-text"
+                    onClick={() => removeProduct(group.product.id)}
+                  >
+                    Hapus produk
+                  </button>
+                </header>
+                {group.items.map((item) => (
+                  <PromoItemRow
+                    key={itemKey(item)}
+                    item={item}
+                    selected={selectedItems.has(itemKey(item))}
+                    onSelect={() => toggleItem(itemKey(item))}
+                    onUpdate={(patch) =>
+                      updateItem(item.productId, item.variantId, patch)
+                    }
+                    onRemove={() => removeItem(item.productId, item.variantId)}
+                  />
+                ))}
+              </article>
+            ))}
+            {!items.length && (
+              <div className="pt-empty">
+                Belum ada produk. Tambahkan produk untuk mulai mengatur diskon.
+              </div>
+            )}
           </div>
-        )}
-
-        {showFieldErrors && errors.items && (
-          <p className="mt-2 text-xs text-red-500">{errors.items}</p>
-        )}
-        {showFieldErrors && errors.itemPrice && (
-          <p className="mt-2 text-xs text-red-500">{errors.itemPrice}</p>
-        )}
-      </div>
-
-      {/* ─── Error banner ──────────────────────────────────────────── */}
+          {showFieldErrors && (errors.items || errors.itemPrice) && (
+            <p role="alert" className="pt-field-error">
+              {errors.items || errors.itemPrice}
+            </p>
+          )}
+        </section>
+        <section className="pt-notify">
+          <label>
+            <input
+              type="checkbox"
+              checked={notifyCustomers}
+              onChange={(e) => setNotifyCustomers(e.target.checked)}
+            />
+            <span>
+              <strong>Beri tahu pelanggan</strong>
+              <p>Kirim notifikasi saat promo mulai aktif.</p>
+            </span>
+          </label>
+        </section>
+      </fieldset>
       {error && (
-        <div className="mt-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
-          <span className="text-red-500">⚠</span>
-          <p className="flex-1 text-sm font-semibold text-red-700">{error}</p>
-        </div>
+        <p role="alert" className="pt-error">
+          {error}
+        </p>
       )}
-
-      {/* ─── Beri tahu pelanggan ─────────────────────────────────────── */}
-      {/* Cuma relevan saat create — notifyCustomers tidak dipakai di
-          endpoint PUT (edit), jadi disembunyikan supaya tidak
-          menyesatkan admin. */}
-      {!isEdit && (
-        <label className="mt-6 flex items-start gap-3 rounded-xl border border-zinc-200 p-3">
-          <input
-            type="checkbox"
-            checked={notifyCustomers}
-            onChange={(e) => setNotifyCustomers(e.target.checked)}
-            className="mt-1 h-4 w-4"
-          />
-          <span className="text-sm text-zinc-700">
-            <span className="font-bold text-zinc-950">Beri tahu pelanggan</span>
-            <br />
-            Kirim notifikasi &amp; push ke semua pelanggan saat promo aktif.
-          </span>
-        </label>
+      {feedback && (
+        <p role="status" className="pt-success">
+          {feedback}
+        </p>
       )}
-
-      {/* ─── Submit ────────────────────────────────────────────────── */}
-      <div className="mt-6 flex justify-end gap-3">
-        <Link
-          href="/admin/diskon/promo-toko"
-          className="rounded-lg border border-zinc-300 bg-white px-6 py-2.5 text-center text-sm font-bold text-zinc-700"
+      <footer className="pt-save">
+        <span>
+          {items.filter((item) => item.isItemActive).length} pilihan aktif
+        </span>
+        <Button
+          variant="secondary"
+          disabled={submitting}
+          onClick={() => void leaveForm()}
         >
           Batal
-        </Link>
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={submitting}
-          className="rounded-lg bg-natalo-600 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-natalo-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {submitting ? "Menyimpan..." : "Konfirmasi"}
-        </button>
-      </div>
-
-      {/* ─── Product Picker Modal ──────────────────────────────────── */}
+        </Button>
+        <Button disabled={submitting} onClick={() => void handleSubmit()}>
+          {submitting ? "Menyimpan…" : "Simpan promo"}
+        </Button>
+      </footer>
       <ProductPickerModal
         open={pickerOpen}
         excludeId={excludeId}
@@ -576,253 +648,128 @@ export function PromoTokoForm({ initial, excludeId }: Props) {
         onAdd={(newItems) => {
           addItems(newItems);
           setPickerOpen(false);
+          setFeedback(`${newItems.length} pilihan ditambahkan.`);
         }}
       />
+      {confirmation}
     </AdminPage>
   );
 }
-
-// ── Product group row — handle produk single + berVarian ─────────
-
-function ProductGroupRow({
-  product,
-  items,
-  hasVariants,
-  onUpdate,
-  onRemoveProduct,
-  onRemoveItem,
-}: {
-  product: ProductSummary;
-  items: PromoItem[];
-  hasVariants: boolean;
-  onUpdate: (
-    productId: string,
-    variantId: string | null,
-    patch: Partial<Pick<PromoItem, "discountedPrice" | "isItemActive">>
-  ) => void;
-  onRemoveProduct: (productId: string) => void;
-  onRemoveItem: (productId: string, variantId: string | null) => void;
-}) {
-  // Single product (no variants) — render 1 row.
-  if (!hasVariants) {
-    const item = items[0];
-    return (
-      <ItemRow
-        productThumbnail={product}
-        item={item}
-        basePrice={product.price}
-        baseStock={product.stock}
-        onUpdate={onUpdate}
-        onRemove={() => onRemoveItem(product.id, null)}
-      />
-    );
-  }
-
-  // Variant product — parent header row + sub-rows per varian.
-  return (
-    <>
-      <tr className="bg-zinc-50/40">
-        <td colSpan={7} className="px-3 py-2">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              {product.imageUrl ? (
-                <img
-                  src={product.imageUrl}
-                  alt=""
-                  className="h-10 w-10 rounded border border-zinc-200 object-cover"
-                />
-              ) : (
-                <div className="h-10 w-10 rounded border border-zinc-200 bg-zinc-100" />
-              )}
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-zinc-900">
-                  {product.name}
-                </p>
-                <p className="text-xs text-zinc-500">
-                  {items.length} varian dipromosikan
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => onRemoveProduct(product.id)}
-              className="text-xs font-semibold text-natalo-600 hover:text-natalo-700"
-            >
-              Hapus
-            </button>
-          </div>
-        </td>
-      </tr>
-      {items.map((item) => (
-        <ItemRow
-          key={item.variantId ?? "default"}
-          productThumbnail={null} // variant rows tidak show product image
-          item={item}
-          basePrice={item.variant?.price ?? product.price}
-          baseStock={item.variant?.stock ?? product.stock}
-          onUpdate={onUpdate}
-          onRemove={() => onRemoveItem(product.id, item.variantId)}
-          variantLabel={item.variant?.label}
-          isSubRow
-        />
-      ))}
-    </>
-  );
+function itemKey(item: PromoItem) {
+  return `${item.productId}::${item.variantId ?? ""}`;
 }
-
-// ── Single item row dengan editable fields ──────────────────────
-
-function ItemRow({
-  productThumbnail,
+function PromoItemRow({
   item,
-  basePrice,
-  baseStock,
-  variantLabel,
-  isSubRow,
+  selected,
+  onSelect,
   onUpdate,
   onRemove,
 }: {
-  productThumbnail: ProductSummary | null;
   item: PromoItem;
-  basePrice: number;
-  baseStock: number;
-  variantLabel?: string;
-  isSubRow?: boolean;
-  onUpdate: (
-    productId: string,
-    variantId: string | null,
+  selected: boolean;
+  onSelect(): void;
+  onUpdate(
     patch: Partial<Pick<PromoItem, "discountedPrice" | "isItemActive">>
-  ) => void;
-  onRemove: () => void;
+  ): void;
+  onRemove(): void;
 }) {
-  const discountPercent =
-    basePrice > 0
-      ? Math.max(
-          0,
-          Math.round(((basePrice - item.discountedPrice) / basePrice) * 100)
-        )
+  const base = item.variant?.price ?? item.product.price;
+  const label = item.variant?.label ?? "Produk utama";
+  const discount =
+    base > 0
+      ? Math.max(0, Math.round((1 - item.discountedPrice / base) * 10000) / 100)
       : 0;
-
+  const [percentDraft, setPercentDraft] = useState<string | null>(null);
+  const invalid =
+    item.discountedPrice > base ||
+    (item.isItemActive && item.discountedPrice <= 0);
   return (
-    <tr className={item.isItemActive ? "" : "opacity-50"}>
-      <td className="px-3 py-3 align-top">
-        <div className="flex items-center gap-2">
-          {productThumbnail?.imageUrl ? (
-            <img
-              src={productThumbnail.imageUrl}
-              alt=""
-              className="h-10 w-10 rounded border border-zinc-200 object-cover"
-            />
-          ) : productThumbnail ? (
-            <div className="h-10 w-10 rounded border border-zinc-200 bg-zinc-100" />
-          ) : null}
-          <div className={`min-w-0 ${isSubRow ? "pl-12" : ""}`}>
-            {productThumbnail && (
-              <p className="truncate text-sm font-semibold text-zinc-900">
-                {productThumbnail.name}
-              </p>
-            )}
-            {variantLabel && (
-              <p className="text-xs font-semibold text-zinc-700">
-                {variantLabel}
-              </p>
-            )}
-          </div>
-        </div>
-      </td>
-      <td className="px-3 py-3 align-top text-sm text-zinc-700">
-        {formatRupiah(basePrice)}
-      </td>
-      <td className="px-3 py-3 align-top">
+    <div className={`pt-row ${item.isItemActive ? "" : "pt-off"}`}>
+      <label className="pt-variant">
+        <input
+          type="checkbox"
+          checked={selected}
+          aria-label={`Pilih ${item.product.name} ${label}`}
+          onChange={onSelect}
+        />
+        <span>
+          <strong>{label}</strong>
+          {item.variant?.sku && <small>{item.variant.sku}</small>}
+        </span>
+      </label>
+      <div className="pt-price-original">
+        <small>Harga awal</small>
+        {Math.round(base).toLocaleString("id-ID")}
+      </div>
+      <div>
+        <small>Harga promo</small>
         <NumberInput
-          aria-invalid={item.discountedPrice > basePrice}
-          aria-label={`Harga diskon ${
-            variantLabel || productThumbnail?.name || item.product.name
-          }`}
+          aria-label={`Harga promo ${item.product.name} ${label}`}
           value={String(item.discountedPrice || "")}
+          maxLength={13}
+          aria-invalid={invalid}
           onValueChange={(value) => {
-            if (!/^\d*$/.test(value)) return;
-            onUpdate(item.productId, item.variantId, {
-              discountedPrice: Math.max(0, Number(value)),
+            onUpdate({
+              discountedPrice: Number(value.replace(/[^0-9]/g, "").slice(0, 9)),
             });
           }}
-          placeholder="Harga diskon"
-          className="w-32 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-natalo-600"
         />
-        {item.discountedPrice > basePrice && (
-          <p role="alert" className="mt-1 max-w-40 text-xs text-red-700">
-            Harga diskon melebihi harga awal.
-          </p>
+        {invalid && (
+          <em>
+            Harga harus lebih dari 0 dan maksimal {base.toLocaleString("id-ID")}
+          </em>
         )}
-      </td>
-      {/* %Diskon — 2-way bound dengan Harga Diskon */}
-      <td className="px-3 py-3 align-top">
-        <span className="text-xs text-zinc-400">OR</span>
-        <div className="relative mt-1">
-          <input
-            type="text"
-            inputMode="numeric"
-            aria-label={`Persentase diskon ${
-              variantLabel || item.product.name
-            }`}
-            value={discountPercent || ""}
-            onChange={(e) => {
-              const pct = parseInt(e.target.value || "0", 10);
-              const clamped = Math.max(0, Math.min(95, pct));
-              const newPrice = Math.round((basePrice * (100 - clamped)) / 100);
-              onUpdate(item.productId, item.variantId, {
-                discountedPrice: newPrice,
+      </div>
+      <div>
+        <small>Diskon (%)</small>
+        <input
+          aria-label={`Diskon ${item.product.name} ${label}`}
+          inputMode="decimal"
+          maxLength={5}
+          value={percentDraft ?? discount}
+          onFocus={() => setPercentDraft(String(discount))}
+          onBlur={() => setPercentDraft(null)}
+          onChange={(e) => {
+            const raw = e.target.value.replace(",", ".");
+            if (!/^\d*(?:\.\d{0,2})?$/.test(raw)) return;
+            const percent = Number(raw);
+            if (percent >= 0 && percent < 100) {
+              setPercentDraft(raw);
+              onUpdate({
+                discountedPrice: Math.max(
+                  1,
+                  Math.round(base * (1 - percent / 100))
+                ),
               });
-            }}
-            placeholder="0"
-            min={0}
-            max={95}
-            className="w-20 rounded-lg border border-zinc-300 bg-white pl-2 pr-7 py-1.5 text-sm outline-none focus:border-natalo-600"
-          />
-          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400">
-            %
-          </span>
-        </div>
-      </td>
-      <td className="px-3 py-3 align-top text-sm text-zinc-700">{baseStock}</td>
-      <td className="px-3 py-3 align-top text-center">
-        <button
-          type="button"
-          role="switch"
-          aria-checked={item.isItemActive}
-          aria-label={`Aktifkan promo ${variantLabel || item.product.name}`}
-          onClick={() =>
-            onUpdate(item.productId, item.variantId, {
-              isItemActive: !item.isItemActive,
-            })
-          }
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-            item.isItemActive ? "bg-green-500" : "bg-zinc-300"
-          }`}
-        >
-          <span
-            className={`absolute h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-              item.isItemActive ? "translate-x-4" : "translate-x-1"
-            }`}
-          />
-        </button>
-      </td>
-      <td className="px-3 py-3 align-top text-right">
-        {!isSubRow && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="text-xs font-semibold text-natalo-600 hover:text-natalo-700"
-          >
-            Hapus
-          </button>
-        )}
-      </td>
-    </tr>
+            }
+          }}
+        />
+      </div>
+      <div className="pt-stock">
+        <small>Stok</small>
+        {item.variant?.stock ?? item.product.stock}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={item.isItemActive}
+        aria-label={`Aktifkan ${item.product.name} ${label}`}
+        className="pt-switch"
+        onClick={() => onUpdate({ isItemActive: !item.isItemActive })}
+      >
+        <span />
+      </button>
+      <button
+        type="button"
+        className="pt-icon"
+        aria-label={`Hapus ${item.product.name} ${label}`}
+        onClick={onRemove}
+      >
+        <FiTrash2 />
+      </button>
+    </div>
   );
 }
-
-// ── Product Picker Modal ─────────────────────────────────────────
 
 function ProductPickerModal({
   open,
@@ -843,6 +790,30 @@ function ProductPickerModal({
   const [loadError, setLoadError] = useState("");
   const [retry, setRetry] = useState(0);
   const [search, setSearch] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [categories, setCategories] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [categoryError, setCategoryError] = useState("");
+  const [availableOnly, setAvailableOnly] = useState(true);
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    setCategoryError("");
+    void fetch("/api/categories", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Gagal memuat kategori.");
+        const json = await response.json();
+        if (!controller.signal.aborted) setCategories(json.categories ?? []);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setCategoryError(
+            "Kategori belum dapat dimuat. Pencarian produk tetap tersedia."
+          );
+      });
+    return () => controller.abort();
+  }, [open, retry]);
   // Selected: key = "productId::variantId|nullForNoVariant"
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -854,6 +825,9 @@ function ProductPickerModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    const controller = new AbortController();
+    setLoading(true);
+    setProducts([]);
     const fetchProducts = async () => {
       setLoading(true);
       setLoadError("");
@@ -861,8 +835,10 @@ function ProductPickerModal({
         const params = new URLSearchParams();
         if (search.trim()) params.set("q", search.trim());
         if (excludeId) params.set("excludeId", excludeId);
+        if (categoryId) params.set("categoryId", categoryId);
         const res = await fetch(
-          `/api/admin/discounts/promo-toko/eligible-products?${params.toString()}`
+          `/api/admin/discounts/promo-toko/eligible-products?${params.toString()}`,
+          { signal: controller.signal }
         );
         if (!res.ok) throw new Error("Gagal load produk");
         const json = await res.json();
@@ -888,8 +864,9 @@ function ProductPickerModal({
     return () => {
       cancelled = true;
       clearTimeout(debounce);
+      controller.abort();
     };
-  }, [search, excludeId, open, retry]);
+  }, [search, categoryId, excludeId, open, retry]);
 
   useEffect(() => {
     if (open) {
@@ -914,7 +891,7 @@ function ProductPickerModal({
         // Variant product — add per varian terpilih
         for (const v of product.variants) {
           const key = `${product.id}::${v.id}`;
-          if (selected.has(key) && !v.isBlocked) {
+          if (selected.has(key) && !v.isBlocked && !existingKeys.has(key)) {
             itemsToAdd.push({
               productId: product.id,
               variantId: v.id,
@@ -941,7 +918,7 @@ function ProductPickerModal({
       } else {
         // Single product — variantId null
         const key = `${product.id}::`;
-        if (selected.has(key)) {
+        if (selected.has(key) && !existingKeys.has(key)) {
           itemsToAdd.push({
             productId: product.id,
             variantId: null,
@@ -962,187 +939,230 @@ function ProductPickerModal({
     onAdd(itemsToAdd);
   }
 
+  const visibleProducts = products
+    .map((product) => ({
+      ...product,
+      variants: product.variants.filter(
+        (variant) => !availableOnly || variant.stock > 0
+      ),
+    }))
+    .filter((product) =>
+      product.hasVariants
+        ? product.variants.length > 0
+        : !availableOnly || product.stock > 0
+    );
+  const visibleKeys = visibleProducts.flatMap((product) =>
+    product.hasVariants
+      ? product.variants
+          .filter(
+            (variant) =>
+              !variant.isBlocked &&
+              !existingKeys.has(`${product.id}::${variant.id}`)
+          )
+          .map((variant) => `${product.id}::${variant.id}`)
+      : existingKeys.has(`${product.id}::`)
+      ? []
+      : [`${product.id}::`]
+  );
+  function pickAll(checked: boolean) {
+    setSelected((previous) => {
+      const next = new Set(previous);
+      for (const key of visibleKeys) {
+        if (checked) next.add(key);
+        else next.delete(key);
+      }
+      return next;
+    });
+  }
   return (
     <AdminDialog
       open={open}
       title="Pilih produk"
       onClose={onClose}
-      className="admin-product-picker-dialog"
-    >
-      <div className="flex max-h-[65dvh] flex-col">
-        {loadError && (
-          <div
-            role="alert"
-            className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700"
+      className="pt-picker"
+      footer={
+        <>
+          <span className="pt-selection-count">{selected.size} dipilih</span>
+          <Button variant="secondary" onClick={onClose}>
+            Batal
+          </Button>
+          <Button
+            onClick={confirm}
+            disabled={!selected.size || loading || Boolean(loadError)}
           >
+            Tambahkan ({selected.size})
+          </Button>
+        </>
+      }
+    >
+      <div className="pt-pick-filters">
+        <label>
+          Kategori
+          <select
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            disabled={!categories.length}
+          >
+            <option value="">Semua kategori</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Cari produk
+          <div className="pt-search">
+            <FiSearch aria-hidden />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Nama produk, brand atau SKU"
+            />
+          </div>
+        </label>
+      </div>
+      {categoryError && (
+        <p role="status" className="pt-field-error">
+          {categoryError}
+          <button
+            type="button"
+            className="pt-text"
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            Coba lagi
+          </button>
+        </p>
+      )}
+      <div className="pt-pick-toolbar">
+        <label>
+          <input
+            type="checkbox"
+            checked={availableOnly}
+            onChange={(e) => setAvailableOnly(e.target.checked)}
+          />
+          Hanya produk dengan stok tersedia
+        </label>
+        <button
+          type="button"
+          className="pt-text"
+          onClick={() => {
+            setSearch("");
+            setCategoryId("");
+            setAvailableOnly(true);
+          }}
+        >
+          Atur ulang filter
+        </button>
+      </div>
+      <div className="pt-pick-head">
+        <label>
+          <input
+            type="checkbox"
+            aria-label="Pilih semua produk yang tersedia di hasil"
+            checked={
+              visibleKeys.length > 0 &&
+              visibleKeys.every((key) => selected.has(key))
+            }
+            disabled={loading || !visibleKeys.length || Boolean(loadError)}
+            onChange={(e) => pickAll(e.target.checked)}
+          />
+          Produk / variasi
+        </label>
+        <span>Harga awal</span>
+        <span>Stok</span>
+      </div>
+      <div className="pt-pick-results" aria-busy={loading}>
+        {loading ? (
+          <p role="status" className="pt-empty">
+            Memuat produk…
+          </p>
+        ) : loadError ? (
+          <div role="alert" className="pt-empty">
             {loadError}
             <button
               type="button"
+              className="pt-text"
               onClick={() => setRetry((n) => n + 1)}
-              className="ml-3 font-semibold underline"
             >
               Coba lagi
             </button>
           </div>
-        )}
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari nama produk"
-          aria-label="Cari produk untuk promosi"
-          className="mt-3 rounded-xl border border-zinc-300 bg-white px-4 py-2.5 text-sm outline-none focus:border-natalo-600"
-        />
-
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-xl border border-zinc-200">
-          {loading ? (
-            <p className="px-4 py-8 text-center text-sm text-zinc-400">
-              Memuat produk...
-            </p>
-          ) : products.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-zinc-400">
-              {search
-                ? "Tidak ada produk cocok."
-                : "Semua produk sedang di Promo Toko lain."}
-            </p>
-          ) : (
-            <div className="divide-y divide-zinc-100">
-              {products.map((p) => {
-                if (p.hasVariants && p.variants.length > 0) {
-                  // Variant product — show parent + nested variants
-                  return (
-                    <div key={p.id} className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        {p.imageUrl ? (
-                          <img
-                            src={p.imageUrl}
-                            alt=""
-                            className="h-10 w-10 rounded border border-zinc-200 object-cover"
-                          />
-                        ) : (
-                          <div className="h-10 w-10 rounded border border-zinc-200 bg-zinc-100" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold">
-                            {p.name}
-                          </p>
-                          <p className="text-xs text-zinc-500">
-                            {p.variants.length} varian
-                            {p.category?.name && ` • ${p.category.name}`}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="ml-12 mt-2 space-y-1">
-                        {p.variants.map((v) => {
-                          const key = `${p.id}::${v.id}`;
-                          const isExisting = existingKeys.has(key);
-                          const isDisabled = v.isBlocked || isExisting;
-                          return (
-                            <label
-                              key={v.id}
-                              className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-zinc-50 ${
-                                isDisabled
-                                  ? "cursor-not-allowed opacity-50"
-                                  : ""
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selected.has(key)}
-                                disabled={isDisabled}
-                                onChange={() => toggle(key)}
-                                className="h-4 w-4 rounded border-zinc-300"
-                              />
-                              <p className="flex-1 text-sm">
-                                <span className="font-semibold">{v.label}</span>
-                                {" — "}
-                                <span className="text-zinc-500">
-                                  {formatRupiah(v.price)}
-                                </span>
-                                {isExisting && (
-                                  <span className="ml-1 text-xs font-bold text-amber-600">
-                                    (sudah ditambah)
-                                  </span>
-                                )}
-                                {v.isBlocked && !isExisting && (
-                                  <span className="ml-1 text-xs font-bold text-red-600">
-                                    (di promo lain)
-                                  </span>
-                                )}
-                              </p>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                }
-                // Single product
-                const key = `${p.id}::`;
-                const isExisting = existingKeys.has(key);
-                return (
-                  <label
-                    key={p.id}
-                    className={`flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-zinc-50 ${
-                      isExisting ? "cursor-not-allowed opacity-50" : ""
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(key)}
-                      disabled={isExisting}
-                      onChange={() => toggle(key)}
-                      className="h-4 w-4 rounded border-zinc-300"
+        ) : !visibleProducts.length ? (
+          <p className="pt-empty">
+            Tidak ada produk yang cocok. Coba kata kunci atau filter lain.
+          </p>
+        ) : (
+          visibleProducts.map((product) => {
+            const rows = product.hasVariants
+              ? product.variants
+              : [
+                  {
+                    id: "",
+                    label: "Produk utama",
+                    price: product.price,
+                    stock: product.stock,
+                    isBlocked: false,
+                  },
+                ];
+            return (
+              <article key={product.id}>
+                <header>
+                  {product.imageUrl && (
+                    <img
+                      src={product.imageUrl}
+                      alt=""
+                      width={36}
+                      height={44}
+                      loading="lazy"
                     />
-                    {p.imageUrl ? (
-                      <img
-                        src={p.imageUrl}
-                        alt=""
-                        className="h-10 w-10 rounded border border-zinc-200 object-cover"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded border border-zinc-200 bg-zinc-100" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{p.name}</p>
-                      <p className="text-xs text-zinc-500">
-                        {formatRupiah(p.price)}
-                        {p.category?.name && ` • ${p.category.name}`}
-                        {isExisting && (
-                          <span className="ml-1 font-bold text-amber-600">
-                            (sudah ditambah)
-                          </span>
+                  )}
+                  <div>
+                    <strong>{product.name}</strong>
+                    <p>
+                      {product.category?.name ?? "Tanpa kategori"} ·{" "}
+                      {rows.length} pilihan
+                    </p>
+                  </div>
+                </header>
+                {rows.map((variant) => {
+                  const key = `${product.id}::${variant.id}`;
+                  const existing = existingKeys.has(key);
+                  const disabled = existing || variant.isBlocked;
+                  return (
+                    <label
+                      key={key}
+                      className={`pt-pick-row ${disabled ? "pt-added" : ""}`}
+                    >
+                      <span>
+                        <input
+                          type="checkbox"
+                          disabled={disabled}
+                          checked={selected.has(key)}
+                          onChange={() => toggle(key)}
+                        />
+                        {variant.label}
+                        {disabled && (
+                          <em>
+                            {existing ? "Sudah ditambahkan" : "Di promo lain"}
+                          </em>
                         )}
-                      </p>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-sm text-zinc-500">{selected.size} dipilih</span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-zinc-300 bg-white px-5 py-2.5 text-sm font-bold text-zinc-700"
-            >
-              Batal
-            </button>
-            <button
-              type="button"
-              onClick={confirm}
-              disabled={selected.size === 0 || loading || Boolean(loadError)}
-              className="rounded-lg bg-natalo-600 px-5 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Tambahkan ({selected.size})
-            </button>
-          </div>
-        </div>
+                      </span>
+                      <span>{variant.price.toLocaleString("id-ID")}</span>
+                      <span>{variant.stock}</span>
+                    </label>
+                  );
+                })}
+              </article>
+            );
+          })
+        )}
       </div>
+      <p className="pt-result-note">
+        Menampilkan maksimal 200 produk. Gunakan pencarian untuk menemukan
+        produk lainnya.
+      </p>
     </AdminDialog>
   );
 }

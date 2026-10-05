@@ -461,6 +461,17 @@ export function VariantEditor({
   }
 
   // ── Validasi ──────────────────────────────────────────────────
+  const duplicateSkuGroups = useMemo(() => {
+    const groups = new Map<string, VariantRow[]>();
+    for (const row of rows) {
+      const sku = row.sku.trim().toLowerCase();
+      if (!sku) continue;
+      groups.set(sku, [...(groups.get(sku) ?? []), row]);
+    }
+    return new Map([...groups].filter(([, group]) => group.length > 1));
+  }, [rows]);
+  const isDuplicateSku = (row: VariantRow) =>
+    duplicateSkuGroups.has(row.sku.trim().toLowerCase());
   const validationErrors = useMemo(() => {
     const errs: string[] = [];
     if (!hasVariants) return errs;
@@ -480,11 +491,12 @@ export function VariantEditor({
       errs.push("Semua varian aktif harus punya harga > 0.");
     if (rows.some((r) => r.sku.trim().length > 80))
       errs.push("Kode SKU maksimal 80 karakter.");
-    // SKU uniqueness (frontend check)
-    const skus = rows
-      .filter((r) => r.sku.trim())
-      .map((r) => r.sku.trim().toLowerCase());
-    if (skus.length !== new Set(skus).size) errs.push("Kode SKU harus unik.");
+    for (const group of duplicateSkuGroups.values()) {
+      const names = group.map((row) => row.optionValues.join(" / ")).join(", ");
+      errs.push(
+        `SKU "${group[0].sku.trim()}" dipakai pada varian ${names}. Isi kode berbeda untuk setiap varian, atau kosongkan SKU jika belum tersedia.`
+      );
+    }
     if (
       rows.some((r) => r.sku.trim() && !/^[A-Za-z0-9_-]+$/.test(r.sku.trim()))
     ) {
@@ -525,7 +537,7 @@ export function VariantEditor({
     if (new Set(names).size !== names.length)
       errs.push("Nama variasi tidak boleh duplikat.");
     return [...new Set(errs)];
-  }, [hasVariants, attrs, nonEmptyAttrs, rows]);
+  }, [hasVariants, attrs, nonEmptyAttrs, rows, duplicateSkuGroups]);
 
   // Draft mode: emit ke parent tiap kali state berubah, supaya parent
   // form bisa submit semuanya bersama. Pakai useEffect dengan deps state
@@ -856,11 +868,19 @@ export function VariantEditor({
                             {field === "sku" ? (
                               <input
                                 value={row.sku}
+                                aria-invalid={isDuplicateSku(row)}
+                                aria-describedby={
+                                  isDuplicateSku(row)
+                                    ? `sku-duplicate-mobile-${row.tempId}`
+                                    : undefined
+                                }
                                 maxLength={80}
                                 onChange={(e) =>
                                   updateRow(row.tempId, field, e.target.value)
                                 }
-                                className="admin-field-control"
+                                className={`admin-field-control ${
+                                  isDuplicateSku(row) ? "!border-red-400" : ""
+                                }`}
                               />
                             ) : (
                               <NumberInput
@@ -871,6 +891,14 @@ export function VariantEditor({
                                 }
                                 className="admin-field-control"
                               />
+                            )}
+                            {field === "sku" && isDuplicateSku(row) && (
+                              <span
+                                id={`sku-duplicate-mobile-${row.tempId}`}
+                                className="mt-1 block text-xs text-red-600"
+                              >
+                                SKU dipakai varian lain di form ini.
+                              </span>
                             )}
                           </label>
                         )
@@ -920,11 +948,19 @@ export function VariantEditor({
                                     " / "
                                   )}`}
                                   value={row.sku}
+                                  aria-invalid={isDuplicateSku(row)}
+                                  aria-describedby={
+                                    isDuplicateSku(row)
+                                      ? `sku-duplicate-desktop-${row.tempId}`
+                                      : undefined
+                                  }
                                   maxLength={80}
                                   onChange={(e) =>
                                     updateRow(row.tempId, field, e.target.value)
                                   }
-                                  className="admin-field-control"
+                                  className={`admin-field-control ${
+                                    isDuplicateSku(row) ? "!border-red-400" : ""
+                                  }`}
                                 />
                               ) : (
                                 <NumberInput
@@ -938,6 +974,14 @@ export function VariantEditor({
                                   }
                                   className="admin-field-control"
                                 />
+                              )}
+                              {field === "sku" && isDuplicateSku(row) && (
+                                <span
+                                  id={`sku-duplicate-desktop-${row.tempId}`}
+                                  className="mt-1 block text-xs text-red-600"
+                                >
+                                  SKU dipakai varian lain di form ini.
+                                </span>
                               )}
                             </td>
                           )

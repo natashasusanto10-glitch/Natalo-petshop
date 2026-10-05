@@ -42,7 +42,7 @@ function renderInline(text: string) {
   });
 }
 
-function MarkdownBody({ body }: { body: string }) {
+export function MarkdownBody({ body }: { body: string }) {
   const blocks = body
     .split(/\n{2,}/)
     .map((block) => block.trim())

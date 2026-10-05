@@ -29,7 +29,13 @@ import { reconcileFeedPost } from "@/lib/feed/reconcile";
 
 const PAGE_SIZE = 20;
 
-type AdminFilter = "all" | "photo" | "video" | "hidden" | "deleted";
+type AdminFilter =
+  | "all"
+  | "photo"
+  | "video"
+  | "hidden"
+  | "deleted"
+  | "attention";
 
 const VALID_FILTERS: AdminFilter[] = [
   "all",
@@ -37,17 +43,27 @@ const VALID_FILTERS: AdminFilter[] = [
   "video",
   "hidden",
   "deleted",
+  "attention",
 ];
 
 // Kind yang dihitung sebagai "video" di tab Video + count. COMMUNITY = video
 // user (bukan diskusi). PRODUCT_ONLY / PROMO sengaja tidak masuk — bukan foto
 // murni maupun video user, hanya muncul di tab Semua.
-const VIDEO_KINDS: FeedPostKind[] = ["VIDEO_ONLY", "VIDEO_PRODUCT", "COMMUNITY"];
+const VIDEO_KINDS: FeedPostKind[] = [
+  "VIDEO_ONLY",
+  "VIDEO_PRODUCT",
+  "COMMUNITY",
+];
 
 function buildWhere(filter: AdminFilter): Prisma.FeedPostWhereInput {
   // Default: exclude soft-deleted post. Filter `deleted` khusus override.
   const notDeleted: Prisma.FeedPostWhereInput = { deletedAt: null };
   switch (filter) {
+    case "attention":
+      return {
+        ...notDeleted,
+        encodingStatus: { in: ["uploading", "processing", "failed"] },
+      };
     case "photo":
       return { ...notDeleted, kind: "PHOTO_CAROUSEL" };
     case "video":
@@ -76,7 +92,28 @@ export async function GET(request: NextRequest) {
     : "all";
   const cursor = searchParams.get("cursor") || null;
 
-  const where = buildWhere(filter);
+  const query = (searchParams.get("q") ?? "").trim().slice(0, 120);
+  const format = searchParams.get("format");
+  const conditions: Prisma.FeedPostWhereInput[] = [buildWhere(filter)];
+  if (query)
+    conditions.push({
+      OR: [
+        { title: { contains: query, mode: "insensitive" } },
+        { author: { name: { contains: query, mode: "insensitive" } } },
+        { product: { name: { contains: query, mode: "insensitive" } } },
+        {
+          taggedProducts: {
+            some: {
+              product: { name: { contains: query, mode: "insensitive" } },
+            },
+          },
+        },
+      ],
+    });
+  if (format === "photo") conditions.push({ kind: "PHOTO_CAROUSEL" });
+  if (format === "video") conditions.push({ kind: { in: VIDEO_KINDS } });
+  if (format === "promo") conditions.push({ kind: "PROMO" });
+  const where: Prisma.FeedPostWhereInput = { AND: conditions };
   // Semua filter newest-first (tidak ada lagi antrian moderasi FIFO).
   const orderBy: Prisma.FeedPostOrderByWithRelationInput[] = [
     { createdAt: "desc" },
@@ -91,6 +128,16 @@ export async function GET(request: NextRequest) {
     include: {
       author: { select: { id: true, name: true, role: true } },
       product: { select: { id: true, slug: true, name: true } },
+      taggedProducts: {
+        orderBy: { position: "asc" },
+        take: 5,
+        select: {
+          promoPrice: true,
+          product: {
+            select: { id: true, name: true, price: true, imageUrl: true },
+          },
+        },
+      },
       moderatedBy: { select: { id: true, name: true } },
       // PHOTO_CAROUSEL media — admin list butuh first photo sebagai
       // thumbnail (PHOTO_CAROUSEL post tidak punya videoUrl/thumbnailUrl,
@@ -144,6 +191,7 @@ export async function GET(request: NextRequest) {
 
   type Item = {
     id: string;
+    canEdit: boolean;
     status: FeedPostStatus;
     // Bunny encoding lifecycle ("uploading" | "processing" | "ready" |
     // "failed"). Admin UI pakai field ini untuk disable tombol Approve
@@ -172,6 +220,13 @@ export async function GET(request: NextRequest) {
     mediaCount: number;
     videoDurationSec: number | null;
     product: { id: string; slug: string; name: string } | null;
+    taggedProducts: Array<{
+      id: string;
+      name: string;
+      price: number;
+      imageUrl: string | null;
+      promoPrice: number | null;
+    }>;
     promo: {
       originalPrice: number;
       discountPrice: number;
@@ -196,6 +251,10 @@ export async function GET(request: NextRequest) {
     });
     return {
       id: p.id,
+      canEdit:
+        p.authorId === session.sub &&
+        p.authorRole === "ADMIN" &&
+        p.deletedAt === null,
       status: p.status,
       encodingStatus: p.encodingStatus,
       kind: p.kind,
@@ -222,6 +281,10 @@ export async function GET(request: NextRequest) {
       product: p.product
         ? { id: p.product.id, slug: p.product.slug, name: p.product.name }
         : null,
+      taggedProducts: p.taggedProducts.map((tag) => ({
+        ...tag.product,
+        promoPrice: tag.promoPrice,
+      })),
       promo:
         p.promoOriginalPrice != null && p.promoDiscountPrice != null
           ? {
@@ -247,7 +310,15 @@ export async function GET(request: NextRequest) {
 
   // Counts untuk header subtitle + tab. SEMUA count EXCLUDE soft-deleted
   // kecuali deletedCount yang khusus untuk "deleted" filter.
-  const [totalCount, deletedCount, photoCount, videoCount] = await Promise.all([
+  const [
+    totalCount,
+    deletedCount,
+    photoCount,
+    videoCount,
+    readyCount,
+    processingCount,
+    failedCount,
+  ] = await Promise.all([
     prisma.feedPost.count({ where: { deletedAt: null } }),
     prisma.feedPost.count({ where: { deletedAt: { not: null } } }),
     prisma.feedPost.count({
@@ -255,6 +326,18 @@ export async function GET(request: NextRequest) {
     }),
     prisma.feedPost.count({
       where: { kind: { in: VIDEO_KINDS }, deletedAt: null },
+    }),
+    prisma.feedPost.count({
+      where: { status: "ACTIVE", encodingStatus: "ready", deletedAt: null },
+    }),
+    prisma.feedPost.count({
+      where: {
+        encodingStatus: { in: ["uploading", "processing"] },
+        deletedAt: null,
+      },
+    }),
+    prisma.feedPost.count({
+      where: { encodingStatus: "failed", deletedAt: null },
     }),
   ]);
 
@@ -266,6 +349,9 @@ export async function GET(request: NextRequest) {
       deleted: deletedCount,
       photo: photoCount,
       video: videoCount,
+      ready: readyCount,
+      processing: processingCount,
+      failed: failedCount,
     },
   });
 }

@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/session-guards";
 import { bunnyThumbnailUrl, signBunnyUrl } from "@/lib/feed/bunny";
+import { buildFeedVideoPlaybackUrls } from "@/lib/feed/video-playback-urls";
 import { AdminEditFeedPostClient } from "@/components/admin/feed/AdminEditFeedPostClient";
 import { AdminPage } from "@/components/admin/ui";
 
@@ -63,7 +64,7 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
     }));
 
   return (
-    <AdminPage maxWidth="lg" className="admin-operational-page">
+    <AdminPage maxWidth="xl" className="admin-operational-page">
       <AdminEditFeedPostClient
         postId={post.id}
         initialTitle={post.title}
@@ -76,6 +77,12 @@ export default async function AdminEditFeedPostPage({ params }: PageProps) {
           ) ?? null
         }
         videoDurationSec={post.videoDurationSec}
+        videoUrl={
+          buildFeedVideoPlaybackUrls({
+            videoUrl: post.videoUrl,
+            videoGuid: post.videoGuid,
+          }).videoUrl
+        }
         kind={post.kind}
         tab={post.tab}
       />

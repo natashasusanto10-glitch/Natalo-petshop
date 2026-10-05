@@ -1,6 +1,8 @@
 "use client";
 
 import "./admin-premium.css";
+import "./feed-premium.css";
+import "./promo-premium.css";
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";

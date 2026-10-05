@@ -97,12 +97,11 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Brand untuk slider "Brand Favorit" di Home — HANYA brand yang punya
   /// logo gambar (admin upload). Brand tanpa logo (fallback huruf inisial)
   /// disembunyikan dari Home supaya rapi & profesional; tetap muncul di
-  /// /brands "Lihat semua". TANPA cap jumlah — urutan diatur admin via
-  /// position (API /api/brands orderBy position asc), jadi brand prioritas
-  /// otomatis di slide depan. Sebelumnya di-cap take(12) → cuma 2 slide
-  /// walau brand banyak.
+  /// /brands "Lihat semua". Delapan brand utama mengikuti urutan admin;
+  /// daftar semua brand menampilkan sisanya dengan urutan nama.
   List<PetBrand> get _logoBrands => homeSnapshotStore.brands
       .where((b) => b.logoUrl != null && b.logoUrl!.trim().isNotEmpty)
+      .take(8)
       .toList();
 
   // ── Personalized recommendations dari server ──

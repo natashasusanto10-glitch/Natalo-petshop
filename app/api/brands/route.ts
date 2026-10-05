@@ -12,7 +12,9 @@ export async function GET(request: NextRequest) {
   // kategori itu (mis. "Makanan Anjing" tidak menampilkan brand aquarium).
   // Tanpa param ini (call site lama: all_brands_screen.dart, home "Brand
   // Favorit"), perilaku identik dengan sebelumnya — list global.
-  const categorySlug = (request.nextUrl.searchParams.get("category") ?? "").trim();
+  const categorySlug = (
+    request.nextUrl.searchParams.get("category") ?? ""
+  ).trim();
 
   const brands = await prisma.brand
     .findMany({
@@ -31,7 +33,7 @@ export async function GET(request: NextRequest) {
             }
           : {}),
       },
-      orderBy: [{ position: "asc" }, { createdAt: "desc" }, { name: "asc" }],
+      orderBy: [{ position: "asc" }, { name: "asc" }],
       select: {
         id: true,
         name: true,

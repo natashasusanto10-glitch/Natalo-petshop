@@ -24,7 +24,7 @@ import { useAdminConfirm } from "@/components/admin/ui/useAdminConfirm";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { FiArrowLeft, FiUploadCloud, FiX } from "react-icons/fi";
+import { FiEye, FiUploadCloud, FiX } from "react-icons/fi";
 import { formatRupiah } from "@/lib/format";
 import {
   extractVideoThumbnail,
@@ -60,12 +60,18 @@ type ProductSummary = {
   imageUrl: string | null;
 };
 
+import { AdminFeedPreview } from "./AdminFeedPreview";
+import { AdminDialog } from "@/components/admin/ui/AdminDialog";
+import { Button, PageHeader } from "@/components/admin/ui";
+
 const ACCEPT_VIDEO = "video/mp4,video/webm,video/quicktime";
 const MAX_ADMIN_TAGGED_PRODUCTS = 5;
 
 export function AdminFeedCreateClient() {
   const { confirm, confirmation } = useAdminConfirm();
   const router = useRouter();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [kind, setKind] = useState<Kind>("VIDEO_ONLY");
@@ -76,6 +82,15 @@ export function AdminFeedCreateClient() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  useEffect(() => {
+    if (!videoFile) {
+      setVideoPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(videoFile);
+    setVideoPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [videoFile]);
   const [videoMeta, setVideoMeta] = useState<VideoMetadata | null>(null);
   const [thumbBlob, setThumbBlob] = useState<Blob | null>(null);
   const [thumbPreviewUrl, setThumbPreviewUrl] = useState<string | null>(null);
@@ -85,6 +100,9 @@ export function AdminFeedCreateClient() {
     []
   );
   const [productLoading, setProductLoading] = useState(false);
+  const [productSearchError, setProductSearchError] = useState<string | null>(
+    null
+  );
 
   // Per-product promo pricing untuk kind=PROMO. Key = productId,
   // value = string input (kosong = no discount untuk produk itu).
@@ -241,36 +259,45 @@ export function AdminFeedCreateClient() {
     }
   }
 
-  // Debounced product search
+  // Search results belong to the current query; cancel earlier responses.
   useEffect(() => {
+    setProductResults([]);
+    setProductSearchError(null);
     if (!needsProduct || productQuery.trim().length < 2) {
-      setProductResults([]);
+      setProductLoading(false);
       return;
     }
-    const q = productQuery.trim();
-    const timer = window.setTimeout(async () => {
-      setProductLoading(true);
+    const controller = new AbortController();
+    setProductLoading(true);
+    const timer = setTimeout(async () => {
       try {
         const res = await fetch(
-          `/api/admin/products?q=${encodeURIComponent(q)}&limit=10`
+          `/api/admin/products?q=${encodeURIComponent(
+            productQuery.trim()
+          )}&limit=10`,
+          { signal: controller.signal }
         );
-        if (!res.ok) throw new Error();
+        if (!res.ok)
+          throw new Error(
+            "Gagal mencari produk. Ubah kata kunci untuk mencoba kembali."
+          );
         const data: { items?: ProductSummary[]; products?: ProductSummary[] } =
-          await res.json().catch(() => ({}));
-        // Different shape kemungkinan — coba beberapa key umum.
-        const arr = Array.isArray(data.items)
-          ? data.items
-          : Array.isArray(data.products)
-          ? data.products
-          : [];
-        setProductResults(arr.slice(0, 10));
-      } catch {
-        setProductResults([]);
+          await res.json();
+        if (!controller.signal.aborted)
+          setProductResults((data.products ?? data.items ?? []).slice(0, 10));
+      } catch (err) {
+        if (!controller.signal.aborted)
+          setProductSearchError(
+            err instanceof Error ? err.message : "Gagal mencari produk."
+          );
       } finally {
-        setProductLoading(false);
+        if (!controller.signal.aborted) setProductLoading(false);
       }
     }, 350);
-    return () => window.clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [productQuery, needsProduct]);
 
   function addSelectedProduct(product: ProductSummary) {
@@ -430,7 +457,7 @@ export function AdminFeedCreateClient() {
       return;
     }
     if (needsVideo && !videoOptional && !videoFile) {
-      setError("Video wajib untuk kind ini.");
+      setError("Tambahkan video sebelum menayangkan postingan.");
       return;
     }
     if (needsProduct && selectedProducts.length === 0) {
@@ -457,10 +484,26 @@ export function AdminFeedCreateClient() {
         if (raw === "") continue;
         const n = Number(raw);
         if (!Number.isFinite(n) || n <= 0 || n >= p.price) {
-          setError(`Harga promo "${p.name}" harus angka positif < ${p.price}.`);
+          setError(
+            `Harga promo "${
+              p.name
+            }" harus lebih dari 0 dan di bawah ${p.price.toLocaleString(
+              "id-ID"
+            )}.`
+          );
           return;
         }
       }
+    }
+
+    if (
+      kind === "PROMO" &&
+      promoStarts &&
+      promoEnds &&
+      new Date(promoEnds).getTime() <= new Date(promoStarts).getTime()
+    ) {
+      setError("Waktu selesai promo harus setelah waktu mulai.");
+      return;
     }
 
     setSubmitting(true);
@@ -688,6 +731,21 @@ export function AdminFeedCreateClient() {
     }
   }
 
+  async function leaveForm() {
+    if (submitting) return;
+    if (
+      (title.trim() ||
+        description.trim() ||
+        videoFile ||
+        selectedProducts.length) &&
+      !(await confirm(
+        "Tinggalkan form? Perubahan yang belum disimpan akan hilang."
+      ))
+    )
+      return;
+    router.push("/admin/feed");
+  }
+
   // Kind options — dipakai baik oleh selector mobile (grid kartu) maupun
   // desktop (segmented pill di header). Sumber tunggal supaya label/desc
   // tidak drift antara dua tampilan.
@@ -701,58 +759,54 @@ export function AdminFeedCreateClient() {
   // form, tidak menambah state baru. Fallback thumbnail: video thumb >
   // foto produk pertama > null (placeholder "NP").
   const previewThumb = thumbPreviewUrl ?? selectedProducts[0]?.imageUrl ?? null;
-  const previewTitle = title.trim() || "Judul post akan tampil di sini";
-  const previewCaption = description.trim() || "Caption akan tampil di sini";
-  const previewDurationLabel =
-    videoMeta && Number.isFinite(videoMeta.durationSec)
-      ? `${Math.floor(videoMeta.durationSec / 60)}:${Math.round(
-          videoMeta.durationSec % 60
-        )
-          .toString()
-          .padStart(2, "0")}`
-      : null;
+  const previewProducts = needsProduct
+    ? selectedProducts.map((p) => ({
+        ...p,
+        promoPrice:
+          kind === "PROMO" && productPromos[p.id]
+            ? Number(productPromos[p.id])
+            : null,
+      }))
+    : [];
+  const previewContent = (
+    <AdminFeedPreview
+      title={title}
+      description={description}
+      thumbnailUrl={previewThumb}
+      videoUrl={videoPreviewUrl}
+      products={previewProducts}
+    />
+  );
 
   const publishButtonLabel = submitting
     ? progress || "Memproses..."
-    : "Publish Post";
+    : "Tayangkan postingan";
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="af af-create">
       {confirmation}
-      <header className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            aria-label="Kembali"
-            className="grid h-9 w-9 place-items-center rounded-full bg-white shadow-sm"
+      <PageHeader
+        title="Tambah postingan"
+        subtitle="Siapkan konten dan lihat hasilnya sebelum ditayangkan."
+        actions={
+          <Button
+            variant="secondary"
+            onClick={() => setPreviewOpen(true)}
+            disabled={submitting}
           >
-            <FiArrowLeft className="h-4 w-4 text-gray-700" />
-          </button>
-          <h1 className="text-base font-semibold text-gray-900">
-            Buat Post Feed
-          </h1>
-        </div>
-
-        {/* Jenis post — segmented pill, desktop only (mobile pakai kartu
-            grid di bawah, sama seperti sebelumnya). Sumber state sama. */}
-        <div className="hidden items-center gap-1 rounded-full bg-gray-100 p-1 lg:flex">
-          {KIND_OPTIONS.map((opt) => (
-            <button
-              key={opt.v}
-              type="button"
-              onClick={() => setKind(opt.v)}
-              className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${
-                kind === opt.v
-                  ? "border border-natalo-200 bg-white text-natalo-700 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {opt.l}
-            </button>
-          ))}
-        </div>
-      </header>
+            <FiEye aria-hidden />
+            Pratinjau
+          </Button>
+        }
+      />
+      <Button
+        type="button"
+        onClick={() => void leaveForm()}
+        variant="ghost"
+        disabled={submitting}
+      >
+        ← Semua postingan
+      </Button>
 
       {/* Pending upload banner — tampil kalau ada upload yg belum selesai
           dari session sebelumnya (app crash, force close, dll). Admin
@@ -786,37 +840,30 @@ export function AdminFeedCreateClient() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
-        <div className="min-w-0 space-y-4">
-          {/* Kind selector — mobile only (desktop pakai pill di header). */}
-          <section className="rounded-2xl border border-gray-100 bg-white p-3 lg:hidden">
-            <p className="mb-2 text-xs font-semibold text-gray-700">
-              Jenis post
-            </p>
-            <div className="grid grid-cols-2 gap-2">
+      <div className="af-editor">
+        <div className="af-form">
+          <section className="af-form-section">
+            <h2>Jenis postingan</h2>
+            <label htmlFor="feed-kind" className="sr-only">
+              Jenis postingan
+            </label>
+            <select
+              id="feed-kind"
+              value={kind}
+              disabled={submitting}
+              onChange={(e) => setKind(e.target.value as Kind)}
+            >
               {KIND_OPTIONS.map((opt) => (
-                <button
-                  key={opt.v}
-                  type="button"
-                  onClick={() => setKind(opt.v)}
-                  className={`rounded-2xl border p-3 text-left text-xs font-semibold transition ${
-                    kind === opt.v
-                      ? "border-natalo-600 bg-natalo-50 text-natalo-700"
-                      : "border-gray-200 bg-white text-gray-700 active:bg-gray-50"
-                  }`}
-                >
-                  <p>{opt.l}</p>
-                  <p className="mt-0.5 text-xs font-semibold text-gray-500">
-                    {opt.d}
-                  </p>
-                </button>
+                <option key={opt.v} value={opt.v}>
+                  {opt.l}
+                </option>
               ))}
-            </div>
+            </select>
           </section>
 
           {/* Video picker */}
           {needsVideo && (
-            <section className="rounded-2xl border border-gray-100 bg-white p-3">
+            <section className="af-form-section">
               <p className="mb-2 text-xs font-semibold text-gray-700">
                 Video{" "}
                 {videoOptional && (
@@ -825,12 +872,12 @@ export function AdminFeedCreateClient() {
               </p>
               {videoFile && thumbPreviewUrl ? (
                 <div className="space-y-2">
-                  <div className="relative aspect-[9/16] w-full max-w-[200px] overflow-hidden rounded-xl bg-gray-100">
+                  <div className="relative h-28 w-20 overflow-hidden rounded-xl bg-gray-100">
                     <Image
                       src={thumbPreviewUrl}
                       alt=""
                       fill
-                      sizes="200px"
+                      sizes="80px"
                       className="object-cover"
                       unoptimized
                     />
@@ -886,14 +933,15 @@ export function AdminFeedCreateClient() {
           )}
 
           {/* Title + description */}
-          <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-3">
+          <section className="af-form-section space-y-3">
+            <h2>Konten postingan</h2>
             {/* AI generate — topik + produk tertaut → judul & caption */}
             <div className="rounded-xl border border-natalo-200 bg-natalo-50/60 p-2.5">
               <label
                 htmlFor="ai-topic"
                 className="text-xs font-semibold text-natalo-800"
               >
-                ✨ Bantu tulis dengan AI
+                Bantu tulis dengan AI
               </label>
               <div className="mt-1.5 flex gap-2">
                 <input
@@ -920,7 +968,7 @@ export function AdminFeedCreateClient() {
                       Membuat…
                     </>
                   ) : (
-                    "Generate"
+                    "Buat teks"
                   )}
                 </button>
               </div>
@@ -929,7 +977,7 @@ export function AdminFeedCreateClient() {
                 publish.
               </p>
               {aiError && (
-                <p className="mt-1 text-xs text-red-600">⚠️ {aiError}</p>
+                <p className="mt-1 text-xs text-red-600">{aiError}</p>
               )}
             </div>
 
@@ -954,7 +1002,7 @@ export function AdminFeedCreateClient() {
                 htmlFor="desc"
                 className="text-xs font-semibold text-gray-700"
               >
-                Deskripsi
+                Caption
               </label>
               <textarea
                 id="desc"
@@ -967,8 +1015,232 @@ export function AdminFeedCreateClient() {
             </div>
           </section>
 
+          {/* Product picker */}
+          {needsProduct && (
+            <section className="af-form-section">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-gray-700">
+                  Produk terkait <span className="text-red-500">*</span>
+                </p>
+                <span className="text-xs font-semibold text-gray-400">
+                  {selectedProducts.length}/{MAX_ADMIN_TAGGED_PRODUCTS}
+                </span>
+              </div>
+
+              {selectedProducts.length > 0 && (
+                <div className="mb-3 space-y-2">
+                  {selectedProducts.map((product, index) => {
+                    const promoRaw = productPromos[product.id] ?? "";
+                    const promoNum = Number(promoRaw);
+                    const hasValidPromo =
+                      promoRaw.trim() !== "" &&
+                      Number.isFinite(promoNum) &&
+                      promoNum > 0 &&
+                      promoNum < product.price;
+                    const discountPct = hasValidPromo
+                      ? Math.round(
+                          ((product.price - promoNum) / product.price) * 100
+                        )
+                      : 0;
+                    return (
+                      <div
+                        key={product.id}
+                        className="rounded-xl bg-natalo-50 p-2"
+                      >
+                        <div className="flex items-center gap-3">
+                          {product.imageUrl && (
+                            <Image
+                              src={product.imageUrl}
+                              alt=""
+                              width={40}
+                              height={40}
+                              className="h-10 w-10 rounded-lg object-cover"
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-semibold text-natalo-800">
+                              {product.name}
+                            </p>
+                            <p className="text-xs font-semibold text-natalo-600">
+                              {index === 0 ? "Produk utama · " : ""}
+                              Harga normal {formatRupiah(product.price)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeSelectedProduct(product.id)}
+                            className="grid h-8 w-8 place-items-center rounded-full text-natalo-700 transition active:bg-natalo-100"
+                            aria-label={`Hapus ${product.name}`}
+                          >
+                            <FiX className="h-4 w-4" />
+                          </button>
+                        </div>
+                        {kind === "PROMO" && (
+                          <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/70 p-2.5">
+                            <label className="block">
+                              <span className="text-xs font-bold text-rose-800">
+                                Harga promo — kosongkan tanpa diskon
+                              </span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={19}
+                                value={
+                                  promoRaw
+                                    ? Number(promoRaw).toLocaleString("id-ID")
+                                    : ""
+                                }
+                                onChange={(e) =>
+                                  setProductPromos((prev) => ({
+                                    ...prev,
+                                    [product.id]: e.target.value.replace(
+                                      /\D/g,
+                                      ""
+                                    ),
+                                  }))
+                                }
+                                placeholder={`Di bawah ${product.price.toLocaleString(
+                                  "id-ID"
+                                )}`}
+                                className="mt-0.5 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm focus:border-rose-500 focus:outline-none"
+                              />
+                            </label>
+                            {hasValidPromo ? (
+                              <p className="mt-1.5 text-xs font-bold text-rose-800">
+                                Hemat {formatRupiah(product.price - promoNum)} ·{" "}
+                                {discountPct}% off
+                              </p>
+                            ) : promoRaw.trim() !== "" &&
+                              Number.isFinite(promoNum) &&
+                              promoNum >= product.price ? (
+                              <p className="mt-1.5 text-xs font-bold text-amber-700">
+                                Harus lebih kecil dari harga normal.
+                              </p>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {selectedProducts.length >= MAX_ADMIN_TAGGED_PRODUCTS ? (
+                <p className="rounded-xl bg-gray-50 px-3 py-2 text-xs font-bold text-gray-500">
+                  Maksimal {MAX_ADMIN_TAGGED_PRODUCTS} produk terkait sudah
+                  dipilih.
+                </p>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    aria-label="Cari produk terkait"
+                    placeholder={
+                      selectedProducts.length > 0
+                        ? "Cari produk tambahan..."
+                        : "Cari produk (min 2 huruf)..."
+                    }
+                    value={productQuery}
+                    onChange={(e) => setProductQuery(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none"
+                  />
+                  {productLoading && (
+                    <p className="mt-2 text-center text-xs font-bold text-gray-400">
+                      Mencari...
+                    </p>
+                  )}
+                  {productSearchError && (
+                    <p role="alert" className="text-sm text-red-700">
+                      {productSearchError}
+                    </p>
+                  )}
+                  {!productLoading &&
+                    !productSearchError &&
+                    productResults.length === 0 &&
+                    productQuery.trim().length >= 2 && (
+                      <p className="text-sm text-slate-600">
+                        Tidak ada produk ditemukan.
+                      </p>
+                    )}
+                  {productResults.length > 0 && (
+                    <ul className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-gray-100">
+                      {productResults.map((p) => {
+                        const selected = selectedProductIdSet.has(p.id);
+                        return (
+                          <li key={p.id}>
+                            <button
+                              type="button"
+                              onClick={() => addSelectedProduct(p)}
+                              disabled={selected}
+                              className="flex w-full items-center gap-2 border-b border-gray-50 px-2 py-2 text-left text-xs transition last:border-0 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-60"
+                            >
+                              {p.imageUrl && (
+                                <Image
+                                  src={p.imageUrl}
+                                  alt=""
+                                  width={32}
+                                  height={32}
+                                  className="h-8 w-8 rounded-lg object-cover"
+                                />
+                              )}
+                              <span className="min-w-0 flex-1 truncate font-bold">
+                                {p.name}
+                              </span>
+                              <span className="shrink-0 text-natalo-600">
+                                {selected ? "Dipilih" : formatRupiah(p.price)}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </>
+              )}
+            </section>
+          )}
+
+          {/* Promo schedule (per-product pricing diset di list produk di atas) */}
+          {kind === "PROMO" && (
+            <section className="af-form-section space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-gray-700">
+                  Jadwal promo (opsional)
+                </p>
+                <p className="text-xs font-semibold text-gray-500">
+                  Harga promo set per-produk di daftar produk di atas. Promo
+                  tetap aktif tanpa jadwal.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-gray-600">
+                    Mulai
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={promoStarts}
+                    onChange={(e) => setPromoStarts(e.target.value)}
+                    className="mt-0.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600">
+                    Berakhir
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={promoEnds}
+                    onChange={(e) => setPromoEnds(e.target.value)}
+                    className="mt-0.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs"
+                  />
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Beri tahu pelanggan — push notification opsional saat publish */}
-          <section className="rounded-2xl border border-gray-100 bg-white p-3">
+          <section className="af-form-section">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-gray-700">
@@ -983,16 +1255,17 @@ export function AdminFeedCreateClient() {
               <button
                 type="button"
                 role="switch"
+                aria-label="Kirim notifikasi saat postingan siap"
                 aria-checked={notifyOnPublish}
                 disabled={quotaExhausted}
                 onClick={() => void handleNotifyToggle()}
-                className={`relative h-[26px] w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`relative h-11 w-14 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   notifyOnPublish ? "bg-natalo-600" : "bg-gray-200"
                 }`}
               >
                 <span
-                  className={`absolute top-0.5 h-[22px] w-[22px] rounded-full bg-white shadow transition-transform ${
-                    notifyOnPublish ? "translate-x-[22px]" : "translate-x-0.5"
+                  className={`absolute top-[11px] h-[22px] w-[22px] rounded-full bg-white shadow transition-transform ${
+                    notifyOnPublish ? "translate-x-[30px]" : "translate-x-1"
                   }`}
                 />
               </button>
@@ -1052,6 +1325,7 @@ export function AdminFeedCreateClient() {
                       key={opt.v}
                       type="button"
                       onClick={() => setPushSegment(opt.v)}
+                      aria-pressed={pushSegment === opt.v}
                       className={`w-full rounded-xl border p-2.5 text-left transition ${
                         pushSegment === opt.v
                           ? "border-natalo-600 bg-natalo-50"
@@ -1115,304 +1389,56 @@ export function AdminFeedCreateClient() {
             )}
           </section>
 
-          {/* Product picker */}
-          {needsProduct && (
-            <section className="rounded-2xl border border-gray-100 bg-white p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold text-gray-700">
-                  Produk terkait <span className="text-red-500">*</span>
-                </p>
-                <span className="text-xs font-semibold text-gray-400">
-                  {selectedProducts.length}/{MAX_ADMIN_TAGGED_PRODUCTS}
-                </span>
-              </div>
-
-              {selectedProducts.length > 0 && (
-                <div className="mb-3 space-y-2">
-                  {selectedProducts.map((product, index) => {
-                    const promoRaw = productPromos[product.id] ?? "";
-                    const promoNum = Number(promoRaw);
-                    const hasValidPromo =
-                      promoRaw.trim() !== "" &&
-                      Number.isFinite(promoNum) &&
-                      promoNum > 0 &&
-                      promoNum < product.price;
-                    const discountPct = hasValidPromo
-                      ? Math.round(
-                          ((product.price - promoNum) / product.price) * 100
-                        )
-                      : 0;
-                    return (
-                      <div
-                        key={product.id}
-                        className="rounded-xl bg-natalo-50 p-2"
-                      >
-                        <div className="flex items-center gap-3">
-                          {product.imageUrl && (
-                            <Image
-                              src={product.imageUrl}
-                              alt=""
-                              width={40}
-                              height={40}
-                              className="h-10 w-10 rounded-lg object-cover"
-                            />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-semibold text-natalo-800">
-                              {product.name}
-                            </p>
-                            <p className="text-xs font-semibold text-natalo-600">
-                              {index === 0 ? "Produk utama · " : ""}
-                              Harga normal {formatRupiah(product.price)}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeSelectedProduct(product.id)}
-                            className="grid h-8 w-8 place-items-center rounded-full text-natalo-700 transition active:bg-natalo-100"
-                            aria-label={`Hapus ${product.name}`}
-                          >
-                            <FiX className="h-4 w-4" />
-                          </button>
-                        </div>
-                        {kind === "PROMO" && (
-                          <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/70 p-2.5">
-                            <label className="block">
-                              <span className="text-xs font-bold text-rose-800">
-                                Harga Promo (Rp) — kosongkan kalau tidak diskon
-                              </span>
-                              <input
-                                type="number"
-                                inputMode="numeric"
-                                value={promoRaw}
-                                onChange={(e) =>
-                                  setProductPromos((prev) => ({
-                                    ...prev,
-                                    [product.id]: e.target.value,
-                                  }))
-                                }
-                                placeholder={`< ${product.price}`}
-                                className="mt-0.5 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm focus:border-rose-500 focus:outline-none"
-                              />
-                            </label>
-                            {hasValidPromo ? (
-                              <p className="mt-1.5 text-xs font-bold text-rose-800">
-                                Hemat {formatRupiah(product.price - promoNum)} ·{" "}
-                                {discountPct}% off
-                              </p>
-                            ) : promoRaw.trim() !== "" &&
-                              Number.isFinite(promoNum) &&
-                              promoNum >= product.price ? (
-                              <p className="mt-1.5 text-xs font-bold text-amber-700">
-                                Harus lebih kecil dari harga normal.
-                              </p>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {selectedProducts.length >= MAX_ADMIN_TAGGED_PRODUCTS ? (
-                <p className="rounded-xl bg-gray-50 px-3 py-2 text-xs font-bold text-gray-500">
-                  Maksimal {MAX_ADMIN_TAGGED_PRODUCTS} produk terkait sudah
-                  dipilih.
-                </p>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    placeholder={
-                      selectedProducts.length > 0
-                        ? "Cari produk tambahan..."
-                        : "Cari produk (min 2 huruf)..."
-                    }
-                    value={productQuery}
-                    onChange={(e) => setProductQuery(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:border-natalo-500 focus:bg-white focus:outline-none"
-                  />
-                  {productLoading && (
-                    <p className="mt-2 text-center text-xs font-bold text-gray-400">
-                      Mencari...
-                    </p>
-                  )}
-                  {productResults.length > 0 && (
-                    <ul className="mt-2 max-h-60 overflow-y-auto rounded-xl border border-gray-100">
-                      {productResults.map((p) => {
-                        const selected = selectedProductIdSet.has(p.id);
-                        return (
-                          <li key={p.id}>
-                            <button
-                              type="button"
-                              onClick={() => addSelectedProduct(p)}
-                              disabled={selected}
-                              className="flex w-full items-center gap-2 border-b border-gray-50 px-2 py-2 text-left text-xs transition last:border-0 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:opacity-60"
-                            >
-                              {p.imageUrl && (
-                                <Image
-                                  src={p.imageUrl}
-                                  alt=""
-                                  width={32}
-                                  height={32}
-                                  className="h-8 w-8 rounded-lg object-cover"
-                                />
-                              )}
-                              <span className="min-w-0 flex-1 truncate font-bold">
-                                {p.name}
-                              </span>
-                              <span className="shrink-0 text-natalo-600">
-                                {selected ? "Dipilih" : formatRupiah(p.price)}
-                              </span>
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </>
-              )}
-            </section>
-          )}
-
-          {/* Promo schedule (per-product pricing diset di list produk di atas) */}
-          {kind === "PROMO" && (
-            <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-3">
-              <div>
-                <p className="text-xs font-semibold text-gray-700">
-                  Jadwal promo (opsional)
-                </p>
-                <p className="text-xs font-semibold text-gray-500">
-                  Harga promo set per-produk di daftar produk di atas. Promo
-                  tetap aktif tanpa jadwal.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-bold text-gray-600">
-                    Mulai
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={promoStarts}
-                    onChange={(e) => setPromoStarts(e.target.value)}
-                    className="mt-0.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-gray-600">
-                    Berakhir
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={promoEnds}
-                    onChange={(e) => setPromoEnds(e.target.value)}
-                    className="mt-0.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs"
-                  />
-                </div>
-              </div>
-            </section>
-          )}
-
           {error && (
-            <p className="rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700">
+            <p
+              role="alert"
+              className="rounded-2xl bg-red-50 p-3 text-sm font-bold text-red-700"
+            >
               {error}
             </p>
           )}
 
-          {/* Publish — mobile only (desktop: tombol di panel kanan, sticky
-          di kolom). Handler + disabled state identik, cuma tampilan. */}
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="sticky bottom-4 w-full rounded-full bg-natalo-600 py-3 text-sm font-semibold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300 lg:hidden"
-          >
-            {publishButtonLabel}
-          </button>
-        </div>
-
-        {/* Panel kanan — pratinjau hidup + status notifikasi + Publish
-          sticky. Desktop only; read-only (tidak ada state baru, semua
-          dibaca dari state form yang sama). Mobile tetap satu kolom
-          seperti sebelumnya (panel ini disembunyikan). */}
-        <div className="hidden flex-col gap-3 lg:sticky lg:top-4 lg:flex">
-          <p className="text-center text-xs font-bold uppercase tracking-wide text-gray-400">
-            Pratinjau langsung
-          </p>
-
-          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
-            <div className="relative aspect-[4/3] w-full bg-gray-900">
-              {previewThumb ? (
-                <Image
-                  src={previewThumb}
-                  alt=""
-                  fill
-                  sizes="300px"
-                  className="object-cover"
-                  unoptimized={!!thumbPreviewUrl}
-                />
-              ) : (
-                <div className="grid h-full w-full place-items-center text-3xl font-semibold text-gray-600">
-                  NP
-                </div>
-              )}
-              {needsVideo && (
-                <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs font-bold text-white">
-                  {previewDurationLabel ?? "Video"}
-                </span>
-              )}
-            </div>
-            <div className="p-3">
-              <div className="mb-1.5 flex items-center gap-2">
-                <div className="grid h-5 w-5 place-items-center rounded-full bg-natalo-600 text-xs font-semibold text-white">
-                  N
-                </div>
-                <span className="text-xs font-semibold text-gray-800">
-                  Natalo Petshop
-                </span>
-              </div>
-              <p className="line-clamp-2 text-xs font-semibold text-gray-900">
-                {previewTitle}
-              </p>
-              <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">
-                {previewCaption}
-              </p>
-              {needsProduct && selectedProducts.length > 0 && (
-                <p className="mt-2 text-xs font-bold text-natalo-600">
-                  {selectedProducts.length} produk
-                </p>
-              )}
-            </div>
+          <div className="af-savebar">
+            <Button
+              type="button"
+              onClick={() => void leaveForm()}
+              variant="secondary"
+              disabled={submitting}
+            >
+              Batal
+            </Button>
+            <Button type="button" onClick={handleSubmit} disabled={submitting}>
+              {publishButtonLabel}
+            </Button>
           </div>
-
-          <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-white px-3 py-2">
-            <span className="text-xs font-bold text-gray-600">
-              Beri tahu pelanggan
-            </span>
-            <span className="ml-auto text-xs font-bold text-gray-400">
-              {notifyOnPublish ? "Nyala" : "Mati"}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="w-full rounded-full bg-natalo-600 py-3 text-sm font-semibold text-white shadow-lg transition active:scale-[0.98] disabled:bg-gray-300"
-          >
-            {publishButtonLabel}
-          </button>
         </div>
+        <aside className="af-preview-aside">
+          <div className="af-preview-heading">
+            <strong>Pratinjau Feed</strong>
+            <span>Tampilan pelanggan</span>
+          </div>
+          {previewContent}
+        </aside>
       </div>
+      <AdminDialog
+        open={previewOpen}
+        title="Pratinjau Feed"
+        onClose={() => setPreviewOpen(false)}
+        className="af-preview-dialog"
+      >
+        {previewOpen && previewContent}
+      </AdminDialog>
 
       {/* Loading overlay — full-screen blocker saat submitting. Kompres
           video di Bunny butuh 30s-2 menit, kalau user cuma lihat tombol
           disabled mereka kemungkinan close tab. Overlay ini bikin jelas:
           ada proses jalan, jangan ganggu. */}
       {submitting && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 px-6 backdrop-blur-sm">
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 px-6 backdrop-blur-sm"
+        >
           <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
             <div
               className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-natalo-100 border-t-natalo-600"
@@ -1427,8 +1453,11 @@ export function AdminFeedCreateClient() {
               <>
                 <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-gray-100">
                   <div
-                    className="h-full rounded-full bg-natalo-600 transition-[width] duration-200"
-                    style={{ width: `${compressProgress}%` }}
+                    className="h-full rounded-full bg-natalo-600 transition-transform duration-200"
+                    style={{
+                      transform: `scaleX(${compressProgress / 100})`,
+                      transformOrigin: "left",
+                    }}
                   />
                 </div>
                 <p className="mt-2 text-xs font-bold text-gray-500">

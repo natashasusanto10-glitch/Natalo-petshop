@@ -11,8 +11,8 @@ import {
 import { NumberInput } from "@/components/admin/ui/NumberInput";
 import { AdminDisclosure } from "@/components/admin/ui/AdminDisclosure";
 import { AdminDialog } from "@/components/admin/ui/AdminDialog";
-import { ProductCard } from "@/components/ProductCard";
-import { mapCatalogProduct } from "@/lib/product/catalog-product";
+import { ProductStorefrontPreview } from "@/components/admin/ProductStorefrontPreview";
+import type { CatalogProductInput } from "@/lib/product/catalog-product";
 import ProductMediaRail from "@/components/admin/ProductMediaRail";
 import { BrandCombobox } from "@/components/admin/BrandCombobox";
 import { CategoryCombobox } from "@/components/admin/CategoryCombobox";
@@ -592,7 +592,7 @@ export function ProductForm({
 
   const initialAttrs = initialProduct?.variantAttrs ?? [];
   const initialVariants = initialProduct?.variants ?? [];
-  const preview = mapCatalogProduct({
+  const previewInput: CatalogProductInput = {
     id: initialProduct?.id ?? "admin-preview",
     name: name || "Nama produk",
     slug: initialProduct?.slug ?? "admin-preview",
@@ -638,7 +638,7 @@ export function ProductForm({
       ...item,
       discount: { endsAt: new Date(item.discount.endsAt) },
     })),
-  });
+  };
   return (
     <AdminPage maxWidth="xl" className="admin-product-form">
       <a
@@ -1010,17 +1010,12 @@ export function ProductForm({
               </p>
             )}
           </fieldset>
-          <aside className="admin-preview-panel">
-            <p className="admin-preview-label">PRATINJAU KATALOG</p>
-            <div className="admin-storefront-preview">
-              <ProductCard
-                product={preview}
-                preview
-                showCta={false}
-                showRating
-              />
-            </div>
-          </aside>
+          <ProductStorefrontPreview
+            input={previewInput}
+            draft={variants}
+            categoryName={categories.find((c) => c.id === categoryId)?.name}
+            draftVideoUrl={draftVideo?.url}
+          />
         </div>
         <div className="admin-savebar">
           <div className="text-xs text-slate-500" role="status">

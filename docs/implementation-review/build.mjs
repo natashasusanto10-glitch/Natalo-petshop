@@ -8,4 +8,4 @@ await build({entryPoints:[path.join(root,"review.jsx")],bundle:true,format:"esm"
 let css=await fs.readFile("app/globals.css","utf8");
 css=css.replace('@import "tailwindcss";','@import "tailwindcss" source(none);\n@source "../../components";\n@source "../../app/admin";\n@source "./";').replace('@import "./auth-premium.css";','');
 const output=await postcss([tailwind({base:process.cwd()})]).process(css,{from:path.join(root,"review.css")});
-await fs.writeFile(path.join(root,"review.css"),output.css+"\n"+await fs.readFile("app/admin/admin-premium.css","utf8"));
+await fs.writeFile(path.join(root,"review.css"),output.css+"\n"+await fs.readFile("app/admin/admin-premium.css","utf8")+"\n"+await fs.readFile("app/admin/feed-premium.css","utf8")+"\n"+await fs.readFile("app/admin/promo-premium.css","utf8")+"\n"+await fs.readFile(path.join(root,"brand-mockup.css"),"utf8")+"\n"+await fs.readFile(path.join(root,"feed-mockup.css"),"utf8")+"\n"+await fs.readFile(path.join(root,"promo-mockup.css"),"utf8"));

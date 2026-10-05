@@ -17,7 +17,7 @@ export default async function BrandsPage() {
         isActive: true,
         name: { not: "" },
       },
-      orderBy: [{ position: "asc" }, { createdAt: "desc" }, { name: "asc" }],
+      orderBy: { name: "asc" },
       select: {
         id: true,
         name: true,
