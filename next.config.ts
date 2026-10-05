@@ -191,6 +191,13 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // Filenames include a content hash; changed artwork gets a new URL.
+        source: "/assets/lottie/shortcuts/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
         // Static info pages — content jarang berubah, cache 1 jam di CDN,
         // serve stale-while-revalidate 24 jam. Tetap "must-revalidate" di
         // browser sehingga reload manual ambil fresh copy.

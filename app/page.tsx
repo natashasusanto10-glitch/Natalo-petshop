@@ -17,13 +17,13 @@ import { HomeExploreProducts } from "@/components/home/HomeExploreProducts";
 import { HomeProductCard } from "@/components/home/HomeProductCard";
 import HeroBanner from "@/components/home/HeroBanner";
 import { loadHeroSlides } from "@/lib/hero-slides-server";
-import { ExternalLink } from "@/components/ExternalLink";
 import { AppStoreCTACard } from "@/components/AppStoreBadge";
 import { mapDbBrandsToCatalogItems } from "@/lib/brand-catalog";
 import { PageContainer } from "@/components/ui/PageContainer";
 import { ResponsiveGrid } from "@/components/ui/ResponsiveGrid";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { AppleReveal } from "@/components/AppleReveal";
+import { AnimatedShortcutIcon, type ShortcutArtwork } from "@/components/home/AnimatedShortcutIcon";
 
 const brand = process.env.NEXT_PUBLIC_BRAND_NAME || "Natalo Petshop";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -64,36 +64,16 @@ type HomeIconName =
   | "dog-training"
   | "chat";
 
-const SHORTCUT_ITEMS: {
-  icon: HomeIconName;
-  label: string;
-  href: string;
-  bg: string;
-  color: string;
-  external?: boolean;
-}[] = [
-  { icon: "sparkles", label: "Produk Baru", href: "/products?new=last-30-days", bg: "bg-blue-50", color: "text-blue-600" },
-  { icon: "medal", label: "Terlaris", href: "/products?popular=best-seller", bg: "bg-amber-50", color: "text-amber-600" },
-  { icon: "voucher-pet", label: "Voucher", href: "/member", bg: "bg-pink-50", color: "text-pink-600" },
-  { icon: "flame", label: "Trending", href: "/products?popular=trending", bg: "bg-red-50", color: "text-red-600" },
-  {
-    icon: "house-call-grooming",
-    label: "House Call Grooming",
-    href: "https://wa.me/6281289997113?text=Halo%20Natalo%2C%20saya%20ingin%20booking%20House%20Call%20Grooming",
-    bg: "bg-emerald-50",
-    color: "text-emerald-600",
-    external: true,
-  },
-  {
-    icon: "dog-training",
-    label: "Dog Training",
-    href: "https://wa.me/6281289997113?text=Halo%20Natalo%2C%20saya%20ingin%20konsultasi%20Dog%20Training",
-    bg: "bg-violet-50",
-    color: "text-violet-600",
-    external: true,
-  },
+const SHORTCUT_ITEMS: { artwork: ShortcutArtwork; label: string; href: string }[] = [
+  { artwork: "cat-food", label: "Makanan Kucing", href: "/products?category=makanan-kucing" },
+  { artwork: "dog-food", label: "Makanan Anjing", href: "/products?category=makanan-anjing" },
+  { artwork: "fish-food", label: "Makanan Ikan", href: "/products?category=makanan-ikan" },
+  { artwork: "medicine", label: "Obat & Suplemen", href: "/products?category=obat-suplemen" },
+  { artwork: "promo", label: "Promo", href: "/products?discount_only=true" },
+  { artwork: "new-products", label: "Produk Baru", href: "/products?new=last-30-days" },
+  { artwork: "voucher", label: "Voucher", href: "/member/vouchers" },
+  { artwork: "points", label: "Tukar Poin", href: "/account/loyalty/redeem" },
 ];
-
 function HomeIcon({
   name,
   className = "h-7 w-7",
@@ -815,43 +795,16 @@ export default async function HomePage() {
 
       {/* ── 4. HASHTAG CAMPAIGN + SHORTCUT GRID ── */}
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 md:gap-4">
-          {SHORTCUT_ITEMS.map((s) => {
-            const content = (
-              <>
-                <div
-                  className={`flex h-14 w-14 items-center justify-center rounded-full ${s.bg} ${s.color} shadow-sm md:h-12 md:w-12`}
-                >
-                  <HomeIcon name={s.icon} className="h-7 w-7 md:h-6 md:w-6" />
-                </div>
-                <span className="text-center text-[11px] font-medium leading-tight text-zinc-700 md:text-sm md:font-semibold">
-                  {s.label}
-                </span>
-              </>
-            );
-
-            if (s.external) {
-              return (
-                <ExternalLink
-                  key={s.label}
-                  href={s.href}
-                  className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90 md:flex-row md:justify-center md:gap-3 md:rounded-2xl md:border md:border-[#eef3fb] md:bg-white md:p-4 md:shadow-sm md:hover:-translate-y-0.5 md:hover:shadow-md"
-                >
-                  {content}
-                </ExternalLink>
-              );
-            }
-
-            return (
-              <Link
-                key={s.label}
-                href={s.href}
-                className="flex flex-col items-center gap-1.5 rounded-xl p-2 transition active:opacity-90 md:flex-row md:justify-center md:gap-3 md:rounded-2xl md:border md:border-[#eef3fb] md:bg-white md:p-4 md:shadow-sm md:hover:-translate-y-0.5 md:hover:shadow-md"
-              >
-                {content}
-              </Link>
-            );
-          })}
+        <div className="grid grid-cols-4 gap-x-2 gap-y-2 md:grid-cols-8 md:gap-3">
+          {SHORTCUT_ITEMS.map(item => (
+            <Link key={item.artwork} href={item.href}
+              className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1 transition active:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 md:hover:bg-blue-50/50">
+              <AnimatedShortcutIcon artwork={item.artwork} />
+              <span className="text-center text-[11px] font-medium leading-tight text-zinc-700 md:text-xs">
+                {item.label}
+              </span>
+            </Link>
+          ))}
         </div>
       </PageContainer>
 

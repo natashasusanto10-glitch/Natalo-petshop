@@ -32,7 +32,7 @@ enum ShortcutArtwork {
 /// shortcut leaves view, and honors both the app and OS motion preferences.
 class AnimatedShortcutIcon extends StatefulWidget {
   const AnimatedShortcutIcon(
-      {super.key, required this.artwork, this.size = 72});
+      {super.key, required this.artwork, this.size = 56});
 
   final ShortcutArtwork artwork;
   final double size;

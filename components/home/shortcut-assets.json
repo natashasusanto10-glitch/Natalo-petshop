@@ -1,0 +1,34 @@
+{
+  "cat-food": {
+    "animation": "/assets/lottie/shortcuts/cat-food.ce015c9418bb.json",
+    "still": "/assets/lottie/shortcuts/cat-food-still.98c3ae03b432.svg"
+  },
+  "dog-food": {
+    "animation": "/assets/lottie/shortcuts/dog-food.d619959591d9.json",
+    "still": "/assets/lottie/shortcuts/dog-food-still.3e599c9023e3.svg"
+  },
+  "fish-food": {
+    "animation": "/assets/lottie/shortcuts/fish-food.101884c81b6d.json",
+    "still": "/assets/lottie/shortcuts/fish-food-still.97b5f6e38e5b.svg"
+  },
+  "medicine": {
+    "animation": "/assets/lottie/shortcuts/medicine.cb0a935b6e46.json",
+    "still": "/assets/lottie/shortcuts/medicine-still.ac0d56dab67e.svg"
+  },
+  "promo": {
+    "animation": "/assets/lottie/shortcuts/promo.78f12aa723f5.json",
+    "still": "/assets/lottie/shortcuts/promo-still.8309cf610e2d.svg"
+  },
+  "new-products": {
+    "animation": "/assets/lottie/shortcuts/new-products.b4d66a347cc8.json",
+    "still": "/assets/lottie/shortcuts/new-products-still.3100500e47e6.svg"
+  },
+  "voucher": {
+    "animation": "/assets/lottie/shortcuts/voucher.dc0f136cba63.json",
+    "still": "/assets/lottie/shortcuts/voucher-still.2eab13092803.svg"
+  },
+  "points": {
+    "animation": "/assets/lottie/shortcuts/points.bfeb74649cf9.json",
+    "still": "/assets/lottie/shortcuts/points-still.6eef4a73ed4b.svg"
+  }
+}
