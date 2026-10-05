@@ -126,7 +126,16 @@ export function HomeExploreProducts({
       {loading && <HomeProductSkeleton count={4} />}
 
       {error && (
-        <p className="py-4 text-center text-sm font-semibold text-red-500">{error}</p>
+        <p role="alert" className="pt-4 text-center text-sm font-semibold text-red-500">{error}</p>
+      )}
+
+      {!loading && hasMore && (
+        <div className="py-4 text-center">
+          <button type="button" onClick={() => void loadMore()}
+            className="rounded-full border border-blue-200 bg-white px-6 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+            {error ? "Coba lagi" : "Muat produk lainnya"}
+          </button>
+        </div>
       )}
 
       {!loading && !hasMore && products.length > 0 && (

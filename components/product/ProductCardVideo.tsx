@@ -38,10 +38,21 @@ export function ProductCardVideo({
     if (!wrap || !video || failed) return;
 
     let inView = false;
+    let playbackBlocked = false;
+    let playPending = false;
+    let disposed = false;
     const tryPlay = () => {
-      if (!inView) return;
+      if (!inView || playbackBlocked || playPending || disposed || !video.paused) return;
       if (!requestPlay(id)) return;
-      video.play().then(() => setCanPlay(true)).catch(() => releasePlay(id));
+      playPending = true;
+      video.play().then(() => {
+        if (!disposed && inView) setCanPlay(true);
+      }).catch(() => {
+        // Block before releasing: releasePlay synchronously notifies this
+        // card too. Retrying a rejected play here can starve the UI forever.
+        playbackBlocked = true;
+        releasePlay(id);
+      }).finally(() => { playPending = false; });
     };
     const stop = () => {
       video.pause();
@@ -64,6 +75,7 @@ export function ProductCardVideo({
     // kartu lain melepas slotnya (lihat comment di registry).
     const unsubscribe = subscribeSlotFree(() => tryPlay());
     return () => {
+      disposed = true;
       io.disconnect();
       unsubscribe();
       stop();
