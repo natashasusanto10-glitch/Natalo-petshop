@@ -1272,9 +1272,9 @@
   cursor: default;
 }
 .admin-preview-purchase button:first-child {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
-  color: #15803d;
+  background: white;
+  border-color: #e4eaf2;
+  color: #0d6efd;
 }
 .admin-preview-purchase button:last-child {
   background: #0968d7;
@@ -2957,4 +2957,10 @@
   .admin-stock-stats .admin-stat-card { min-height: 0; padding: 12px; }
   .admin-stock-stats .admin-stat-value { font-size: 24px; margin-block: 4px; }
   .admin-stock-stats .admin-stat-bottom { display: none; }
+}
+
+@media (max-width: 767px) {
+  .admin-customer-stats .admin-stat-card { min-height: 0; padding: 12px; }
+  .admin-customer-stats .admin-stat-value { font-size: 24px; margin-block: 4px; }
+  .admin-customer-stats .admin-stat-bottom { display: none; }
 }

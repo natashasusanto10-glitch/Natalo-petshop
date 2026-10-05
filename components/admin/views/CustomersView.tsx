@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   PageHeader,
   EmptyState,
@@ -29,6 +30,12 @@ export function CustomersView({
   totalPages,
   pageHref,
 }: CustomersViewProps) {
+  const customerHref = (id: string) => {
+    const context = new URLSearchParams();
+    if (search) context.set("q", search);
+    if (page > 1) context.set("fromPage", String(page));
+    return `/admin/customers/${id}${context.size ? `?${context}` : ""}`;
+  };
   return (
     <AdminPage
       maxWidth="xl"
@@ -68,12 +75,16 @@ export function CustomersView({
           <Button type="submit">Cari</Button>
           {search && (
             <Button href="/admin/customers" variant="secondary">
-              Reset
+              Atur ulang
             </Button>
           )}
         </form>
 
-        {customers.length === 0 ? (
+        {total > 0 && page > totalPages ? (
+          <div className="mt-6 rounded-2xl border border-zinc-200 bg-white">
+            <EmptyState title="Halaman tidak tersedia" description={`Daftar ini hanya sampai halaman ${totalPages}.`} action={{ label: "Kembali ke halaman pertama", href: pageHref(1) }} size="full" />
+          </div>
+        ) : customers.length === 0 ? (
           <div className="mt-6 rounded-2xl border border-zinc-200 bg-white">
             <EmptyState
               icon={search ? "🔍" : "👥"}
@@ -107,20 +118,20 @@ export function CustomersView({
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="truncate font-bold text-zinc-900">
+                          <Link href={customerHref(customer.id)} className="break-words font-semibold text-natalo-700 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-natalo-600">
                             {customer.name || "Pelanggan tanpa nama"}
-                          </p>
-                          <Badge variant="info">
+                          </Link>
+                          <span className="shrink-0 whitespace-nowrap"><Badge variant="info">
                             {customer._count.orders} pesanan
-                          </Badge>
+                          </Badge></span>
                         </div>
                         {customer.email && (
-                          <p className="mt-0.5 truncate text-xs text-zinc-500">
+                          <p className="mt-0.5 break-all text-sm text-zinc-600">
                             {customer.email}
                           </p>
                         )}
                         {customer.phone && (
-                          <p className="mt-0.5 truncate text-xs text-zinc-500">
+                          <p className="mt-0.5 break-words text-sm text-zinc-600">
                             {customer.phone}
                           </p>
                         )}
@@ -136,6 +147,7 @@ export function CustomersView({
                             }
                           )}
                         </p>
+                        <Link href={customerHref(customer.id)} className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-natalo-700 hover:underline">Lihat detail &amp; riwayat →</Link>
                       </div>
                     </div>
                   </div>
@@ -161,6 +173,7 @@ export function CustomersView({
                       <th className="hidden px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500 lg:table-cell">
                         Bergabung
                       </th>
+                      <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500">Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -176,9 +189,9 @@ export function CustomersView({
                               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-natalo-50 text-xs font-semibold text-natalo-700">
                                 {initial}
                               </div>
-                              <p className="font-bold text-zinc-900">
+                              <Link href={customerHref(customer.id)} className="font-semibold text-natalo-700 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-natalo-600">
                                 {customer.name || "Pelanggan tanpa nama"}
-                              </p>
+                              </Link>
                             </div>
                           </td>
                           <td className="px-5 py-4 text-zinc-500">
@@ -203,6 +216,7 @@ export function CustomersView({
                               }
                             )}
                           </td>
+                          <td className="px-5 py-4"><Button href={customerHref(customer.id)} variant="secondary" size="sm">Lihat riwayat</Button></td>
                         </tr>
                       );
                     })}

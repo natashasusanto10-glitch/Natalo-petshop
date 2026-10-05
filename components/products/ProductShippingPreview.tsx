@@ -56,7 +56,7 @@ export function ProductShippingPreview({ name, price, weightGram, hasVariants }:
       body: JSON.stringify({
         destinationAreaId: address.areaId, destinationPostalCode: address.postalCode,
         destinationLatitude: address.latitude, destinationLongitude: address.longitude,
-        items: [{ name, price: variant?.price ?? price, weightGram: variant?.weightGram ?? weightGram, quantity: 1 }],
+        items: [{ name, price: variant?.discountPrice ?? variant?.price ?? price, weightGram: variant?.weightGram ?? weightGram, quantity: 1 }],
       }),
     }).then(async response => {
       const data = await response.json();

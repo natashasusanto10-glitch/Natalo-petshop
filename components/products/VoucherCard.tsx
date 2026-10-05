@@ -87,7 +87,7 @@ export function isVisibleProductVoucher(voucher: VoucherItem) {
 
 export function VoucherCard({ vouchers: vouchersProp, productSlug, savingsAmount = 0 }: Props) {
   const variant = useProductDetailState()?.variant;
-  if (variant) savingsAmount = 0;
+  if (variant) savingsAmount = Math.max(0, variant.price - (variant.discountPrice ?? variant.price));
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   // Kalau vouchers tidak di-pass server-side, fetch sendiri client-side

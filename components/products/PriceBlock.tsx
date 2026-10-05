@@ -26,9 +26,9 @@ export function PriceBlock({
 }: Props) {
   const variant = useProductDetailState()?.variant;
   if (variant) {
-    price = variant.price;
-    originalPrice = null;
-    discountPercent = null;
+    price = variant.discountPrice ?? variant.price;
+    originalPrice = price < variant.price ? variant.price : null;
+    discountPercent = originalPrice ? Math.round((originalPrice - price) / originalPrice * 100) : null;
   }
   const hasDiscount =
     typeof originalPrice === "number" && originalPrice > price;

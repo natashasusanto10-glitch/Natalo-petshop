@@ -1,11 +1,9 @@
 "use client";
 
 import { useId, useState } from "react";
-import { ProductCard } from "@/components/ProductCard";
 import { ProductImageCarousel } from "@/components/ProductImageCarousel";
 import { PriceBlock } from "@/components/products/PriceBlock";
 import { SocialProofRow } from "@/components/products/SocialProofRow";
-import { TrustInfoCard } from "@/components/products/TrustInfoCard";
 import { MarkdownBody } from "@/components/products/ProductTabs";
 import {
   mapCatalogProduct,
@@ -27,7 +25,6 @@ export function ProductStorefrontPreview({
   categoryName,
   draftVideoUrl,
 }: Props) {
-  const [mode, setMode] = useState<"detail" | "catalog">("detail");
   const [selection, setSelection] = useState<string[]>([]);
   const panelId = useId();
   const catalog = mapCatalogProduct(input);
@@ -94,34 +91,14 @@ export function ProductStorefrontPreview({
   return (
     <aside
       className="admin-preview-panel admin-detail-preview-panel"
-      aria-label="Pratinjau tampilan pelanggan"
+      aria-label="Pratinjau tampilan Flutter app"
     >
-      <p className="admin-preview-label">PRATINJAU PELANGGAN</p>
-      <div className="admin-preview-switch" aria-label="Jenis pratinjau">
-        <button
-          type="button"
-          aria-pressed={mode === "detail"}
-          aria-controls={panelId}
-          onClick={() => setMode("detail")}
-        >
-          Detail produk
-        </button>
-        <button
-          type="button"
-          aria-pressed={mode === "catalog"}
-          aria-controls={panelId}
-          onClick={() => setMode("catalog")}
-        >
-          Kartu katalog
-        </button>
-      </div>
+      <p className="admin-preview-label">PRATINJAU APP</p>
       <div id={panelId}>
-        {mode === "catalog" ? (
-          <div className="admin-storefront-preview admin-preview-catalog">
-            <ProductCard product={catalog} preview showCta={false} showRating />
-          </div>
-        ) : (
           <div className="admin-product-detail-preview">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-white px-3 py-3 text-gray-900" aria-label="Header aplikasi">
+              <span aria-hidden="true">←</span><span className="text-sm font-semibold">Detail Produk</span><span className="flex gap-3" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 16V3m-4 4 4-4 4 4M5 11v9h14v-9" /></svg><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m3 3 2 2 3 11h11l2-9H6M9 20h.01M18 20h.01" /></svg></span>
+            </div>
             <div
               className="admin-preview-scroll"
               tabIndex={0}
@@ -133,6 +110,7 @@ export function ProductStorefrontPreview({
                   images={galleryImages}
                   alt={input.name}
                   video={video}
+                  showThumbnails={false}
                 />
               </div>
               <section className="admin-preview-details">
@@ -154,10 +132,6 @@ export function ProductStorefrontPreview({
                 <SocialProofRow
                   avgRating={input.avgRating}
                   reviewCount={input.reviewCount}
-                />
-                <TrustInfoCard
-                  stock={detail.stock}
-                  outOfStock={detail.stock <= 0}
                 />
                 {input.hasVariants && (
                   <div className="admin-preview-variations">
@@ -210,6 +184,11 @@ export function ProductStorefrontPreview({
                   </div>
                 )}
               </section>
+              <div className="mx-4 divide-y divide-gray-200 text-xs text-gray-700">
+                <p className="flex items-center justify-between py-4"><span>Pengiriman · Stok {detail.stock}</span><span aria-hidden="true">›</span></p>
+                <p className="flex items-center justify-between py-4"><span>Belanja aman · Sesuai kebijakan Natalo</span><span aria-hidden="true">›</span></p>
+              </div>
+              <div className="border-y border-gray-100 bg-white px-4 py-3 text-center text-sm font-semibold text-blue-600">Detail</div>
               <section className="admin-preview-description">
                 <h3>Deskripsi</h3>
                 <MarkdownBody body={input.description} />
@@ -234,10 +213,7 @@ export function ProductStorefrontPreview({
               aria-label="Contoh tombol pembelian, tidak aktif pada pratinjau"
             >
               <button type="button" disabled>
-                Chat WA
-              </button>
-              <button type="button" disabled>
-                + Keranjang
+                Chat
               </button>
               <button type="button" disabled>
                 {detail.stock <= 0
@@ -246,9 +222,11 @@ export function ProductStorefrontPreview({
                   ? "Pilih Varian"
                   : "Beli Sekarang"}
               </button>
+              <button type="button" disabled>
+                + Keranjang
+              </button>
             </div>
           </div>
-        )}
       </div>
     </aside>
   );

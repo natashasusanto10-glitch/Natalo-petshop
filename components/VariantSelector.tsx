@@ -59,10 +59,10 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
 
   // Harga tampil: range sebelum pilih, single setelah pilih
   const priceDisplay = useMemo(() => {
-    if (currentVariant) return formatRupiah(currentVariant.price);
+    if (currentVariant) return formatRupiah(currentVariant.discountPrice ?? currentVariant.price);
     const activePrices = variants
       .filter((v) => v.isActive && !v.deletedAt)
-      .map((v) => v.price);
+      .map((v) => v.discountPrice ?? v.price);
     if (!activePrices.length) return formatRupiah(0);
     const min = Math.min(...activePrices);
     const max = Math.max(...activePrices);
@@ -111,7 +111,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
       variantId: currentVariant.id,
       variantLabel: selectedLabel,
       name: product.name,
-      price: currentVariant.price,
+      price: currentVariant.discountPrice ?? currentVariant.price,
       weightGram: currentVariant.weightGram,
       stock: currentVariant.stock,
       imageUrl: currentVariant.imageUrl ?? product.imageUrl,
@@ -120,7 +120,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
 
   // Broadcast state ke StickyAddToCartBar
   const minPrice = useMemo(() => {
-    const active = variants.filter((v) => v.isActive && !v.deletedAt).map((v) => v.price);
+    const active = variants.filter((v) => v.isActive && !v.deletedAt).map((v) => v.discountPrice ?? v.price);
     return active.length ? Math.min(...active) : 0;
   }, [variants]);
 
@@ -133,7 +133,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
           // Surface OOS bahkan pre-selection kalau semua varian habis,
           // supaya sticky bar disable "Beli Sekarang".
           outOfStock: effectiveOutOfStock,
-          price: currentVariant?.price ?? minPrice,
+          price: currentVariant?.discountPrice ?? currentVariant?.price ?? minPrice,
         },
       }),
     );
@@ -197,9 +197,9 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
       variantId: currentVariant.id,
       variantLabel: selectedLabel,
       name: product.name,
-      price: currentVariant.price,
+      price: currentVariant.discountPrice ?? currentVariant.price,
       quantity: window.matchMedia("(min-width: 768px)").matches ? Math.min(quantity, currentVariant.stock) : 1,
-      subtotal: currentVariant.price * (window.matchMedia("(min-width: 768px)").matches ? Math.min(quantity, currentVariant.stock) : 1),
+      subtotal: (currentVariant.discountPrice ?? currentVariant.price) * (window.matchMedia("(min-width: 768px)").matches ? Math.min(quantity, currentVariant.stock) : 1),
       weightGram: currentVariant.weightGram,
       stock: currentVariant.stock,
       imageUrl: currentVariant.imageUrl ?? product.imageUrl,

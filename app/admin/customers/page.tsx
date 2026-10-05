@@ -15,7 +15,7 @@ export default async function AdminCustomersPage({
 
   const { page: pageStr, q } = await searchParams;
   const page = parsePageParam(pageStr);
-  const search = q?.trim() ?? "";
+  const search = q?.trim().slice(0, 100) ?? "";
 
   // Nama / email / HP / username. Satu objek `where` dipakai bersama daftar
   // DAN penghitungnya supaya nomor halaman tidak pernah menjanjikan halaman
@@ -29,10 +29,13 @@ export default async function AdminCustomersPage({
   const [customers, total] = await Promise.all([
     prisma.user.findMany({
       where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: Math.min((page - 1) * PAGE_SIZE, 2147483647),
       take: PAGE_SIZE,
-      include: { _count: { select: { orders: true } } },
+      select: {
+        id: true, name: true, email: true, phone: true, createdAt: true,
+        _count: { select: { orders: true } },
+      },
     }),
     prisma.user.count({ where }),
   ]);

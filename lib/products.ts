@@ -43,6 +43,7 @@ export type StoreProductVariant = {
   id: string;
   sku: string | null;
   price: number;
+  discountPrice?: number | null;
   stock: number;
   weightGram: number;
   imageUrl: string | null;
@@ -862,7 +863,11 @@ export async function getProductBySlug(
         voucherPreview: null,
         shippingVoucherPreview: null,
         variantAttrs: p.variantAttrs as unknown as StoreVariantAttribute[],
-        variants: p.variants as unknown as StoreProductVariant[],
+        variants: p.variants.map((variant) => {
+          const index = activeVariants.findIndex((item) => item.id === variant.id);
+          const effectivePrice = index >= 0 ? effectiveVariantPrices[index] : variant.price;
+          return { ...variant, discountPrice: effectivePrice < variant.price ? effectivePrice : null };
+        }) as unknown as StoreProductVariant[],
         flashSaleEndsAt: p.flashSaleEndsAt?.toISOString() ?? null,
         ...productVideoPayload({
           videoStatus: p.videoStatus,

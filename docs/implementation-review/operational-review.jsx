@@ -1,3 +1,4 @@
+import { CustomerDetailView } from "../../components/admin/views/CustomerDetailView";
 import { VoucherDiscountFields } from "../../components/admin/VoucherDiscountFields";
 import { VoucherTargetPicker } from "../../components/admin/VoucherTargetPicker";
 import ImportProductsPage from "../../app/admin/(protected)/products/import/page";
@@ -694,6 +695,17 @@ export function operationalPage(path) {
         }}
       />
     );
+  if (path.startsWith("/admin/customers/")) {
+    const customer = customers.find(item => item.id === path.split("/").pop()) ?? customers[0];
+    const context = new URLSearchParams();
+    if (query.get("q")) context.set("q", query.get("q"));
+    if (query.get("fromPage")) context.set("fromPage", query.get("fromPage"));
+    const back = new URLSearchParams();
+    if (query.get("q")) back.set("q", query.get("q"));
+    if (query.get("fromPage")) back.set("page", query.get("fromPage"));
+    const empty = query.has("empty");
+    return <CustomerDetailView customer={{ ...customer, username: "pelanggan-contoh" }} orders={empty ? [] : orders.slice(0, 3)} total={empty ? 0 : 3} paid={empty ? 0 : 2} ongoing={empty ? 0 : 3} page={Number(query.get("page")) || 1} totalPages={empty ? 0 : 1} context={context.toString()} backHref={`/admin/customers${back.size ? `?${back}` : ""}`} />;
+  }
   if (path === "/admin/customers") {
     const search = query.get("q") || "";
     const page = Math.max(1, Number(query.get("page")) || 1);
