@@ -1,3 +1,5 @@
+import { AppDownloadMenu } from "@/components/header/AppDownloadMenu";
+
 /**
  * Announcement bar global — baris tipis paling atas (maks 36px) berisi
  * info toko. < sm: marquee berjalan pelan (track digandakan, keyframe
@@ -38,7 +40,8 @@ export function AnnouncementBar() {
       className="bg-gradient-to-r from-natalo-700 via-natalo-600 to-natalo-700 text-white"
     >
       {/* ≥ sm — statis di tengah, muat tanpa scroll. */}
-      <div className="mx-auto hidden h-9 max-w-[var(--nat-container)] items-center justify-center gap-5 px-4 text-xs font-semibold tracking-wide sm:flex">
+      <div className="mx-auto hidden h-9 max-w-[var(--nat-container)] items-center justify-between gap-5 px-4 text-xs font-semibold tracking-wide sm:flex">
+        <div className="flex min-w-0 items-center gap-5 overflow-hidden">
         {ITEMS.map((item, index) => (
           <span key={item} className="flex items-center gap-5 whitespace-nowrap">
             {index > 0 && (
@@ -49,9 +52,12 @@ export function AnnouncementBar() {
             <span>{item}</span>
           </span>
         ))}
+        </div>
+        <AppDownloadMenu />
       </div>
       {/* < sm — marquee pelan, loop mulus. */}
-      <div className="overflow-hidden sm:hidden">
+      <div className="flex items-center gap-3 px-4 sm:hidden">
+        <div className="min-w-0 flex-1 overflow-hidden">
         <div
           className="nat-announcement-track flex h-9 w-max items-center"
           style={{ animationDuration: "18s" }}
@@ -59,6 +65,8 @@ export function AnnouncementBar() {
           <Items />
           <Items hidden />
         </div>
+        </div>
+        <AppDownloadMenu />
       </div>
     </div>
   );

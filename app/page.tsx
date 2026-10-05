@@ -18,7 +18,6 @@ import { HomeExploreProducts } from "@/components/home/HomeExploreProducts";
 import { HomeProductCard } from "@/components/home/HomeProductCard";
 import HeroBanner from "@/components/home/HeroBanner";
 import { loadHeroSlides } from "@/lib/hero-slides-server";
-import { AppStoreCTACard } from "@/components/AppStoreBadge";
 import { mapDbBrandsToCatalogItems } from "@/lib/brand-catalog";
 import { PageContainer } from "@/components/ui/PageContainer";
 import { ResponsiveGrid } from "@/components/ui/ResponsiveGrid";
@@ -876,10 +875,6 @@ export default async function HomePage() {
           </ResponsiveGrid>
         </PageContainer>
       )}
-
-      <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
-        <AppStoreCTACard />
-      </PageContainer>
 
       {/* ── 11. PRODUK TERLARIS ── */}
       <PageContainer as="section" className="py-[calc(var(--nat-section-y)/2)]">
