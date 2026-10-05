@@ -350,7 +350,7 @@ function getHomeRecommendations(products: StoreProduct[]) {
     (a, b) => b.reviewCount - a.reviewCount || b.avgRating - a.avgRating,
   );
 
-  return uniqueProducts([...promoProducts, ...popularProducts, ...products]).slice(0, 10);
+  return uniqueProducts([...promoProducts, ...popularProducts, ...products]).slice(0, 12);
 }
 
 const VALID_BEST_SELLER_ORDER_STATUSES: OrderStatus[] = [
@@ -1026,7 +1026,7 @@ export default async function HomePage() {
         </div>
 
         {recommendedProducts.length > 0 ? (
-          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 4, xl: 5, xxl: 6 }} className="mt-3 product-grid">
+          <ResponsiveGrid cols={{ base: 2, sm: 3, lg: 4, xl: 4, xxl: 6 }} className="mt-3 product-grid">
             {recommendedProducts.map((product, index) => (
               <HomeProductCard
                 key={product.id}
