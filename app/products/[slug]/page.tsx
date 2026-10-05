@@ -198,11 +198,7 @@ export default async function ProductDetailPage({
                   variants={product.variants}
                 />
               </div>
-            ) : (
-              <div id="beli" className="scroll-mt-20">
-                <ProductActions product={product} />
-              </div>
-            )}
+            ) : null}
 
 
             {product.flashSaleEndsAt && new Date(product.flashSaleEndsAt).getTime() > Date.now() && (
@@ -240,6 +236,7 @@ export default async function ProductDetailPage({
 
             {/* 5. Trust info — garansi + stok */}
             <TrustInfoCard stock={product.stock} outOfStock={outOfStock} />
+            {!product.hasVariants && <div id="beli" className="scroll-mt-20"><ProductActions product={product} /></div>}
 
             {/* 7. Tombol pembelian inline (desktop only) */}
             <ProductPurchaseButtons

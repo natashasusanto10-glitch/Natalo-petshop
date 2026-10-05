@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { StoreProduct } from "@/lib/products";
+import { ProductQuantitySelector } from "@/components/products/ProductQuantitySelector";
+import type { StoreProduct } from "@/lib/products";
 import { addItemToCart } from "@/lib/cart-actions";
 import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
 
@@ -18,6 +19,9 @@ export function ProductActions({ product }: { product: StoreProduct }) {
   const outOfStock = product.stock === 0;
   const minimumQuantity = (product as StoreProduct & { minimumQuantity?: number | null })
     .minimumQuantity;
+
+  const minimum = Math.max(1, Math.floor(minimumQuantity ?? 1));
+  const [quantity, setQuantity] = useState(Math.min(product.stock, minimum));
 
   const sheetItem = useMemo(
     () => ({
@@ -37,15 +41,18 @@ export function ProductActions({ product }: { product: StoreProduct }) {
   useEffect(() => {
     function addToCart(redirectToCheckout = false) {
       if (outOfStock) return;
+      const requestedQuantity = window.matchMedia("(min-width: 768px)").matches ? Math.min(quantity, product.stock) : minimum;
+      if (requestedQuantity < minimum || requestedQuantity > product.stock) return;
 
       const cartItem = {
         productId: product.id,
+        slug: product.slug,
         variantId: null,
         variantLabel: null,
         name: product.name,
         price,
-        quantity: 1,
-        subtotal: price,
+        quantity: requestedQuantity,
+        subtotal: price * requestedQuantity,
         weightGram: product.weightGram,
         imageUrl: product.imageUrl,
         stock: product.stock,
@@ -62,7 +69,7 @@ export function ProductActions({ product }: { product: StoreProduct }) {
         try {
           sessionStorage.setItem(
             CHECKOUT_SELECTION_KEY,
-            JSON.stringify([{ ...cartItem, quantity: 1, subtotal: price }]),
+            JSON.stringify([cartItem]),
           );
         } catch {
           // sessionStorage might fail in private mode — checkout still works
@@ -73,7 +80,8 @@ export function ProductActions({ product }: { product: StoreProduct }) {
     }
 
     function onAddToCart() {
-      if (!outOfStock) setSheetOpen(true);
+      if (window.matchMedia("(min-width: 768px)").matches) addToCart();
+      else if (!outOfStock) setSheetOpen(true);
     }
 
     function onBuyNow() {
@@ -86,13 +94,16 @@ export function ProductActions({ product }: { product: StoreProduct }) {
       window.removeEventListener("pdp-add-to-cart", onAddToCart);
       window.removeEventListener("pdp-buy-now", onBuyNow);
     };
-  }, [outOfStock, price, product, router]);
+  }, [outOfStock, price, product, router, quantity, minimum]);
 
   return (
+    <>
+    <ProductQuantitySelector quantity={quantity} stock={product.stock} minimum={minimum} onChange={setQuantity} />
     <AddToCartBottomSheet
       open={sheetOpen}
       item={sheetItem}
       onClose={() => setSheetOpen(false)}
     />
+    </>
   );
 }

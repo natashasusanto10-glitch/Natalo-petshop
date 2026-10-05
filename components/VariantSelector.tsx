@@ -6,6 +6,7 @@ import { formatRupiah } from "@/lib/format";
 import type { StoreVariantAttribute, StoreProductVariant } from "@/lib/products";
 import { addItemToCart } from "@/lib/cart-actions";
 import { AddToCartBottomSheet } from "@/components/AddToCartBottomSheet";
+import { ProductQuantitySelector } from "@/components/products/ProductQuantitySelector";
 import { hapticTap } from "@/lib/native/haptics";
 
 const CHECKOUT_SELECTION_KEY = "checkout:selectedCartItems";
@@ -25,6 +26,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
   // selected[attributeId] = optionId
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [quantity, setQuantity] = useState(1);
 
   // Derived
   const sortedAttrs = useMemo(
@@ -151,6 +153,7 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
   // Pilih opsi
   function selectOption(attrId: string, optionId: string, attrIdx: number) {
     hapticTap();
+    setQuantity(1);
     setSelected((prev) => {
       const next = { ...prev, [attrId]: optionId };
       // Reset pilihan atribut SETELAH yang ini kalau tidak kompatibel
@@ -175,27 +178,8 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
     });
   }
 
-  // Listen trigger dari StickyAddToCartBar
-  useEffect(() => {
-    function onAddToCart() {
-      if (!currentVariant || !allSelected || outOfStock) return;
-      if (onVariantImage) onVariantImage(currentVariant.imageUrl);
-      setSheetOpen(true);
-    }
-    function onBuyNow() {
-      addToCart(true);
-    }
-    window.addEventListener("pdp-add-to-cart", onAddToCart);
-    window.addEventListener("pdp-buy-now", onBuyNow);
-    return () => {
-      window.removeEventListener("pdp-add-to-cart", onAddToCart);
-      window.removeEventListener("pdp-buy-now", onBuyNow);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentVariant, allSelected, outOfStock]);
-
   // Add to cart
-  function addToCart(redirectToCheckout = false) {
+  const addToCart = useCallback((redirectToCheckout = false) => {
     if (!currentVariant || !allSelected || outOfStock) return;
 
     // Ganti gambar utama kalau variant punya foto sendiri
@@ -208,8 +192,8 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
       variantLabel: selectedLabel,
       name: product.name,
       price: currentVariant.price,
-      quantity: 1,
-      subtotal: currentVariant.price,
+      quantity: window.matchMedia("(min-width: 768px)").matches ? Math.min(quantity, currentVariant.stock) : 1,
+      subtotal: currentVariant.price * (window.matchMedia("(min-width: 768px)").matches ? Math.min(quantity, currentVariant.stock) : 1),
       weightGram: currentVariant.weightGram,
       stock: currentVariant.stock,
       imageUrl: currentVariant.imageUrl ?? product.imageUrl,
@@ -232,7 +216,26 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
       }
       router.push(`/checkout?cart_item_ids=${encodeURIComponent(cartKey)}`);
     }
-  }
+  }, [currentVariant, allSelected, outOfStock, onVariantImage, product, selectedLabel, quantity, router]);
+
+  // Listen trigger dari StickyAddToCartBar
+  useEffect(() => {
+    function onAddToCart() {
+      if (!currentVariant || !allSelected || outOfStock) return;
+      if (onVariantImage) onVariantImage(currentVariant.imageUrl);
+      if (window.matchMedia("(min-width: 768px)").matches) addToCart();
+      else setSheetOpen(true);
+    }
+    function onBuyNow() {
+      addToCart(true);
+    }
+    window.addEventListener("pdp-add-to-cart", onAddToCart);
+    window.addEventListener("pdp-buy-now", onBuyNow);
+    return () => {
+      window.removeEventListener("pdp-add-to-cart", onAddToCart);
+      window.removeEventListener("pdp-buy-now", onBuyNow);
+    };
+  }, [currentVariant, allSelected, outOfStock, onVariantImage, addToCart]);
 
   // Render
   return (
@@ -291,6 +294,8 @@ export function VariantSelector({ product, attrs, variants, onVariantImage }: Pr
             </div>
           ))}
         </div>
+
+        {currentVariant && allSelected && <ProductQuantitySelector quantity={quantity} stock={currentVariant.stock} onChange={setQuantity} />}
 
         <div className="space-y-3">
           {!allSelected && (
