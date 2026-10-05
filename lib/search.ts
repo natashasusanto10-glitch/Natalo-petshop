@@ -59,6 +59,7 @@ export function isMeiliEnabled() {
 }
 
 export type ProductSearchDoc = {
+  soldCount?: number;
   // Live response metadata; vouchers are not stored in the search index.
   voucherPreview?: ProductVoucherPreview | null;
   shippingVoucherPreview?: ProductVoucherPreview | null;

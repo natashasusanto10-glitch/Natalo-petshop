@@ -1,6 +1,7 @@
 import { mapCatalogProduct, normalizeProductWeight, flashSaleForVariant } from "@/lib/product/catalog-product";
 export { normalizeProductWeight } from "@/lib/product/catalog-product";
 import { prisma } from "@/lib/prisma";
+import { attachProductSoldCounts } from "@/lib/product-sold-counts";
 import {
   attachPublicProductVoucherPreviews,
   type ProductVoucherPreview,
@@ -168,39 +169,11 @@ async function withVoucherPreviews(
   return attachPublicProductVoucherPreviews(products, { userId: viewerId });
 }
 
-async function withSoldCounts(
-  products: StoreProduct[]
-): Promise<StoreProduct[]> {
-  if (products.length === 0) return products;
-
-  const productIds = products.map((product) => product.id);
-  const rows = await prisma.orderItem.groupBy({
-    by: ["productId"],
-    where: {
-      productId: { in: productIds },
-      order: {
-        paymentStatus: "PAID",
-        status: { in: VALID_SALES_ORDER_STATUSES },
-      },
-    },
-    _sum: { quantity: true },
-  });
-
-  const soldByProductId = new Map(
-    rows.map((row) => [row.productId, row._sum.quantity ?? 0])
-  );
-
-  return products.map((product) => ({
-    ...product,
-    soldCount: soldByProductId.get(product.id) ?? 0,
-  }));
-}
-
 async function withProductListMeta(
   products: StoreProduct[],
   viewerId?: string | null
 ) {
-  return withVoucherPreviews(await withSoldCounts(products), viewerId);
+  return withVoucherPreviews(await attachProductSoldCounts(products), viewerId);
 }
 
 export type NewProductFilter =

@@ -30,6 +30,7 @@ export function searchDocToStoreProduct(doc: ProductSearchDoc): StoreProduct {
     hasVariants: doc.has_variants,
     avgRating: doc.avg_rating,
     reviewCount: doc.review_count,
+    soldCount: doc.soldCount ?? 0,
     categoryId: doc.category_id,
     categorySlug: doc.category_slug,
     brand: doc.brand_name,

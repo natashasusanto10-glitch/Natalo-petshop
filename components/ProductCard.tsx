@@ -10,6 +10,7 @@ import { ProductCardCta } from "./ProductCardCta";
 import { ProductQuickAdd } from "./ProductQuickAdd";
 import { ProductCardVideo } from "./product/ProductCardVideo";
 import { ProductVoucherBadges } from "./product/ProductVoucherBadges";
+import { ProductSalesMeta } from "./product/ProductSalesMeta";
 
 // Exported for unit testing + reuse. Guard price=0 → hindari Infinity%.
 export function computeDiscountPercent(price: number, displayPrice: number): number {
@@ -106,12 +107,7 @@ export function ProductCard({
               {product.name}
             </h3>
 
-            <div className="mt-1.5 flex items-center gap-0.5 text-[11px] text-gray-500">
-              <span className="text-amber-400">★</span>
-              <span className="font-semibold text-gray-700">
-                {product.avgRating > 0 ? product.avgRating.toFixed(1) : "Baru"}
-              </span>
-            </div>
+            <ProductSalesMeta soldCount={product.soldCount} avgRating={product.avgRating} reviewCount={product.reviewCount} showRating />
 
             <div className="mt-2">
               <p className="text-base font-black leading-tight text-[#1E5FBF]">
@@ -226,13 +222,7 @@ export function ProductCard({
           </div>
 
           <ProductVoucherBadges voucherPreview={product.voucherPreview} shippingVoucherPreview={product.shippingVoucherPreview} />
-          {showRating && (product.avgRating > 0 || product.reviewCount > 0) && (
-            <p className="mt-1.5 flex items-center gap-1 truncate text-[11px] font-semibold text-zinc-500">
-              <span className="text-[#FACC15]" aria-hidden="true">★</span>
-              {product.avgRating > 0 ? product.avgRating.toFixed(1) : "Baru"}
-              {product.reviewCount > 0 ? ` · ${product.reviewCount} ulasan` : ""}
-            </p>
-          )}
+          <ProductSalesMeta soldCount={product.soldCount} avgRating={product.avgRating} reviewCount={product.reviewCount} showRating={showRating} />
         </div>
       </ProductCardLink>
 

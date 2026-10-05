@@ -55,6 +55,11 @@ test("member price survives the mapping so the Member pill still renders", () =>
   assert.equal(p.memberPrice, 99_000);
 });
 
+test("sold quantities survive search mapping, with zero for older documents", () => {
+  assert.equal(searchDocToStoreProduct(searchDoc({ soldCount: 147 })).soldCount, 147);
+  assert.equal(searchDocToStoreProduct(searchDoc()).soldCount, 0);
+});
+
 test("no member price maps to null, not undefined", () => {
   assert.equal(searchDocToStoreProduct(searchDoc()).memberPrice, null);
   assert.equal(searchDocToStoreProduct(searchDoc()).voucherPreview, null);
