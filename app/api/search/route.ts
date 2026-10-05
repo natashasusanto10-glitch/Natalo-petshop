@@ -17,6 +17,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { searchProducts, type SearchSort } from "@/lib/search";
+import { getSession } from "@/lib/auth";
+import { attachPublicProductVoucherPreviews } from "@/lib/product-vouchers";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +68,16 @@ export async function GET(request: NextRequest) {
       perPage: Math.min(60, Math.max(1, Number(sp.get("per_page") ?? 24))),
     });
 
-    return NextResponse.json(result);
+    const session = await getSession("CUSTOMER").catch(() => null);
+    const previews = await attachPublicProductVoucherPreviews(result.items.map(product => ({
+      id: product.id, price: product.price_min, categoryId: product.category_id,
+      categorySlug: product.category_slug, brandId: product.brand_id,
+    })), { userId: session?.sub ?? null });
+    return NextResponse.json({ ...result, items: result.items.map((product, index) => ({
+      ...product,
+      voucherPreview: previews[index].voucherPreview,
+      shippingVoucherPreview: previews[index].shippingVoucherPreview,
+    })) });
   } catch (error) {
     return NextResponse.json(
       {

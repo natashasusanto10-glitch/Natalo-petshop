@@ -16,6 +16,7 @@
 import { Meilisearch } from "meilisearch";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import type { ProductVoucherPreview } from "@/lib/product-vouchers";
 import {
   discountOnlyWhere,
   getBestSellerProductIds,
@@ -58,6 +59,9 @@ export function isMeiliEnabled() {
 }
 
 export type ProductSearchDoc = {
+  // Live response metadata; vouchers are not stored in the search index.
+  voucherPreview?: ProductVoucherPreview | null;
+  shippingVoucherPreview?: ProductVoucherPreview | null;
   id: string;
   slug: string;
   name: string;

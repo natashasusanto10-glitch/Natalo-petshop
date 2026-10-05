@@ -9,6 +9,7 @@ import { productVideoMp4 } from "@/lib/product/product-video-url";
 import { ProductCardCta } from "./ProductCardCta";
 import { ProductQuickAdd } from "./ProductQuickAdd";
 import { ProductCardVideo } from "./product/ProductCardVideo";
+import { ProductVoucherBadges } from "./product/ProductVoucherBadges";
 
 // Exported for unit testing + reuse. Guard price=0 → hindari Infinity%.
 export function computeDiscountPercent(price: number, displayPrice: number): number {
@@ -98,6 +99,7 @@ export function ProductCard({
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col pt-3">
+            <ProductVoucherBadges voucherPreview={product.voucherPreview} shippingVoucherPreview={product.shippingVoucherPreview} />
             {/* Nama produk — max 2 baris, deskripsi panjang TIDAK ada di card
                 (lihat detail produk). */}
             <h3 className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-[#222]">
@@ -223,6 +225,7 @@ export function ProductCard({
             )}
           </div>
 
+          <ProductVoucherBadges voucherPreview={product.voucherPreview} shippingVoucherPreview={product.shippingVoucherPreview} />
           {showRating && (product.avgRating > 0 || product.reviewCount > 0) && (
             <p className="mt-1.5 flex items-center gap-1 truncate text-[11px] font-semibold text-zinc-500">
               <span className="text-[#FACC15]" aria-hidden="true">★</span>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { searchDocToStoreProduct } from "@/lib/search-doc-to-product";
 import type { ProductSearchDoc } from "@/lib/search";
+import type { ProductVoucherPreview } from "@/lib/product-vouchers";
 
 function searchDoc(overrides: Partial<ProductSearchDoc> = {}): ProductSearchDoc {
   return {
@@ -56,12 +57,35 @@ test("member price survives the mapping so the Member pill still renders", () =>
 
 test("no member price maps to null, not undefined", () => {
   assert.equal(searchDocToStoreProduct(searchDoc()).memberPrice, null);
+  assert.equal(searchDocToStoreProduct(searchDoc()).voucherPreview, null);
+  assert.equal(searchDocToStoreProduct(searchDoc()).shippingVoucherPreview, null);
 });
 
 test("discount price is carried through for the discount badge", () => {
   const p = searchDocToStoreProduct(searchDoc({ price_min: 100_000, discount_price: 75_000 }));
   assert.equal(p.price, 100_000);
   assert.equal(p.discountPrice, 75_000);
+});
+
+test("live voucher previews survive catalogue mapping", () => {
+  const voucher: ProductVoucherPreview = {
+    id: "v1", title: "Diskon produk", description: null,
+    badgeLabel: "Hemat Rp10.000", sheetTitle: "Diskon Rp10.000",
+    sheetSubtitle: "Min. belanja Rp100.000", discountPercent: null,
+    discountAmount: 10000, maxDiscountAmount: null, minimumOrder: 100000,
+    savingAmount: 10000, expiresAt: null, type: "PUBLIC_PRODUCT_DISCOUNT",
+    discountScope: "PRODUCT", targetUser: "ALL_MEMBERS", loginRequired: true,
+    isBrandExclusive: false,
+  };
+  const shipping: ProductVoucherPreview = {
+    ...voucher, id: "s1", type: "PUBLIC_FREE_SHIPPING",
+    discountScope: "SHIPPING", badgeLabel: "Gratis Ongkir",
+  };
+  const product = searchDocToStoreProduct(searchDoc({
+    voucherPreview: voucher, shippingVoucherPreview: shipping,
+  }));
+  assert.deepEqual(product.voucherPreview, voucher);
+  assert.deepEqual(product.shippingVoucherPreview, shipping);
 });
 
 test("stock falls back to total_stock when the per-product field is zero", () => {

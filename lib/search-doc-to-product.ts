@@ -34,5 +34,7 @@ export function searchDocToStoreProduct(doc: ProductSearchDoc): StoreProduct {
     categorySlug: doc.category_slug,
     brand: doc.brand_name,
     brandId: doc.brand_id,
+    voucherPreview: doc.voucherPreview ?? null,
+    shippingVoucherPreview: doc.shippingVoucherPreview ?? null,
   };
 }

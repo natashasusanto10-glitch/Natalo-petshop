@@ -11,6 +11,7 @@ import {
   type StoreProduct,
 } from "@/lib/products";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 import { formatRupiah } from "@/lib/format";
 import { BrandChoiceSection } from "@/components/home/BrandChoiceSection";
 import { HomeExploreProducts } from "@/components/home/HomeExploreProducts";
@@ -623,16 +624,19 @@ async function getFlashSaleProducts(limit = 7): Promise<FlashSaleCard[]> {
   }
 }
 
-async function getBestSellerProducts(limit = 6): Promise<StoreProduct[]> {
+async function getBestSellerProducts(limit = 6, viewerId?: string | null): Promise<StoreProduct[]> {
   return getProducts({
     take: limit,
     popularFilter: "best-seller",
+    viewerId,
     hasPriceOnly: true,
     inStockOnly: true,
   });
 }
 
 export default async function HomePage() {
+  const session = await getSession("CUSTOMER").catch(() => null);
+  const viewerId = session?.sub ?? null;
   const [
     flashSaleRows,
     popularCategories,
@@ -660,11 +664,12 @@ export default async function HomePage() {
       .catch(() => []),
     getProducts({
       take: 24,
+      viewerId,
       hasPriceOnly: true,
       inStockOnly: true,
       withImageOnly: true,
     }),
-    getBestSellerProducts(6),
+    getBestSellerProducts(6, viewerId),
     loadHeroSlides(),
   ]);
 
@@ -679,6 +684,7 @@ export default async function HomePage() {
   const exploreExcludeIds =
     availableHomeProducts.length >= recommendedProducts.length + 10 ? recommendedIds : [];
   const exploreOptions = {
+    viewerId,
     excludeIds: exploreExcludeIds,
     hasPriceOnly: true,
     inStockOnly: true,
