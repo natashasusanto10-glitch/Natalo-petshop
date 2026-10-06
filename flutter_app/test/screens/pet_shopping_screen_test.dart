@@ -79,7 +79,8 @@ void main() {
     expect(find.text('Snack Dental'), findsOneWidget);
   });
 
-  testWidgets('baris fakta: label harga sekarang + konteks pemakaian, BUKAN kategori',
+  testWidgets(
+      'baris fakta: label harga sekarang + konteks pemakaian, BUKAN kategori',
       (tester) async {
     await useTallViewport(tester);
     await tester.pumpWidget(wrap(PetShopping(
@@ -97,7 +98,8 @@ void main() {
         reason: 'framing harus beda dari section Perawatan');
   });
 
-  testWidgets('brand manual: tanpa harga, tombol Cari di Natalo', (tester) async {
+  testWidgets('brand manual: tanpa harga, tombol Cari di Natalo',
+      (tester) async {
     await useTallViewport(tester);
     await tester.pumpWidget(wrap(PetShopping(
       usedCount: 1,
@@ -201,8 +203,7 @@ void main() {
     );
   });
 
-  testWidgets(
-      'grup saran tak overflow saat text scale sistem membesar (1.3x)',
+  testWidgets('grup saran tak overflow saat text scale sistem membesar (1.3x)',
       (tester) async {
     await useTallViewport(tester);
     await tester.pumpWidget(
@@ -266,7 +267,8 @@ void main() {
     expect(find.textContaining('Gagal memuat'), findsOneWidget);
   });
 
-  testWidgets('beli lagi produk non-varian: ambil produk by slug lalu addProduct',
+  testWidgets(
+      'beli lagi produk non-varian: ambil produk by slug lalu addProduct',
       (tester) async {
     await useTallViewport(tester);
     final fetchedSlugs = <String>[];
@@ -303,7 +305,7 @@ void main() {
           fetchedSlugs.add(slug);
           return product;
         },
-        cartAdder: (p, {variant}) async {
+        cartAdder: (p, {variant, quantity = 1}) async {
           added.add(p.slug);
           return true;
         },
@@ -384,7 +386,7 @@ void main() {
           suggested: const [],
         ),
         productFetcher: (_) async => null,
-        cartAdder: (p, {variant}) async {
+        cartAdder: (p, {variant, quantity = 1}) async {
           added.add(p.slug);
           return true;
         },

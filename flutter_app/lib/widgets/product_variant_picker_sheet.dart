@@ -20,10 +20,12 @@ typedef ProductFetcher = Future<Product?> Function(String slug);
 class ProductVariantPickResult {
   final Product product;
   final ProductVariant variant;
+  final int quantity;
 
   const ProductVariantPickResult({
     required this.product,
     required this.variant,
+    this.quantity = 1,
   });
 }
 
@@ -36,6 +38,7 @@ class ProductVariantPickerSheet extends StatefulWidget {
   final String confirmLabel;
   final Color confirmColor;
   final ProductFetcher? productFetcher;
+  final int initialQuantity;
 
   const ProductVariantPickerSheet({
     super.key,
@@ -44,6 +47,7 @@ class ProductVariantPickerSheet extends StatefulWidget {
     required this.confirmLabel,
     required this.confirmColor,
     this.productFetcher,
+    this.initialQuantity = 1,
   });
 
   static Future<ProductVariantPickResult?> show(
@@ -53,6 +57,7 @@ class ProductVariantPickerSheet extends StatefulWidget {
     required String confirmLabel,
     required Color confirmColor,
     ProductFetcher? productFetcher,
+    int initialQuantity = 1,
   }) {
     return showModalBottomSheet<ProductVariantPickResult>(
       context: context,
@@ -64,6 +69,7 @@ class ProductVariantPickerSheet extends StatefulWidget {
         confirmLabel: confirmLabel,
         confirmColor: confirmColor,
         productFetcher: productFetcher,
+        initialQuantity: initialQuantity,
       ),
     );
   }
@@ -78,6 +84,7 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
   bool _loading = true;
   String? _error;
   final Map<String, String> _selectedOptions = {};
+  late int _quantity;
 
   /// Dihitung SEKALI saat produk selesai dimuat. Kalau dipanggil di build,
   /// pemindaian O(opsi × varian) ini terulang tiap kali user menyentuh chip.
@@ -86,6 +93,7 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
   @override
   void initState() {
     super.initState();
+    _quantity = widget.initialQuantity < 1 ? 1 : widget.initialQuantity;
     _loadFullProduct();
   }
 
@@ -124,6 +132,7 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
         _fullProduct = result;
         _thumbnails = variantOptionThumbnails(result);
         _loading = false;
+        _clampQuantity();
       });
     } catch (_) {
       if (!mounted) return;
@@ -174,7 +183,13 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
     AppHaptics.selection();
     setState(() {
       _selectedOptions[attrId] = optionId;
+      _clampQuantity();
     });
+  }
+
+  void _clampQuantity() {
+    final stock = _matchedVariant?.stock;
+    if (stock != null && stock > 0 && _quantity > stock) _quantity = stock;
   }
 
   /// Buka viewer media produk yang SUDAH ada (dipakai juga oleh Detail
@@ -228,7 +243,8 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
   void _confirm() {
     final variant = _matchedVariant;
     final product = _fullProduct;
-    if (variant == null || product == null) return;
+    if (variant == null || product == null || variant.stock <= 0) return;
+    _clampQuantity();
     AppHaptics.tap();
     // SATU pop saja, juga saat dipanggil dari mini bar viewer:
     // ImageViewerScreen._handleCta sudah mem-pop dirinya SENDIRI sebelum
@@ -236,7 +252,8 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
     // hasil lalu menendang layar induk (Keranjang) dari stack.
     Navigator.pop(
       context,
-      ProductVariantPickResult(product: product, variant: variant),
+      ProductVariantPickResult(
+          product: product, variant: variant, quantity: _quantity),
     );
   }
 
@@ -400,6 +417,44 @@ class _ProductVariantPickerSheetState extends State<ProductVariantPickerSheet> {
           ),
           const SizedBox(height: 18),
         ],
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: NataloColors.successSoft,
+            borderRadius: BorderRadius.circular(16),
+            border:
+                Border.all(color: NataloColors.success.withValues(alpha: 0.25)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                  child: Text('Jumlah',
+                      style: TextStyle(
+                          color: cs.onSurface, fontWeight: FontWeight.w700))),
+              IconButton(
+                key: const ValueKey('variant-quantity-minus'),
+                tooltip: 'Kurangi jumlah',
+                onPressed: _matchedVariant != null && _quantity > 1
+                    ? () => setState(() => _quantity--)
+                    : null,
+                icon: const Icon(Icons.remove_rounded),
+              ),
+              Text('$_quantity',
+                  key: const ValueKey('variant-quantity-value'),
+                  style: TextStyle(
+                      color: cs.onSurface, fontWeight: FontWeight.w700)),
+              IconButton(
+                key: const ValueKey('variant-quantity-plus'),
+                tooltip: 'Tambah jumlah',
+                onPressed: _matchedVariant != null &&
+                        _quantity < _matchedVariant!.stock
+                    ? () => setState(() => _quantity++)
+                    : null,
+                icon: const Icon(Icons.add_rounded),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -594,32 +649,33 @@ class _VariantSummary extends StatelessWidget {
               // Badge tetap 28px supaya tidak menutupi foto, tapi area
               // tap-nya 44 dan sengaja meluber keluar pojok (Stack
               // clipBehavior none) agar tetap nyaman disentuh.
-              if (onZoom != null) Positioned(
-                right: -8,
-                bottom: -8,
-                child: Semantics(
-                  button: true,
-                  label: 'Perbesar foto produk',
-                  // container+exclude+onTap: tanpa `container: true`, Semantics
-                  // hanya menempel ke node induk sehingga labelnya melebur
-                  // dengan harga ("Perbesar foto produk, Rp55.000, Pilih
-                  // varian") dan tombolnya tak bisa difokus sendiri.
-                  container: true,
-                  excludeSemantics: true,
-                  onTap: onZoom,
-                  child: Material(
-                    color: Colors.transparent,
-                    shape: const CircleBorder(),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: onZoom,
-                      child: const AppMinTapTarget(
-                        child: _ZoomBadge(),
+              if (onZoom != null)
+                Positioned(
+                  right: -8,
+                  bottom: -8,
+                  child: Semantics(
+                    button: true,
+                    label: 'Perbesar foto produk',
+                    // container+exclude+onTap: tanpa `container: true`, Semantics
+                    // hanya menempel ke node induk sehingga labelnya melebur
+                    // dengan harga ("Perbesar foto produk, Rp55.000, Pilih
+                    // varian") dan tombolnya tak bisa difokus sendiri.
+                    container: true,
+                    excludeSemantics: true,
+                    onTap: onZoom,
+                    child: Material(
+                      color: Colors.transparent,
+                      shape: const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: onZoom,
+                        child: const AppMinTapTarget(
+                          child: _ZoomBadge(),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),

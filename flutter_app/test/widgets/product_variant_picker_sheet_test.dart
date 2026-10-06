@@ -36,16 +36,22 @@ Product _variantProduct() {
     variantAttrs: const [size, flavor],
     variants: const [
       ProductVariant(
-        id: 'v-1kg-ayam', price: 90000, stock: 5,
+        id: 'v-1kg-ayam',
+        price: 90000,
+        stock: 5,
         optionIds: ['o-1kg', 'o-ayam'],
       ),
       ProductVariant(
-        id: 'v-3kg-ayam', price: 150000, stock: 3,
+        id: 'v-3kg-ayam',
+        price: 150000,
+        stock: 3,
         optionIds: ['o-3kg', 'o-ayam'],
       ),
       // Salmon hanya tersedia untuk 1kg → 3kg+Salmon tidak ada varian.
       ProductVariant(
-        id: 'v-1kg-salmon', price: 95000, stock: 2,
+        id: 'v-1kg-salmon',
+        price: 95000,
+        stock: 2,
         optionIds: ['o-1kg', 'o-salmon'],
       ),
     ],
@@ -56,6 +62,8 @@ Future<ProductVariantPickResult?> _openSheet(
   WidgetTester tester, {
   required ProductFetcher fetcher,
   ProductVariant? preselected,
+  int initialQuantity = 1,
+  void Function(ProductVariantPickResult?)? onPicked,
 }) async {
   ProductVariantPickResult? result;
   await tester.pumpWidget(MaterialApp(
@@ -68,10 +76,12 @@ Future<ProductVariantPickResult?> _openSheet(
                 context,
                 productSlug: 'makanan-kucing',
                 preselectedVariant: preselected,
+                initialQuantity: initialQuantity,
                 confirmLabel: 'Tambah ke Keranjang',
                 confirmColor: Colors.blue,
                 productFetcher: fetcher,
               );
+              onPicked?.call(result);
             },
             child: const Text('open'),
           ),
@@ -88,7 +98,56 @@ Future<ProductVariantPickResult?> _openSheet(
 }
 
 void main() {
-  testWidgets('pilih kombinasi lengkap → tombol enable → confirm balikin varian benar',
+  testWidgets(
+      'stepper preserves quantity, caps at new variant stock and returns selected quantity',
+      (tester) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final product = _variantProduct();
+    ProductVariantPickResult? picked;
+    await _openSheet(tester,
+        fetcher: (_) async => product,
+        preselected: product.variants.first,
+        initialQuantity: 4,
+        onPicked: (result) => picked = result);
+    expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('variant-quantity-value')))
+            .data,
+        '4');
+    await tester.tap(find.byKey(const ValueKey('variant-quantity-minus')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('variant-quantity-plus')));
+    await tester.pump();
+    expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('variant-quantity-value')))
+            .data,
+        '4');
+    await tester.tap(find.text('3kg'));
+    await tester.pump();
+    expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('variant-quantity-value')))
+            .data,
+        '3');
+    expect(
+        tester
+            .widget<IconButton>(
+                find.byKey(const ValueKey('variant-quantity-plus')))
+            .onPressed,
+        isNull);
+    await tester.tap(find.text('Tambah ke Keranjang'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 80));
+    }
+    expect(picked?.variant.id, 'v-3kg-ayam');
+    expect(picked?.quantity, 3);
+  });
+  testWidgets(
+      'pilih kombinasi lengkap → tombol enable → confirm balikin varian benar',
       (tester) async {
     tester.view.physicalSize = const Size(900, 2400);
     tester.view.devicePixelRatio = 1.0;
@@ -141,7 +200,8 @@ void main() {
     expect(button.onPressed, isNull);
   });
 
-  testWidgets('fetch gagal → tampil teks error, tanpa tombol confirm', (tester) async {
+  testWidgets('fetch gagal → tampil teks error, tanpa tombol confirm',
+      (tester) async {
     tester.view.physicalSize = const Size(900, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -150,6 +210,7 @@ void main() {
     await _openSheet(tester, fetcher: (_) async => null);
 
     expect(find.text('Produk tidak ditemukan.'), findsOneWidget);
-    expect(find.widgetWithText(ElevatedButton, 'Tambah ke Keranjang'), findsNothing);
+    expect(find.widgetWithText(ElevatedButton, 'Tambah ke Keranjang'),
+        findsNothing);
   });
 }

@@ -39,13 +39,14 @@ Future<void> addFeedLinkToCart(
       confirmLabel: 'Tambah ke Keranjang',
       confirmColor: NataloColors.nataloBlue,
       productFetcher: productFetcher,
+      initialQuantity: quantity,
     );
     if (result == null || !context.mounted) return;
     await cartStore.addProduct(
       result.product,
       variant: result.variant,
       variantLabel: cartVariantOptionLabel(result.product, result.variant),
-      quantity: quantity,
+      quantity: result.quantity,
     );
     if (!context.mounted) return;
     // Tutup sheet Links yang masih terbuka di baliknya → kembali ke video,

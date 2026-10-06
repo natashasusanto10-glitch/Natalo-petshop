@@ -89,7 +89,8 @@ void main() {
 
   testWidgets('menampilkan nama produk & konfirmasi masuk keranjang',
       (tester) async {
-    await pumpSheet(tester, product: makeProduct('main', name: 'Happy Dog 15kg'));
+    await pumpSheet(tester,
+        product: makeProduct('main', name: 'Happy Dog 15kg'));
     expect(find.text('Lengkapi belanjaanmu'), findsOneWidget);
     expect(find.text('Happy Dog 15kg'), findsOneWidget);
     expect(find.text('Masuk ke keranjang!'), findsOneWidget);
@@ -114,6 +115,7 @@ void main() {
       (tester) async {
     await cartStore.addProduct(makeProduct('incart', name: 'Di Keranjang'));
     List<String>? capturedCartIds;
+    List<String>? capturedExcludeIds;
     Future<List<Product>> fake({
       List<String> cartIds = const [],
       List<String> viewedIds = const [],
@@ -121,6 +123,7 @@ void main() {
       int limit = 10,
     }) async {
       capturedCartIds = cartIds;
+      capturedExcludeIds = excludeIds;
       return [makeProduct('rNew', name: 'Rekom Baru')];
     }
 
@@ -129,6 +132,7 @@ void main() {
         fetcher: fake);
 
     expect(capturedCartIds, contains('incart'));
+    expect(capturedExcludeIds, containsAll(['incart', 'main', 'rOld']));
     expect(find.text('Rekom Baru'), findsOneWidget);
     expect(find.text('Rekom Lama'), findsNothing);
   });
@@ -140,6 +144,19 @@ void main() {
     expect(find.text('Rekom Lama'), findsOneWidget);
   });
 
+  testWidgets('fallback tidak menampilkan produk utama atau yang sudah di cart',
+      (tester) async {
+    await cartStore.addProduct(makeProduct('incart'));
+    await pumpSheet(tester, initialRelated: [
+      makeProduct('main', name: 'Produk Utama'),
+      makeProduct('incart', name: 'Sudah Dibeli'),
+      makeProduct('fresh', name: 'Pilihan Lain'),
+    ]);
+    expect(find.text('Produk Utama'), findsNothing);
+    expect(find.text('Sudah Dibeli'), findsNothing);
+    expect(find.text('Pilihan Lain'), findsOneWidget);
+  });
+
   testWidgets('tombol Cek Keranjang buka halaman cart', (tester) async {
     await pumpSheet(tester, initialRelated: const []);
     await tester.tap(find.byKey(const ValueKey('cek-keranjang-button')));
@@ -149,8 +166,9 @@ void main() {
 
   testWidgets('+ Keranjang kartu non-varian menambah ke cart & sheet tetap',
       (tester) async {
-    await pumpSheet(tester,
-        initialRelated: [makeProduct('rec1', name: 'Rekom', hasVariants: false)]);
+    await pumpSheet(tester, initialRelated: [
+      makeProduct('rec1', name: 'Rekom', hasVariants: false)
+    ]);
     await tester.tap(find.byKey(const ValueKey('add-to-cart-rec1')));
     await _settle(tester);
     expect(cartStore.items.any((it) => it.product.id == 'rec1'), isTrue);
@@ -171,10 +189,10 @@ void main() {
     expect(find.text('Rekom Dua'), findsOneWidget);
   });
 
-  testWidgets('+ Keranjang kartu varian membuka detail produk',
-      (tester) async {
-    await pumpSheet(tester,
-        initialRelated: [makeProduct('recV', name: 'Varian', hasVariants: true)]);
+  testWidgets('+ Keranjang kartu varian membuka detail produk', (tester) async {
+    await pumpSheet(tester, initialRelated: [
+      makeProduct('recV', name: 'Varian', hasVariants: true)
+    ]);
     await tester.tap(find.byKey(const ValueKey('add-to-cart-recV')));
     await _settle(tester);
     expect(find.text('DETAIL SCREEN'), findsOneWidget);

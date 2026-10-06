@@ -1,3 +1,4 @@
+import { rotateRecommendationPool } from "@/lib/cart-recommendation-rotation";
 import { attachProductSoldCounts } from "@/lib/product-sold-counts";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -107,6 +108,8 @@ export async function GET(request: NextRequest) {
   const cartIds = parseIds(searchParams.get("cart"));
   const viewedIds = parseIds(searchParams.get("viewed"));
   const take = limit + 1;
+  const seed = (searchParams.get("seed") ?? "").slice(0, 100);
+  const poolSize = seed ? 48 : take;
   const session = await getSession("CUSTOMER").catch(() => null);
   const seen = new Set(excludeIds);
   const products: CartRecommendationProductRow[] = [];
@@ -174,10 +177,10 @@ export async function GET(request: NextRequest) {
         ],
       },
       orderBy: [{ reviewCount: "desc" }, { avgRating: "desc" }, { createdAt: "desc" }],
-      take: take - products.length,
+      take: seed ? poolSize : take - products.length,
       include: cartRecommendationProductInclude(),
     });
-    pushUnique(products, complementary, seen);
+    pushUnique(products, rotateRecommendationPool(complementary, seed, take - products.length), seen);
   }
 
   if (products.length < take && session?.sub) {
@@ -210,10 +213,10 @@ export async function GET(request: NextRequest) {
           ],
         },
         orderBy: [{ reviewCount: "desc" }, { avgRating: "desc" }, { createdAt: "desc" }],
-        take: take - products.length,
+        take: seed ? poolSize : take - products.length,
         include: cartRecommendationProductInclude(),
       });
-      pushUnique(products, personalProducts, seen);
+      pushUnique(products, rotateRecommendationPool(personalProducts, seed, take - products.length), seen);
     }
   }
 
@@ -221,10 +224,10 @@ export async function GET(request: NextRequest) {
     const fallback = await prisma.product.findMany({
       where: cartRecommendationWhere([...seen]),
       orderBy: [{ reviewCount: "desc" }, { avgRating: "desc" }, { createdAt: "desc" }],
-      take: take - products.length,
+      take: seed ? poolSize : take - products.length,
       include: cartRecommendationProductInclude(),
     });
-    pushUnique(products, fallback, seen);
+    pushUnique(products, rotateRecommendationPool(fallback, seed, take - products.length), seen);
   }
 
   const page = products.slice(0, limit);

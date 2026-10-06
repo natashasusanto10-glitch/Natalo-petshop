@@ -280,6 +280,7 @@ class ProductService {
     bool inStock = true,
     bool hasPrice = true,
     bool withImage = true,
+
     /// Rotasi harian server. GATE SERVER: seed DIABAIKAN diam-diam kalau
     /// request juga membawa `exclude`, `hasPrice`, atau `withImage` —
     /// pemanggil yang ingin rotasi wajib mematikan ketiganya (terbukti di
@@ -327,6 +328,7 @@ class ProductService {
         '/api/cart/recommendations',
         query: {
           'limit': '$limit',
+          'seed': DateTime.now().microsecondsSinceEpoch.toString(),
           if (cartIds.isNotEmpty) 'cart': cartIds.join(','),
           if (viewedIds.isNotEmpty) 'viewed': viewedIds.join(','),
           if (excludeIds.isNotEmpty) 'exclude': excludeIds.join(','),

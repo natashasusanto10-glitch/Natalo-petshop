@@ -1464,19 +1464,20 @@ class _CartItemCard extends StatelessWidget {
       context,
       productSlug: item.product.slug,
       preselectedVariant: item.variant,
+      initialQuantity: item.quantity,
       confirmLabel: 'Simpan',
       confirmColor: _shippingGreen,
     );
     if (picked == null) return;
     // Variant swap = remove old cart item + add product dengan variant
-    // baru, qty SAMA seperti sebelumnya. cartStore.addItem auto-merge
+    // baru dengan jumlah dari sheet. cartStore.addItem auto-merge
     // kalau variantId sudah ada di cart (increment qty existing).
     await cartStore.remove(item.key);
     await cartStore.addProduct(
       picked.product,
       variant: picked.variant,
       variantLabel: _composeVariantLabel(picked.product, picked.variant),
-      quantity: item.quantity,
+      quantity: picked.quantity,
     );
   }
 
@@ -3141,8 +3142,8 @@ Future<void> addRecommendedProductToCart(
     );
     if (picked == null) return;
     if (!context.mounted) return;
-    final added =
-        await cartStore.addProduct(picked.product, variant: picked.variant);
+    final added = await cartStore.addProduct(picked.product,
+        variant: picked.variant, quantity: picked.quantity);
     if (!context.mounted) return;
     _toastCartAddResult(
       context,

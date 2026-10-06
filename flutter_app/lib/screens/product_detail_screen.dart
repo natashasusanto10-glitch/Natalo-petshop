@@ -42,6 +42,7 @@ import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/soft_toggle_chip.dart';
 import '../widgets/app_product_image.dart';
 import '../widgets/added_to_cart_sheet.dart';
+import '../widgets/recommendation_product_card.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/app_ui.dart';
 import '../widgets/favorite_button.dart';
@@ -511,7 +512,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Future<void> _loadRelated() async {
     final result = await productService.fetchRecommendations(
       viewedIds: [product.id],
-      excludeIds: [product.id],
+      excludeIds: [
+        product.id,
+        ...cartStore.items.map((item) => item.product.id)
+      ],
       limit: 6,
     );
     if (!mounted) return;
@@ -969,8 +973,8 @@ class _ProductHeroState extends State<_ProductHero> {
                                   // dibuka SAMA dengan yang di-tap — viewer kini
                                   // berbasis slide (video 0 + foto 1+).
                                   child: GestureDetector(
-                                    onTap: () =>
-                                        _openMediaViewer(context, index, images),
+                                    onTap: () => _openMediaViewer(
+                                        context, index, images),
                                     child: AppProductImage(
                                       imageUrl: images[imageIndex],
                                       width: double.infinity,
@@ -3052,156 +3056,27 @@ class _ProductRecommendationSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            // 260: foto kini 1:1 (lebih tinggi dari AspectRatio 1.05 lama).
-            height: 260,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: related.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                final product = related[index];
-                return _DetailRecommendationCard(product: product);
-              },
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final product in related)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: RecommendationProductCard(
+                      product: product,
+                      onTap: () {
+                        AppHaptics.tap();
+                        Navigator.pushNamed(context, '/product-detail',
+                            arguments: product);
+                      },
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DetailRecommendationCard extends StatelessWidget {
-  final Product product;
-
-  const _DetailRecommendationCard({required this.product});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final savings = product.price - product.finalPrice;
-    final voucherLabel = product.voucherPreview?.badgeLabel.trim();
-    final savingsLabel = voucherLabel != null && voucherLabel.isNotEmpty
-        ? voucherLabel
-        : savings > 0
-            ? 'Hemat ${formatRupiah(savings)}'
-            : null;
-
-    return SizedBox(
-      width: 150,
-      child: AppPressable(
-        onTap: () {
-          AppHaptics.tap();
-          Navigator.pushNamed(context, '/product-detail', arguments: product);
-        },
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: cs.outlineVariant),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Foto 1:1 cover — isi kotak penuh, menonjol ala Shopee (dari
-              // AspectRatio 1.05 + contain).
-              AspectRatio(
-                aspectRatio: 1,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: AppProductImage(
-                    imageUrl: product.imageUrl,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                product.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontSize: NataloTextSize.body,
-                  fontWeight: NataloWeight.strong,
-                  height: 1.25,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                formatRupiah(product.finalPrice),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: _brandBlue,
-                  fontSize: NataloTextSize.bodyLg,
-                  fontWeight: NataloWeight.strong,
-                ),
-              ),
-              if (savingsLabel != null) ...[
-                const SizedBox(height: 5),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: _softDiscountBg,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    savingsLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _discountRed,
-                      fontSize: NataloTextSize.micro,
-                      fontWeight: NataloWeight.strong,
-                    ),
-                  ),
-                ),
-              ],
-              const Spacer(),
-              if (product.rating > 0 || product.soldCount > 0)
-                Row(
-                  children: [
-                    if (product.rating > 0) ...[
-                      const Icon(Icons.star_rounded,
-                          size: 14, color: _starAmber),
-                      const SizedBox(width: 2),
-                      Text(
-                        product.rating.toStringAsFixed(1),
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: NataloTextSize.micro,
-                          fontWeight: NataloWeight.strong,
-                        ),
-                      ),
-                    ],
-                    if (product.rating > 0 && product.soldCount > 0)
-                      Text(
-                        ' • ',
-                        style:
-                            TextStyle(color: cs.onSurfaceVariant, fontSize: NataloTextSize.micro),
-                      ),
-                    if (product.soldCount > 0)
-                      Expanded(
-                        child: Text(
-                          '${_formatCompactCount(product.soldCount)} terjual',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: cs.onSurfaceVariant,
-                            fontSize: NataloTextSize.micro,
-                            fontWeight: NataloWeight.body,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-            ],
-          ),
-        ),
       ),
     );
   }

@@ -19,6 +19,7 @@ typedef ProductBySlugFetcher = Future<Product?> Function(String slug);
 typedef CartAdder = Future<bool> Function(
   Product product, {
   ProductVariant? variant,
+  int quantity,
 });
 
 /// Buka detail produk dari data belanja.
@@ -103,8 +104,9 @@ class _PetShoppingScreenState extends State<PetShoppingScreen> {
     setState(() => _busySlug = p.slug);
     try {
       final add = widget.cartAdder ??
-          (Product product, {ProductVariant? variant}) =>
-              cartStore.addProduct(product, variant: variant);
+          (Product product, {ProductVariant? variant, int quantity = 1}) =>
+              cartStore.addProduct(product,
+                  variant: variant, quantity: quantity);
 
       if (p.hasVariants) {
         // Sheet varian mengambil produk penuh by slug dan mengembalikan
@@ -117,7 +119,8 @@ class _PetShoppingScreenState extends State<PetShoppingScreen> {
           productFetcher: widget.productFetcher,
         );
         if (picked == null || !mounted) return;
-        final ok = await add(picked.product, variant: picked.variant);
+        final ok = await add(picked.product,
+            variant: picked.variant, quantity: picked.quantity);
         if (!mounted || !ok) return;
         await showAddedToCartSheet(context, product: picked.product);
         return;
@@ -472,8 +475,8 @@ class _UsedRow extends StatelessWidget {
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Text('Beli lagi',
                                   style: TextStyle(fontSize: 12)),
