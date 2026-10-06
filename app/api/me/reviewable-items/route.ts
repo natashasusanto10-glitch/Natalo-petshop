@@ -37,6 +37,10 @@ export async function GET() {
           title: true,
           content: true,
           createdAt: true,
+          images: {
+            orderBy: { position: "asc" },
+            select: { imageUrl: true, mediaType: true, videoUrl: true, thumbnailUrl: true },
+          },
         },
         // Theoretically ada multiple kalau user soft-delete + resubmit
         // (lihat comment di schema model Review.reviews[]). Ambil yang

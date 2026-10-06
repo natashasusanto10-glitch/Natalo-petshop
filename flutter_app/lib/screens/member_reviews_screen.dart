@@ -1,4 +1,10 @@
+import 'dart:async';
+import '../utils/motion_prefs.dart';
+import 'image_viewer_screen.dart';
 import 'package:flutter/material.dart';
+import '../widgets/review_star_rating.dart';
+import '../theme/app_motion_tokens.dart';
+import '../theme/natalo_text.dart';
 import '../widgets/app_motion.dart';
 import '../theme/natalo_colors.dart';
 import '../theme/app_radius.dart';
@@ -22,8 +28,10 @@ import '../widgets/glass_surface.dart';
 import '../widgets/natalo_paw_refresh_indicator.dart';
 import '../widgets/soft_toggle_chip.dart';
 
+part 'member_review_session.dart';
+
 const _brandBlue = NataloColors.primary;
-const _starGold = Color(0xFFF6B73C);
+const _starGold = Color(0xFFE9B44F);
 const _successGreen = Color(0xFF16A34A);
 
 @visibleForTesting
@@ -52,6 +60,8 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
   late Future<List<ReviewableItem>> _itemsFuture;
   _ReviewTab _activeTab = _ReviewTab.pending;
   final List<_ReviewedProductReview> _localReviews = [];
+  final Map<String, _ReviewDraft> _drafts = {};
+  final ScrollController _scrollController = ScrollController();
   bool? _deepLinkedSelfPickup;
   String? _deepLinkedOrderNumber;
 
@@ -100,6 +110,68 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
     await _itemsFuture;
   }
 
+  _ReviewDraft _draftFor(ReviewableItem item) =>
+      _drafts.putIfAbsent(item.orderItemId, _ReviewDraft.new);
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    for (final draft in _drafts.values) {
+      draft.content.dispose();
+    }
+    super.dispose();
+  }
+
+  void _recordReview(ReviewableItem item, _SubmittedReview submitted) {
+    if (!mounted) return;
+    setState(() {
+      _localReviews
+          .removeWhere((review) => review.item.orderItemId == item.orderItemId);
+      _localReviews.insert(
+          0,
+          _ReviewedProductReview(
+              item: item,
+              rating: submitted.rating,
+              content: submitted.content,
+              media:
+                  submitted.media ?? List.unmodifiable(_draftFor(item).media),
+              createdAt: DateTime.now()));
+    });
+  }
+
+  Future<void> _openReviewSession(List<ReviewableItem> items) async {
+    final points = await showModalBottomSheet<int>(
+        context: context,
+        isScrollControlled: true,
+        enableDrag: false,
+        isDismissible: false,
+        backgroundColor: Colors.transparent,
+        sheetAnimationStyle: AnimationStyle(
+            duration: MotionPrefs.shouldReduce(context)
+                ? Duration.zero
+                : AppMotionTokens.route,
+            reverseDuration: MotionPrefs.shouldReduce(context)
+                ? Duration.zero
+                : AppMotionTokens.quick),
+        builder: (_) => _ReviewSessionSheet(
+            items: items,
+            drafts: {
+              for (final item in items) item.orderItemId: _draftFor(item)
+            },
+            pickupContext: (item) => resolveReviewPickupContext(
+                item: item,
+                scopedOrderNumber: _deepLinkedOrderNumber,
+                scopedIsSelfPickup: _deepLinkedSelfPickup),
+            onSubmitted: _recordReview));
+    if (!mounted || points == null) return;
+    AppToast.showBanner(
+        context,
+        points > 0
+            ? 'Ulasan terkirim · +$points poin loyal'
+            : 'Ulasan terkirim',
+        kind: ToastKind.success);
+  }
+
   Future<void> _openReviewForm(
     ReviewableItem item, {
     bool? isSelfPickup,
@@ -113,38 +185,31 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
     final submitted = await showModalBottomSheet<_SubmittedReview>(
       context: context,
       isScrollControlled: true,
-      enableDrag: true,
+      enableDrag: false,
+      isDismissible: false,
       backgroundColor: Colors.transparent,
+      sheetAnimationStyle: AnimationStyle(
+          duration: MotionPrefs.shouldReduce(context)
+              ? Duration.zero
+              : AppMotionTokens.route,
+          reverseDuration: MotionPrefs.shouldReduce(context)
+              ? Duration.zero
+              : AppMotionTokens.quick),
       builder: (context) => _ReviewSubmitSheet(
         item: item,
+        draft: _draftFor(item),
         isSelfPickup: pickupContext,
       ),
     );
     if (submitted == null || !mounted) return;
-    setState(() {
-      _activeTab = _ReviewTab.reviewed;
-      _localReviews
-          .removeWhere((review) => review.item.orderItemId == item.orderItemId);
-      _localReviews.insert(
-        0,
-        _ReviewedProductReview(
-          item: item,
-          rating: submitted.rating,
-          content: submitted.content,
-          createdAt: DateTime.now(),
-        ),
-      );
-      _itemsFuture = _loadItems();
-    });
-    // Snackbar conditional based on pointsAwarded:
-    //   - >0 (review LENGKAP) → celebration "Selamat! +5 poin loyal"
-    //   - 0 (review minimal) → nudge "Tambah foto+deskripsi untuk +5 poin"
+    _recordReview(item, submitted);
+    // Only report bonus points confirmed by the server.
     final earnedBonus = submitted.pointsAwarded > 0;
     AppToast.showBanner(
       context,
       earnedBonus
-          ? '🎁 Review terkirim. +${submitted.pointsAwarded} poin loyal masuk akunmu!'
-          : 'Review terkirim. Tambah foto + deskripsi (min 10 huruf) untuk dapat 5 poin loyal.',
+          ? 'Ulasan terkirim · +${submitted.pointsAwarded} poin loyal'
+          : 'Ulasan terkirim',
       kind: earnedBonus ? ToastKind.success : ToastKind.info,
       duration: const Duration(seconds: 4),
     );
@@ -177,6 +242,7 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
         rating: item.reviewRating ?? 5,
         content: item.reviewText,
         createdAt: item.reviewedAt ?? item.orderDate ?? DateTime.now(),
+        media: item.reviewMedia,
       );
     });
     final remoteIds = remote.map((review) => review.item.orderItemId).toSet();
@@ -238,14 +304,10 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
                   final showingPending = _activeTab == _ReviewTab.pending;
 
                   return ListView(
+                    controller: _scrollController,
                     padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
                     children: [
                       const _ReviewPageIntro(),
-                      const SizedBox(height: 16),
-                      _ReviewSummaryRow(
-                        pendingCount: pending.length,
-                        reviewedCount: reviewed.length,
-                      ),
                       const SizedBox(height: 16),
                       _ReviewSegmentedTabs(
                         active: _activeTab,
@@ -256,7 +318,9 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
                       const SizedBox(height: 16),
                       AnimatedSwitcher(
                         transitionBuilder: appFadeScaleTransition,
-                        duration: const Duration(milliseconds: 220),
+                        duration: MotionPrefs.shouldReduce(context)
+                            ? Duration.zero
+                            : AppMotionTokens.quick,
                         switchInCurve: Curves.easeOutCubic,
                         switchOutCurve: Curves.easeOutCubic,
                         child: showingPending
@@ -264,6 +328,9 @@ class _MemberReviewsScreenState extends State<MemberReviewsScreen> {
                                 key: const ValueKey('pending'),
                                 items: pending,
                                 onReview: _openReviewForm,
+                                onReviewAll: _openReviewSession,
+                                onHistory: () => setState(
+                                    () => _activeTab = _ReviewTab.reviewed),
                               )
                             : _ReviewedList(
                                 key: const ValueKey('reviewed'),
@@ -289,131 +356,25 @@ class _ReviewPageIntro extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Ulasan Produk',
+          'Bagaimana produknya?',
           style: TextStyle(
             color: cs.onSurface,
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
+            fontSize: NataloTextSize.headline,
+            fontWeight: NataloWeight.strong,
             height: 1.18,
           ),
         ),
         const SizedBox(height: 6),
         Text(
-          'Beri rating dan cerita pengalamanmu untuk produk yang sudah sampai.',
+          'Ceritamu membantu pembeli lain memilih.',
           style: TextStyle(
             color: cs.onSurfaceVariant,
-            fontSize: 14,
+            fontSize: NataloTextSize.bodyLg,
             fontWeight: FontWeight.w500,
             height: 1.42,
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ReviewSummaryRow extends StatelessWidget {
-  final int pendingCount;
-  final int reviewedCount;
-
-  const _ReviewSummaryRow({
-    required this.pendingCount,
-    required this.reviewedCount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _ReviewSummaryCard(
-            icon: Icons.schedule_rounded,
-            count: pendingCount,
-            label: 'Menunggu Review',
-            color: _brandBlue,
-            tint: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF0B7FEA).withValues(alpha: 0.20)
-                : const Color(0xFFEAF5FF),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _ReviewSummaryCard(
-            icon: Icons.check_circle_rounded,
-            count: reviewedCount,
-            label: 'Sudah Review',
-            color: _successGreen,
-            tint: const Color(0xFFECFDF3),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ReviewSummaryCard extends StatelessWidget {
-  final IconData icon;
-  final int count;
-  final String label;
-  final Color color;
-  final Color tint;
-
-  const _ReviewSummaryCard({
-    required this.icon,
-    required this.count,
-    required this.label,
-    required this.color,
-    required this.tint,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GlassSurface(
-      radius: 22,
-      padding: const EdgeInsets.all(14),
-      tint: cs.surface,
-      child: Row(
-        children: [
-          Container(
-            height: 42,
-            width: 42,
-            decoration: BoxDecoration(
-              color: tint,
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    height: 1,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -437,19 +398,19 @@ class _ReviewSegmentedTabs extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: cs.surface,
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         children: [
           _ReviewTabButton(
-            label: 'Menunggu Review ($pendingCount)',
+            label: 'Menunggu ($pendingCount)',
             active: active == _ReviewTab.pending,
             onTap: () => onChanged(_ReviewTab.pending),
           ),
           _ReviewTabButton(
-            label: 'Sudah Direview ($reviewedCount)',
+            label: 'Sudah diulas ($reviewedCount)',
             active: active == _ReviewTab.reviewed,
             onTap: () => onChanged(_ReviewTab.reviewed),
           ),
@@ -477,65 +438,33 @@ class _ReviewTabButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+          duration: MotionPrefs.shouldReduce(context)
+              ? Duration.zero
+              : AppMotionTokens.quick,
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
+          constraints: const BoxConstraints(minHeight: 48),
           decoration: BoxDecoration(
-            color: active ? _brandBlue : Colors.transparent,
+            color: active
+                ? Theme.of(context).colorScheme.surface
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
           ),
           alignment: Alignment.center,
           child: Text(
             label,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: active
-                  ? Colors.white
+                  ? _brandBlue
                   : Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+              fontSize: NataloTextSize.caption,
+              fontWeight: NataloWeight.strong,
             ),
           ),
         ),
       ),
-    );
-  }
-}
-
-class _PendingReviewList extends StatelessWidget {
-  final List<ReviewableItem> items;
-  final ValueChanged<ReviewableItem> onReview;
-
-  const _PendingReviewList({
-    super.key,
-    required this.items,
-    required this.onReview,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (items.isEmpty) {
-      return const _ReviewEmptyState(
-        icon: Icons.verified_rounded,
-        title: 'Semua produk sudah kamu review',
-        body: 'Terima kasih sudah berbagi pengalaman belanja di Natalo.',
-      );
-    }
-
-    return Column(
-      children: [
-        for (var i = 0; i < items.length; i++) ...[
-          AppAnimatedEntrance(
-            index: i,
-            child: _ReviewableItemCard(
-              item: items[i],
-              onReview: () => onReview(items[i]),
-            ),
-          ),
-          if (i != items.length - 1) const SizedBox(height: 12),
-        ],
-      ],
     );
   }
 }
@@ -569,105 +498,6 @@ class _ReviewedList extends StatelessWidget {
   }
 }
 
-class _ReviewableItemCard extends StatelessWidget {
-  final ReviewableItem item;
-  final VoidCallback onReview;
-
-  const _ReviewableItemCard({required this.item, required this.onReview});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GlassSurface(
-      radius: 22,
-      padding: const EdgeInsets.all(14),
-      tint: cs.surface,
-      child: Column(
-        children: [
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: AppProductImage(
-                  imageUrl: item.productImage ?? '',
-                  height: 74,
-                  width: 74,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.productName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: cs.onSurface,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        height: 1.25,
-                      ),
-                    ),
-                    if (item.variantLabel != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        item.variantLabel!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: cs.onSurfaceVariant,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 5),
-                    Text(
-                      '${_priceText(item)} x ${item.quantity}',
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${item.orderNumber ?? 'Pesanan selesai'} • ${_formatDate(item.orderDate)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: cs.onSurfaceVariant,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: onReview,
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size.fromHeight(46),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-              child: const Text('Beri Review'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _ReviewedItemCard extends StatelessWidget {
   final _ReviewedProductReview review;
 
@@ -678,10 +508,12 @@ class _ReviewedItemCard extends StatelessWidget {
     final item = review.item;
     final content = review.content?.trim();
     final cs = Theme.of(context).colorScheme;
-    return GlassSurface(
-      radius: 22,
+    return Container(
+      decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: cs.outlineVariant)),
       padding: const EdgeInsets.all(14),
-      tint: cs.surface,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -704,21 +536,22 @@ class _ReviewedItemCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: cs.onSurface,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    fontSize: NataloTextSize.bodyLg,
+                    fontWeight: NataloWeight.strong,
                     height: 1.25,
                   ),
                 ),
                 const SizedBox(height: 5),
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
                   children: [
                     _MiniStars(rating: review.rating),
-                    const SizedBox(width: 8),
                     Text(
                       _formatDate(review.createdAt),
                       style: TextStyle(
                         color: cs.onSurfaceVariant,
-                        fontSize: 11,
+                        fontSize: NataloTextSize.micro,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -732,11 +565,49 @@ class _ReviewedItemCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: cs.onSurfaceVariant,
-                      fontSize: 12,
+                      fontSize: NataloTextSize.caption,
                       fontWeight: FontWeight.w500,
                       height: 1.35,
                     ),
                   ),
+                ],
+                if (review.media.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final media in review.media)
+                      Semantics(
+                          label: media.isVideo ? 'Video ulasan' : 'Foto ulasan',
+                          button: true,
+                          child: InkWell(
+                            onTap: () => Navigator.of(context)
+                                .push(MaterialPageRoute<void>(
+                                    builder: (_) => ImageViewerScreen(
+                                          images: media.isVideo
+                                              ? const []
+                                              : [media.url],
+                                          videoUrl:
+                                              media.isVideo ? media.url : null,
+                                          videoThumbnailUrl: media.thumbnailUrl,
+                                          posterImageUrl: media.previewUrl,
+                                        ))),
+                            borderRadius: BorderRadius.circular(10),
+                            child: ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      AppProductImage(
+                                          imageUrl: media.previewUrl,
+                                          height: 56,
+                                          width: 56),
+                                      if (media.isVideo)
+                                        const Icon(
+                                            Icons.play_circle_fill_rounded,
+                                            color: Colors.white,
+                                            size: 28),
+                                    ])),
+                          )),
+                  ]),
                 ],
               ],
             ),
@@ -784,8 +655,8 @@ class _ReviewEmptyState extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: cs.onSurface,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
+              fontSize: NataloTextSize.subtitle,
+              fontWeight: NataloWeight.strong,
             ),
           ),
           const SizedBox(height: 6),
@@ -794,7 +665,7 @@ class _ReviewEmptyState extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: cs.onSurfaceVariant,
-              fontSize: 13,
+              fontSize: NataloTextSize.body,
               fontWeight: FontWeight.w500,
               height: 1.4,
             ),
@@ -808,8 +679,19 @@ class _ReviewEmptyState extends StatelessWidget {
 class _ReviewSubmitSheet extends StatefulWidget {
   final ReviewableItem item;
   final bool? isSelfPickup;
+  final _ReviewDraft draft;
+  final bool embedded;
+  final bool enabled;
+  final VoidCallback? onChanged;
 
-  const _ReviewSubmitSheet({required this.item, this.isSelfPickup});
+  const _ReviewSubmitSheet(
+      {super.key,
+      required this.item,
+      required this.draft,
+      this.isSelfPickup,
+      this.embedded = false,
+      this.enabled = true,
+      this.onChanged});
 
   @override
   State<_ReviewSubmitSheet> createState() => _ReviewSubmitSheetState();
@@ -819,37 +701,46 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
   static const _maxMedia = 5;
   static const _maxVideos = 1;
 
-  final _contentController = TextEditingController();
+  TextEditingController get _contentController => widget.draft.content;
   final _picker = ImagePicker();
-  final List<ProductReviewMedia> _mediaItems = [];
-  final Set<String> _selectedSuggestions = {};
-  int _rating = 0;
+  List<ProductReviewMedia> get _mediaItems => widget.draft.media;
+  Set<String> get _selectedSuggestions => widget.draft.suggestions;
+  int get _rating => widget.draft.rating;
+  set _rating(int value) => widget.draft.rating = value;
   bool _submitting = false;
-  bool _uploadingMedia = false;
+  bool get _uploadingMedia => widget.draft.uploading;
+  set _uploadingMedia(bool value) => widget.draft.uploading = value;
+
+  void _update(VoidCallback update) {
+    setState(update);
+    widget.onChanged?.call();
+  }
 
   @override
   void initState() {
     super.initState();
-    // Listen text changes supaya _ReviewBonusHint reactive — saat user
-    // ngetik, check "Deskripsi >= 10 huruf" auto-update.
+    // Keep the session footer and saved draft in sync with edits.
     _contentController.addListener(_onContentChanged);
   }
 
   void _onContentChanged() {
-    // setState minimal — cuma trigger rebuild untuk hint banner.
-    // TextField sendiri tetap controlled, gak ada flicker.
-    if (mounted) setState(() {});
+    // Rebuild only the editor and its session progress.
+    if (mounted) _update(() {});
   }
 
   @override
   void dispose() {
     _contentController.removeListener(_onContentChanged);
-    _contentController.dispose();
     super.dispose();
   }
 
   Future<void> _chooseMediaSource() async {
-    if (_mediaItems.length >= _maxMedia || _uploadingMedia) return;
+    if (!widget.enabled ||
+        _submitting ||
+        _mediaItems.length >= _maxMedia ||
+        _uploadingMedia) {
+      return;
+    }
     final source = await showModalBottomSheet<_ReviewMediaSource>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -908,8 +799,8 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
                       'Maksimal 1 video per review.',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontSize: NataloTextSize.caption,
+                        fontWeight: NataloWeight.strong,
                       ),
                     ),
                   ),
@@ -924,7 +815,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
         ),
       ),
     );
-    if (source == null) return;
+    if (source == null || !mounted) return;
     if (source.isVideo) {
       await _pickAndUploadVideo(source.source);
     } else {
@@ -939,15 +830,14 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
       maxWidth: 1600,
       maxHeight: 1600,
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
 
-    setState(() => _uploadingMedia = true);
+    _update(() => _uploadingMedia = true);
     try {
       final result = await reviewService.uploadReviewMedia(picked);
       if (!mounted) return;
       if (result.url.isEmpty) throw const ApiException('Upload foto gagal.');
-      setState(
-          () => _mediaItems.add(ProductReviewMedia.image(url: result.url)));
+      _update(() => _mediaItems.add(ProductReviewMedia.image(url: result.url)));
     } on ApiException catch (error) {
       if (!mounted) return;
       AppToast.showBanner(context, error.message, kind: ToastKind.error);
@@ -962,7 +852,11 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
         kind: ToastKind.error,
       );
     } finally {
-      if (mounted) setState(() => _uploadingMedia = false);
+      if (mounted) {
+        _update(() => _uploadingMedia = false);
+      } else {
+        widget.draft.uploading = false;
+      }
     }
   }
 
@@ -971,9 +865,9 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
       source: source,
       maxDuration: const Duration(seconds: 30),
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
 
-    setState(() => _uploadingMedia = true);
+    _update(() => _uploadingMedia = true);
     try {
       var videoPath = picked.path;
       try {
@@ -1010,7 +904,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
       );
       if (!mounted) return;
       if (video.url.isEmpty) throw const ApiException('Upload video gagal.');
-      setState(() {
+      _update(() {
         _mediaItems.add(ProductReviewMedia(
           type: 'video',
           url: video.url,
@@ -1031,7 +925,11 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
         kind: ToastKind.error,
       );
     } finally {
-      if (mounted) setState(() => _uploadingMedia = false);
+      if (mounted) {
+        _update(() => _uploadingMedia = false);
+      } else {
+        widget.draft.uploading = false;
+      }
     }
   }
 
@@ -1042,7 +940,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
   void _toggleSuggestion(String text) {
     HapticFeedback.selectionClick();
     final alreadySelected = _selectedSuggestions.contains(text);
-    setState(() {
+    _update(() {
       if (alreadySelected) {
         _selectedSuggestions.remove(text);
       } else {
@@ -1076,32 +974,15 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
   }
 
   Future<void> _submit() async {
-    if (_rating == 0 || _submitting) return;
-    setState(() => _submitting = true);
+    if (_rating == 0 || _submitting || _uploadingMedia) {
+      return;
+    }
+    _update(() => _submitting = true);
     try {
-      final result = await reviewService.submitReview(
-        productId: widget.item.productId,
-        orderItemId: widget.item.orderItemId,
-        rating: _rating,
-        content: _contentController.text.trim().isEmpty
-            ? null
-            : _contentController.text.trim(),
-        imageUrls: _mediaItems
-            .where((item) => !item.isVideo)
-            .map((item) => item.url)
-            .toList(growable: false),
-        media: List.unmodifiable(_mediaItems),
-      );
+      final submitted = await _sendReviewDraft(widget.item, widget.draft);
       if (!mounted) return;
       HapticFeedback.mediumImpact();
-      Navigator.pop(
-        context,
-        _SubmittedReview(
-          rating: _rating,
-          content: _contentController.text.trim(),
-          pointsAwarded: result.pointsAwarded,
-        ),
-      );
+      Navigator.pop(context, submitted);
     } on ApiException catch (error) {
       if (!mounted) return;
       AppToast.showBanner(context, error.message, kind: ToastKind.error);
@@ -1116,7 +997,7 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
         kind: ToastKind.error,
       );
     } finally {
-      if (mounted) setState(() => _submitting = false);
+      if (mounted) _update(() => _submitting = false);
     }
   }
 
@@ -1124,251 +1005,220 @@ class _ReviewSubmitSheetState extends State<_ReviewSubmitSheet> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     final cs = Theme.of(context).colorScheme;
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.90,
-        ),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(AppRadius.xxl),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
-              blurRadius: 30,
-              offset: const Offset(0, 14),
+    if (widget.embedded) return _editorFields();
+    return PopScope(
+        canPop: !_submitting && !_uploadingMedia,
+        child: AnimatedPadding(
+          duration: MotionPrefs.shouldReduce(context)
+              ? Duration.zero
+              : AppMotionTokens.quick,
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(bottom: bottom),
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.90,
             ),
-          ],
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: AppSpacing.sm),
-              Container(
-                height: 5,
-                width: 50,
-                decoration: BoxDecoration(
-                  color: cs.outlineVariant,
-                  borderRadius: AppRadius.pill,
-                ),
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppRadius.xxl),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.sm,
-                  AppSpacing.sm,
-                  AppSpacing.sm,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 30,
+                  offset: const Offset(0, 14),
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Beri Ulasan',
-                        style: TextStyle(
-                          color: cs.onSurface,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: AppSpacing.sm),
+                  Container(
+                    height: 5,
+                    width: 50,
+                    decoration: BoxDecoration(
+                      color: cs.outlineVariant,
+                      borderRadius: AppRadius.pill,
                     ),
-                    IconButton(
-                      onPressed:
-                          _submitting ? null : () => Navigator.pop(context),
-                      icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Tutup',
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg,
+                      AppSpacing.sm,
+                      AppSpacing.sm,
+                      AppSpacing.sm,
                     ),
-                  ],
-                ),
-              ),
-              Divider(height: 1, color: cs.outlineVariant),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _ReviewSheetProductPreview(item: widget.item),
-                      const SizedBox(height: 14),
-                      // Reward hint banner — kasih incentive visual ke user.
-                      // Reactive: check items (rating/desk/foto) berubah warna
-                      // saat user isi → user lihat progress real-time menuju
-                      // bonus poin.
-                      _ReviewBonusHint(
-                        hasRating: _rating > 0,
-                        hasContent: _contentController.text.trim().length >= 10,
-                        hasMedia: _mediaItems.isNotEmpty,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Bagaimana pengalamanmu dengan produk ini?',
-                        style: TextStyle(
-                          color: cs.onSurface,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          height: 1.25,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Center(
-                        child: PremiumStarRating(
-                          value: _rating,
-                          onChanged: (rating) {
-                            setState(() => _rating = rating);
-                            HapticFeedback.selectionClick();
-                            if (rating >= 4) HapticFeedback.lightImpact();
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Center(
-                        child: AnimatedSwitcher(
-                          transitionBuilder: appFadeScaleTransition,
-                          duration: const Duration(milliseconds: 180),
+                    child: Row(
+                      children: [
+                        Expanded(
                           child: Text(
-                            _rating == 0
-                                ? 'Sentuh bintang untuk memberi rating'
-                                : _ratingLabel(_rating),
-                            key: ValueKey(_rating),
+                            'Beri Ulasan',
                             style: TextStyle(
-                              color: _rating == 0
-                                  ? cs.onSurfaceVariant
-                                  : _brandBlue,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
+                              color: cs.onSurface,
+                              fontSize: NataloTextSize.title,
+                              fontWeight: NataloWeight.strong,
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 18),
-                      TextField(
-                        controller: _contentController,
-                        minLines: 4,
-                        maxLines: 6,
-                        maxLength: 500,
-                        decoration: const InputDecoration(
-                          hintText:
-                              'Apa yang paling kamu suka dari produk ini?',
-                          alignLabelWithHint: true,
+                        IconButton(
+                          onPressed: _submitting || _uploadingMedia
+                              ? null
+                              : () => Navigator.pop(context),
+                          icon: const Icon(Icons.close_rounded),
+                          tooltip: 'Tutup',
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      _SuggestionChips(
-                        selected: _selectedSuggestions,
-                        onSelected: _toggleSuggestion,
-                        isSelfPickup: widget.isSelfPickup,
-                      ),
-                      const SizedBox(height: 16),
-                      _ReviewMediaPicker(
-                        mediaItems: _mediaItems,
-                        uploading: _uploadingMedia,
-                        maxMedia: _maxMedia,
-                        onAdd: _chooseMediaSource,
-                        onRemove: (item) =>
-                            setState(() => _mediaItems.remove(item)),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.md,
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _rating == 0 || _submitting ? null : _submit,
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(54),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: AppRadius.large,
+                  Divider(height: 1, color: cs.outlineVariant),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(AppSpacing.lg),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _ReviewSheetProductPreview(item: widget.item),
+                          const SizedBox(height: 14),
+                          Text(
+                            'Bagaimana pengalamanmu dengan produk ini?',
+                            style: TextStyle(
+                              color: cs.onSurface,
+                              fontSize: NataloTextSize.subtitle,
+                              fontWeight: NataloWeight.strong,
+                              height: 1.25,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Center(
+                            child: PremiumStarRating(
+                              value: _rating,
+                              enabled: !_submitting && !_uploadingMedia,
+                              onChanged: (rating) {
+                                _update(() => _rating = rating);
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Center(
+                            child: AnimatedSwitcher(
+                              transitionBuilder: appFadeScaleTransition,
+                              duration: MotionPrefs.shouldReduce(context)
+                                  ? Duration.zero
+                                  : AppMotionTokens.quick,
+                              child: Text(
+                                _rating == 0
+                                    ? 'Belum dipilih'
+                                    : _ratingLabel(_rating),
+                                key: ValueKey(_rating),
+                                style: TextStyle(
+                                  color: _rating == 0
+                                      ? cs.onSurfaceVariant
+                                      : _brandBlue,
+                                  fontSize: NataloTextSize.body,
+                                  fontWeight: NataloWeight.strong,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          _editorFields(),
+                        ],
                       ),
                     ),
-                    child: Text(_submitting ? 'Mengirim...' : 'Kirim Review'),
                   ),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg,
+                      AppSpacing.md,
+                      AppSpacing.lg,
+                      AppSpacing.lg,
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed:
+                            _rating == 0 || _submitting || _uploadingMedia
+                                ? null
+                                : _submit,
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(54),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: AppRadius.large,
+                          ),
+                        ),
+                        child:
+                            Text(_submitting ? 'Mengirim...' : 'Kirim ulasan'),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
-    );
+        ));
   }
+
+  Widget _editorFields() =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const SizedBox(height: 12),
+        TextField(
+            controller: _contentController,
+            enabled: widget.enabled && !_submitting,
+            minLines: 3,
+            maxLines: 6,
+            maxLength: 500,
+            decoration: const InputDecoration(
+                labelText: 'Komentar · opsional',
+                hintText: 'Kualitas produk atau pengalaman pemakaian…')),
+        _SuggestionChips(
+            selected: _selectedSuggestions,
+            onSelected: (text) {
+              if (widget.enabled && !_submitting) _toggleSuggestion(text);
+            },
+            isSelfPickup: widget.isSelfPickup),
+        const SizedBox(height: 16),
+        _ReviewMediaPicker(
+            mediaItems: _mediaItems,
+            uploading: _uploadingMedia,
+            maxMedia: _maxMedia,
+            onAdd: _chooseMediaSource,
+            onRemove: (item) {
+              if (widget.enabled && !_submitting && !_uploadingMedia) {
+                _update(() => _mediaItems.remove(item));
+              }
+            }),
+        const SizedBox(height: 12),
+        Text('Foto dan cerita minimal 10 huruf bisa memberi 5 poin loyal.',
+            style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: NataloTextSize.caption,
+                height: 1.6)),
+      ]);
 }
 
 class PremiumStarRating extends StatelessWidget {
   final int value;
   final ValueChanged<int> onChanged;
-
-  const PremiumStarRating({
-    super.key,
-    required this.value,
-    required this.onChanged,
-  });
-
+  final bool enabled;
+  const PremiumStarRating(
+      {super.key,
+      required this.value,
+      required this.onChanged,
+      this.enabled = true});
   @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(5, (index) {
-            final rating = index + 1;
-            final active = rating <= value;
-            return TweenAnimationBuilder<double>(
-              key: ValueKey('$rating-$value'),
-              tween: Tween(begin: active ? 1.18 : 1.0, end: 1.0),
-              duration: Duration(milliseconds: 170 + (index * 18)),
-              curve: Curves.easeOutBack,
-              builder: (context, scale, child) {
-                return Transform.scale(scale: scale, child: child);
-              },
-              child: IconButton(
-                onPressed: () => onChanged(rating),
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                icon: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 160),
-                  transitionBuilder: (child, animation) {
-                    return ScaleTransition(scale: animation, child: child);
-                  },
-                  child: Icon(
-                    active ? Icons.star_rounded : Icons.star_border_rounded,
-                    key: ValueKey(active),
-                    color: active ? _starGold : const Color(0xFFD1D5DB),
-                    size: 39,
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-        if (value == 5)
-          const Positioned(
-            right: -4,
-            top: -5,
-            child: Icon(Icons.auto_awesome_rounded, color: _starGold, size: 17),
-          ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) =>
+      ReviewStarRating(value: value, onChanged: onChanged, enabled: enabled);
 }
 
 class _ReviewSheetProductPreview extends StatelessWidget {
   final ReviewableItem item;
+  final bool showPrice;
 
-  const _ReviewSheetProductPreview({required this.item});
+  const _ReviewSheetProductPreview({required this.item, this.showPrice = true});
 
   @override
   Widget build(BuildContext context) {
@@ -1394,20 +1244,29 @@ class _ReviewSheetProductPreview extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: cs.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontSize: NataloTextSize.bodyLg,
+                  fontWeight: NataloWeight.strong,
                   height: 1.25,
                 ),
               ),
               const SizedBox(height: 5),
-              Text(
-                '${_priceText(item)} x ${item.quantity}',
-                style: TextStyle(
-                  color: cs.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+              if (item.variantLabel?.isNotEmpty == true)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 5),
+                  child: Text(item.variantLabel!,
+                      style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: NataloTextSize.caption)),
                 ),
-              ),
+              if (showPrice)
+                Text(
+                  '${_priceText(item)} x ${item.quantity}',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant,
+                    fontSize: NataloTextSize.caption,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
             ],
           ),
         ),
@@ -1491,8 +1350,8 @@ class _ReviewMediaPicker extends StatelessWidget {
                 'Foto / Video Review',
                 style: TextStyle(
                   color: cs.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontSize: NataloTextSize.bodyLg,
+                  fontWeight: NataloWeight.strong,
                 ),
               ),
             ),
@@ -1500,8 +1359,8 @@ class _ReviewMediaPicker extends StatelessWidget {
               '${mediaItems.length}/$maxMedia',
               style: TextStyle(
                 color: cs.onSurfaceVariant,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontSize: NataloTextSize.caption,
+                fontWeight: NataloWeight.strong,
               ),
             ),
           ],
@@ -1561,16 +1420,23 @@ class _ReviewMediaPicker extends StatelessWidget {
                   Positioned(
                     right: -6,
                     top: -6,
-                    child: IconButton.filled(
-                      onPressed: () => onRemove(item),
-                      icon: const Icon(Icons.close_rounded, size: 16),
+                    child: IconButton(
+                      tooltip: 'Hapus media',
+                      onPressed: uploading ? null : () => onRemove(item),
+                      icon: DecoratedBox(
+                          decoration: BoxDecoration(
+                              color: cs.surface, shape: BoxShape.circle),
+                          child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(Icons.close_rounded,
+                                  size: 16, color: cs.onSurface))),
                       style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFFEF4444),
+                        backgroundColor: Colors.transparent,
                         foregroundColor: Colors.white,
                         overlayColor: Colors.transparent,
                         splashFactory: NoSplash.splashFactory,
-                        fixedSize: const Size(28, 28),
-                        minimumSize: const Size(28, 28),
+                        fixedSize: const Size(48, 48),
+                        minimumSize: const Size(48, 48),
                         padding: EdgeInsets.zero,
                       ),
                     ),
@@ -1623,8 +1489,8 @@ class _AddMediaTile extends StatelessWidget {
                     '+ Media',
                     style: TextStyle(
                       color: _brandBlue,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      fontSize: NataloTextSize.caption,
+                      fontWeight: NataloWeight.strong,
                     ),
                   ),
                 ],
@@ -1651,7 +1517,7 @@ class _PhotoSourceTile extends StatelessWidget {
       leading: Icon(icon, color: _brandBlue),
       title: Text(
         label,
-        style: const TextStyle(fontWeight: FontWeight.w700),
+        style: const TextStyle(fontWeight: NataloWeight.strong),
       ),
       onTap: onTap,
     );
@@ -1678,143 +1544,10 @@ class _MiniStars extends StatelessWidget {
   }
 }
 
-/// Reward hint banner di review form — kasih incentive visual ke user
-/// untuk lengkapi review demi 5 poin loyal.
-///
-/// 3 check items dengan icon + warna conditional:
-///   ⭐ Beri bintang
-///   📝 Tulis deskripsi (min 10 huruf)
-///   📸 Tambah min 1 foto/video
-///
-/// Saat satu check terpenuhi, icon berubah warna jadi hijau + checkmark.
-/// Saat semua 3 terpenuhi, banner berubah jadi hijau celebration
-/// "Siap dapat 5 poin loyal!". Memberi visual reinforcement progress.
-class _ReviewBonusHint extends StatelessWidget {
-  final bool hasRating;
-  final bool hasContent;
-  final bool hasMedia;
-
-  const _ReviewBonusHint({
-    required this.hasRating,
-    required this.hasContent,
-    required this.hasMedia,
-  });
-
-  bool get _isComplete => hasRating && hasContent && hasMedia;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = _isComplete
-        ? const Color(0xFF059669) // emerald saat lengkap
-        : const Color(0xFFFBBF24); // amber saat masih ada yang kosong
-    final bg = _isComplete ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB);
-    final borderColor =
-        _isComplete ? const Color(0xFFA7F3D0) : const Color(0xFFFCD34D);
-    final headlineColor =
-        _isComplete ? const Color(0xFF065F46) : const Color(0xFF92400E);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor, width: 1.2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  _isComplete
-                      ? Icons.celebration_rounded
-                      : Icons.card_giftcard_rounded,
-                  color: accent,
-                  size: 16,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _isComplete
-                      ? 'Siap dapat +5 poin loyal setelah submit!'
-                      : 'Lengkapi review = +5 poin loyal',
-                  style: TextStyle(
-                    color: headlineColor,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _BonusCheckRow(
-            label: 'Beri bintang',
-            checked: hasRating,
-          ),
-          const SizedBox(height: 3),
-          _BonusCheckRow(
-            label: 'Tulis deskripsi (min 10 huruf)',
-            checked: hasContent,
-          ),
-          const SizedBox(height: 3),
-          _BonusCheckRow(
-            label: 'Tambah min 1 foto/video',
-            checked: hasMedia,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BonusCheckRow extends StatelessWidget {
-  final String label;
-  final bool checked;
-
-  const _BonusCheckRow({required this.label, required this.checked});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = checked ? const Color(0xFF059669) : const Color(0xFF9CA3AF);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          checked
-              ? Icons.check_circle_rounded
-              : Icons.radio_button_unchecked_rounded,
-          color: color,
-          size: 14,
-        ),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: TextStyle(
-            color: checked ? const Color(0xFF065F46) : const Color(0xFF6B7280),
-            fontSize: 11.5,
-            fontWeight: checked ? FontWeight.w800 : FontWeight.w600,
-            decoration:
-                checked ? TextDecoration.lineThrough : TextDecoration.none,
-            decorationColor: color.withValues(alpha: 0.4),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _SubmittedReview {
   final int rating;
   final String? content;
+  final List<ProductReviewMedia>? media;
 
   /// Bonus poin yang di-award oleh server kalau review LENGKAP
   /// (rating + deskripsi >= 10 char + min 1 foto/video). 0 kalau belum lengkap.
@@ -1824,6 +1557,7 @@ class _SubmittedReview {
   const _SubmittedReview({
     required this.rating,
     this.content,
+    this.media,
     this.pointsAwarded = 0,
   });
 }
@@ -1833,12 +1567,14 @@ class _ReviewedProductReview {
   final int rating;
   final String? content;
   final DateTime createdAt;
+  final List<ProductReviewMedia> media;
 
   const _ReviewedProductReview({
     required this.item,
     required this.rating,
     this.content,
     required this.createdAt,
+    this.media = const [],
   });
 }
 

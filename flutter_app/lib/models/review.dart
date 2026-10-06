@@ -64,6 +64,7 @@ class ReviewableItem {
   final int? reviewRating;
   final String? reviewText;
   final DateTime? reviewedAt;
+  final List<ProductReviewMedia> reviewMedia;
 
   const ReviewableItem({
     required this.orderItemId,
@@ -79,6 +80,7 @@ class ReviewableItem {
     this.reviewRating,
     this.reviewText,
     this.reviewedAt,
+    this.reviewMedia = const [],
   });
 
   factory ReviewableItem.fromJson(Map<String, dynamic> json) {
@@ -119,6 +121,11 @@ class ReviewableItem {
       reviewedAt: DateTime.tryParse(
         _string(reviewMap?['createdAt'] ?? json['reviewedAt']),
       ),
+      reviewMedia: (reviewMap?['images'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(ProductReviewMedia.fromJson)
+          .where((media) => media.url.isNotEmpty)
+          .toList(),
     );
   }
 }
