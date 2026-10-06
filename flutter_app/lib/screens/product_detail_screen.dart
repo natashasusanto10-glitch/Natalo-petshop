@@ -4769,7 +4769,7 @@ class _ProductVariantBottomSheetState
 
   int? get _originalPrice {
     final original = _selectedVariant?.price ?? _product.price.round();
-    if (_product.hasDiscount && original > _displayPrice) return original;
+    if (original > _displayPrice) return original;
     return null;
   }
 

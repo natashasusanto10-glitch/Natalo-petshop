@@ -9,8 +9,9 @@ class CartItem {
   /// Snapshot label varian ("4KG / Beef") — tidak berubah meski varian diedit.
   final String? variantLabel;
 
-  /// Override price kalau dikasih — kalau null, derive dari variant.price ?? product.finalPrice.
+  /// Override price kalau dikasih — kalau null, derive dari harga efektif varian/produk.
   final int _unitPriceOverride;
+  final int? _originalPriceOverride;
 
   /// Override stock kalau dikasih — kalau null, derive dari variant.stock ?? product.stock.
   final int _effectiveStockOverride;
@@ -23,15 +24,19 @@ class CartItem {
     this.variantLabel,
     required this.quantity,
     int? unitPrice,
+    int? originalPrice,
     int? effectiveStock,
-  })  : _unitPriceOverride =
-            unitPrice ?? variant?.price ?? product.finalPrice.round(),
+  })  : _originalPriceOverride = originalPrice,
+        _unitPriceOverride =
+            unitPrice ?? variant?.finalPrice ?? product.finalPrice.round(),
         _effectiveStockOverride =
             effectiveStock ?? variant?.stock ?? product.stock;
 
   String? get variantId => variant?.id;
 
   int get unitPrice => _unitPriceOverride;
+  int get originalPrice =>
+      _originalPriceOverride ?? variant?.price ?? product.price.round();
   int get effectiveStock => _effectiveStockOverride;
 
   /// Alias `unitPrice` — beberapa code pakai `effectivePrice` literal.
@@ -56,6 +61,7 @@ class CartItem {
   CartItem copyWith({
     int? quantity,
     int? unitPrice,
+    int? originalPrice,
     int? effectiveStock,
   }) {
     return CartItem(
@@ -63,6 +69,7 @@ class CartItem {
       variant: variant,
       variantLabel: variantLabel,
       unitPrice: unitPrice ?? this.unitPrice,
+      originalPrice: originalPrice ?? this.originalPrice,
       quantity: quantity ?? this.quantity,
       effectiveStock: effectiveStock ?? this.effectiveStock,
     );
@@ -73,7 +80,9 @@ class CartItem {
         if (variantId != null) 'variantId': variantId,
         if (variantLabel != null) 'variantLabel': variantLabel,
         if (variant != null) 'variantWeightGram': variant!.weightGram,
+        if (variant != null) 'variant': variant!.toJson(),
         'unitPrice': unitPrice,
+        'originalPrice': originalPrice,
         'quantity': quantity,
         'effectiveStock': effectiveStock,
       };
@@ -101,21 +110,24 @@ class CartItem {
     final effectiveStock =
         (json['effectiveStock'] as num?)?.toInt() ?? product.stock;
     final variantId = json['variantId'] as String?;
-    final variant = variantId == null || variantId.isEmpty
-        ? null
-        : ProductVariant(
-            id: variantId,
-            price: unitPrice,
-            stock: effectiveStock,
-            weightGram: (json['variantWeightGram'] as num?)?.toInt() ??
-                (json['weightGram'] as num?)?.toInt() ??
-                product.weightGram,
-          );
+    final variant = json['variant'] is Map<String, dynamic>
+        ? ProductVariant.fromJson(json['variant'] as Map<String, dynamic>)
+        : variantId == null || variantId.isEmpty
+            ? null
+            : ProductVariant(
+                id: variantId,
+                price: unitPrice,
+                stock: effectiveStock,
+                weightGram: (json['variantWeightGram'] as num?)?.toInt() ??
+                    (json['weightGram'] as num?)?.toInt() ??
+                    product.weightGram,
+              );
     return CartItem(
       product: product,
       variant: variant,
       variantLabel: json['variantLabel'] as String?,
       unitPrice: unitPrice,
+      originalPrice: (json['originalPrice'] as num?)?.toInt(),
       quantity: (json['quantity'] as num?)?.toInt() ?? 1,
       effectiveStock: effectiveStock,
     );

@@ -116,6 +116,14 @@ class ProductVariant {
   final String id;
   final String? sku;
   final int price;
+  final int? discountPrice;
+
+  /// Whether the API resolved this variant's own active promotion.
+  final bool hasResolvedPrice;
+  int get finalPrice =>
+      discountPrice != null && discountPrice! > 0 && discountPrice! < price
+          ? discountPrice!
+          : price;
   final int stock;
   final int weightGram;
   final String? imageUrl;
@@ -129,6 +137,8 @@ class ProductVariant {
     required this.id,
     this.sku,
     required this.price,
+    this.discountPrice,
+    this.hasResolvedPrice = false,
     this.stock = 0,
     this.weightGram = 500,
     this.imageUrl,
@@ -151,6 +161,12 @@ class ProductVariant {
       id: json['id'] as String,
       sku: json['sku'] as String?,
       price: _asInt(json['price']),
+      discountPrice:
+          json['discountPrice'] == null && json['discount_price'] == null
+              ? null
+              : _asInt(json['discountPrice'] ?? json['discount_price']),
+      hasResolvedPrice: json.containsKey('discountPrice') ||
+          json.containsKey('discount_price'),
       stock: _asInt(json['stock']),
       weightGram: _asInt(json['weightGram'] ?? 500),
       imageUrl: _stringOrNull(json['imageUrl'] ?? json['image_url']) == null
@@ -158,7 +174,11 @@ class ProductVariant {
           : _absoluteUrl(
               _string(json['imageUrl'] ?? json['image_url']),
             ),
-      optionIds: ids,
+      optionIds: ids.isNotEmpty
+          ? ids
+          : (json['optionIds'] as List? ?? const [])
+              .whereType<String>()
+              .toList(),
       isActive: json['isActive'] as bool? ?? true,
     );
   }
@@ -167,6 +187,8 @@ class ProductVariant {
         'id': id,
         'sku': sku,
         'price': price,
+        if (hasResolvedPrice || discountPrice != null)
+          'discountPrice': discountPrice,
         'stock': stock,
         'weightGram': weightGram,
         'imageUrl': imageUrl,

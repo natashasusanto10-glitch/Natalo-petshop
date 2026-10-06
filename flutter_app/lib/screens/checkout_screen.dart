@@ -116,7 +116,27 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   /// Items source — kalau widget.items di-pass (Buy Now), pakai itu.
   /// Otherwise default ke cartStore.items.
-  List<CartItem> get _checkoutItems => widget.items ?? cartStore.items;
+  final Map<String, CartPriceSnapshot> _resolvedItemPrices = {};
+  List<CartItem> get _checkoutItems =>
+      (widget.items ?? cartStore.items).map((item) {
+        final price = _resolvedItemPrices[item.key];
+        return price == null
+            ? item
+            : item.copyWith(
+                unitPrice: price.price, originalPrice: price.originalPrice);
+      }).toList(growable: false);
+
+  void _applyResolvedItemPrices(Object? rawItems) {
+    if (rawItems is! List) return;
+    final prices = rawItems
+        .whereType<Map<String, dynamic>>()
+        .map(CartPriceSnapshot.fromJson)
+        .toList();
+    for (final price in prices) {
+      if (price.price >= 0) _resolvedItemPrices[price.key] = price;
+    }
+    unawaited(cartStore.applyCurrentPrices(prices));
+  }
 
   /// BUGFIX(audit): bersihkan keranjang setelah order sukses TANPA menghapus
   /// item yang TIDAK di-order.
@@ -138,9 +158,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   /// Subtotal dari items (cartStore-aware atau override).
-  double get _localItemsSubtotal => widget.items != null
-      ? widget.items!.fold<double>(0, (sum, item) => sum + item.lineTotal)
-      : cartStore.subtotal.toDouble();
+  double get _localItemsSubtotal =>
+      _checkoutItems.fold<double>(0, (sum, item) => sum + item.lineTotal);
 
   double get _itemsSubtotal =>
       _checkoutPricing?.subtotal.toDouble() ?? _localItemsSubtotal;
@@ -547,6 +566,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       setState(() {
         _checkoutPricing = recalc;
+        _applyResolvedItemPrices(recalc.raw['items']);
         _voucherSyncFailed = false;
         _pricingRetryScheduled = false;
         _pricingRetryAttempt = 0;
@@ -998,6 +1018,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             return;
           }
         }
+        _applyResolvedItemPrices(recalc.raw['items']);
       }
       final result = await orderService.createOrder(
         // Use override items kalau Buy Now flow, else cartStore.items.

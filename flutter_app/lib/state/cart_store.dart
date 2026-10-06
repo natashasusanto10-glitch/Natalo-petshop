@@ -13,6 +13,9 @@ import '../utils/read_only_mode.dart';
 import 'member_store.dart';
 
 int effectiveCartVariantPrice(Product product, ProductVariant variant) {
+  if (variant.hasResolvedPrice || variant.discountPrice != null) {
+    return variant.finalPrice;
+  }
   final discount = product.discountPrice;
   if (product.hasFlashSaleCountdown &&
       discount != null &&
@@ -255,6 +258,25 @@ class CartStore extends ChangeNotifier with WidgetsBindingObserver {
   /// product detail untuk pre-check stok sebelum add (toast "Stok cuma N").
   int quantityFor(String key) => _items[key]?.quantity ?? 0;
 
+  /// Refresh prices without merging quantities or resurrecting deleted lines.
+  Future<void> applyCurrentPrices(List<CartPriceSnapshot> prices) async {
+    var changed = false;
+    for (final price in prices) {
+      final item = _items[price.key];
+      if (item == null || price.price < 0) continue;
+      if (item.unitPrice == price.price &&
+          item.originalPrice == price.originalPrice) {
+        continue;
+      }
+      _items[price.key] = item.copyWith(
+          unitPrice: price.price, originalPrice: price.originalPrice);
+      changed = true;
+    }
+    if (!changed) return;
+    notifyListeners();
+    await _persist();
+  }
+
   /// Add cart line (atau increment qty kalau sudah ada).
   ///
   /// Return `true` kalau qty ke-CLAMP ke stok (user minta lebih dari stok).
@@ -269,8 +291,7 @@ class CartStore extends ChangeNotifier with WidgetsBindingObserver {
     final stock = item.effectiveStock;
     final capped = stock > 0 ? desired.clamp(1, stock) : desired;
     final clamped = capped < desired;
-    final base = existing ?? item;
-    _items[item.key] = base.copyWith(quantity: capped);
+    _items[item.key] = item.copyWith(quantity: capped);
     notifyListeners();
     await _persist();
     _markDirtyAndSync();

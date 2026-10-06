@@ -182,6 +182,8 @@ class _CartScreenState extends State<CartScreen>
     }
     final result = await cartService.validate(items);
     if (!mounted) return;
+    await cartStore.applyCurrentPrices(result.prices);
+    if (!mounted) return;
     final map = <String, CartValidationIssue>{};
     for (final issue in result.issues) {
       map[issue.matchKey] = issue;
@@ -1491,7 +1493,7 @@ class _CartItemCard extends StatelessWidget {
     // kalau ada isu, else effectiveStock lokal.
     final availableStock = stockIssue?.availableStock ?? item.effectiveStock;
     final price = item.effectivePrice;
-    final regular = item.variant?.price.toDouble() ?? item.product.price;
+    final regular = item.originalPrice.toDouble();
     final hasDiscount = regular > price;
     final discountPercent =
         hasDiscount ? (((regular - price) / regular) * 100).round() : 0;

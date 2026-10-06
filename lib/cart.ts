@@ -20,6 +20,7 @@ export type CartItem = {
   variantLabel?: string | null;
   name: string;
   price: number;
+  originalPrice?: number;
   quantity: number;
   subtotal?: number;
   weightGram: number;

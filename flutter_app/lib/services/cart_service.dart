@@ -98,9 +98,16 @@ class CartService {
         },
       );
       final issues = data['issues'];
+      final pricedItems = data['items'];
       // Backend (reconcileCartItemsWithStock) balikin `ok`, bukan `valid`.
       return CartValidationResult(
         valid: (data['ok'] ?? data['valid']) != false,
+        prices: pricedItems is List
+            ? pricedItems
+                .whereType<Map<String, dynamic>>()
+                .map(CartPriceSnapshot.fromJson)
+                .toList()
+            : const [],
         issues: issues is List
             ? issues
                 .whereType<Map<String, dynamic>>()
@@ -158,8 +165,30 @@ class CartService {
 class CartValidationResult {
   final bool valid;
   final List<CartValidationIssue> issues;
+  final List<CartPriceSnapshot> prices;
 
-  const CartValidationResult({required this.valid, required this.issues});
+  const CartValidationResult(
+      {required this.valid, required this.issues, this.prices = const []});
+}
+
+class CartPriceSnapshot {
+  final String productId;
+  final String? variantId;
+  final int price;
+  final int originalPrice;
+  const CartPriceSnapshot(
+      {required this.productId,
+      this.variantId,
+      required this.price,
+      required this.originalPrice});
+  String get key => variantId == null ? productId : '$productId:$variantId';
+  factory CartPriceSnapshot.fromJson(Map<String, dynamic> json) =>
+      CartPriceSnapshot(
+        productId: (json['productId'] ?? '').toString(),
+        variantId: json['variantId']?.toString(),
+        price: _asInt(json['price']),
+        originalPrice: _asInt(json['originalPrice'] ?? json['price']),
+      );
 }
 
 /// Isu stok per item dari POST /api/cart/validate (reconcileCartItemsWithStock).

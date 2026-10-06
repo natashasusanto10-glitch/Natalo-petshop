@@ -683,6 +683,12 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     subtotal,
+    items: checkoutItems.map((item) => ({
+      ...item,
+      originalPrice: item.variantId
+        ? variants.find((variant) => variant.id === item.variantId)?.price ?? item.price
+        : productById.get(item.productId)?.price ?? item.price,
+    })),
     shipping_fee: shippingFee,
     discount: totalDiscount,
     productDiscount,
