@@ -1,13 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { uploadAdminImage } from "@/lib/admin-image-upload";
+import { MAX_SIZE_MB, uploadAdminImage, uploadOne } from "@/lib/admin-image-upload";
 import { AdminDialog } from "./ui/AdminDialog";
 import { Button } from "./ui";
 
-async function waitForUploadedPhoto(url: string): Promise<void> {
+const PHOTO_LOAD_TIMEOUT_MS = 10_000;
+
+async function waitForUploadedPhoto(url: string): Promise<string> {
   // A successful storage upload does not guarantee the CDN is readable yet.
   for (let attempt = 0; attempt < 3; attempt++) {
+    const candidate = new URL(url);
+    // Only bypass cached failures for public UploadThing URLs, never signed URLs.
+    if (attempt > 0 && !candidate.search && (candidate.hostname.endsWith(".ufs.sh") || candidate.hostname === "utfs.io")) {
+      candidate.searchParams.set("photoCheck", `${Date.now()}-${attempt}`);
+    }
     try {
       await new Promise<void>((resolve, reject) => {
         const image = new Image();
@@ -16,17 +23,21 @@ async function waitForUploadedPhoto(url: string): Promise<void> {
           image.onload = image.onerror = null;
           if (error) reject(error); else resolve();
         };
-        const timeout = setTimeout(() => finish(new Error("Foto belum dapat dimuat.")), 4000);
+        const timeout = setTimeout(() => {
+          finish(new Error("Foto belum dapat dimuat."));
+          image.removeAttribute("src");
+        }, PHOTO_LOAD_TIMEOUT_MS);
         image.onload = () => image.naturalWidth > 0 ? finish() : finish(new Error("Foto tidak valid."));
         image.onerror = () => finish(new Error("Foto belum dapat dimuat."));
-        image.src = url;
+        image.src = candidate.href;
       });
-      return;
+      return candidate.href;
     } catch (error) {
       if (attempt === 2) throw error;
       await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
     }
   }
+  throw new Error("Foto belum dapat dimuat.");
 }
 
 export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
@@ -36,6 +47,8 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
   const imageRef = useRef<HTMLImageElement>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const busyRef = useRef(false);
+  const savedUpload = useRef<{ cropKey: string; url: string } | null>(null);
+  const preparedPhoto = useRef<{ cropKey: string; file: File } | null>(null);
   const [mode, updateMode] = useState<"preview" | "edit" | "remove">("preview");
   const [dialogOpen, setDialogOpen] = useState(false);
   function setMode(next: "preview" | "edit" | "remove" | null) {
@@ -46,6 +59,8 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
   const [editorRevision, setEditorRevision] = useState(0);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [verifiedPhoto, setVerifiedPhoto] = useState<{ url: string; displayUrl: string } | null>(null);
   const [error, setError] = useState("");
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -55,35 +70,66 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
   const imageFailed = Boolean(imageUrl) && failedImageUrl === imageUrl;
   useEffect(() => () => { if (source.startsWith("blob:")) URL.revokeObjectURL(source); }, [source]);
   function openEditor(src: string) {
+    savedUpload.current = null;
+    preparedPhoto.current = null;
     setEditorRevision(value => value + 1);
     setSource(src); setReady(false); setError(""); setZoom(1); setRotation(0); setPosition({ x: 0, y: 0 }); setMode("edit");
   }
   const width = ratio >= 1 ? 100 : ratio * 100;
   const height = ratio >= 1 ? 100 / ratio : 100;
   const transform = `translate(${position.x}%, ${position.y}%) rotate(${rotation}deg) scale(${zoom})`;
+  const displayUrl = verifiedPhoto?.url === imageUrl ? verifiedPhoto.displayUrl : imageUrl;
   async function savePhoto() {
     if (!ready || busyRef.current || !imageRef.current) return;
     busyRef.current = true; setBusy(true); onBusyChange?.(true); setError("");
+    let phase: "process" | "upload" | "load" = "process";
     try {
-      const image = imageRef.current;
-      const size = Math.min(1200, Math.max(image.naturalWidth, image.naturalHeight));
-      const canvas = document.createElement("canvas"); canvas.width = canvas.height = size;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("Foto tidak dapat diproses.");
-      context.fillStyle = "#fff"; context.fillRect(0, 0, size, size);
-      // CSS translation is relative to the fitted image, matching canvas export.
-      const w = size * width / 100; const h = size * height / 100;
-      context.translate(size / 2 + position.x * w / 100, size / 2 + position.y * h / 100);
-      context.rotate(rotation * Math.PI / 180); context.scale(zoom, zoom);
-      context.drawImage(image, -w / 2, -h / 2, w, h);
-      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("Foto tidak dapat diproses.")), "image/jpeg", .88));
-      const url = await uploadAdminImage(new File([blob], "variant-photo.jpg", { type: "image/jpeg" }));
-      await waitForUploadedPhoto(url);
+      const cropKey = JSON.stringify([editorRevision, zoom, rotation, position.x, position.y, ratio]);
+      setProgress("Memproses foto…");
+      if (preparedPhoto.current?.cropKey !== cropKey && savedUpload.current?.cropKey !== cropKey) {
+        const image = imageRef.current;
+        const size = Math.min(1200, Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement("canvas"); canvas.width = canvas.height = size;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Foto tidak dapat diproses.");
+        context.fillStyle = "#fff"; context.fillRect(0, 0, size, size);
+        // CSS translation is relative to the fitted image, matching canvas export.
+        const w = size * width / 100; const h = size * height / 100;
+        context.translate(size / 2 + position.x * w / 100, size / 2 + position.y * h / 100);
+        context.rotate(rotation * Math.PI / 180); context.scale(zoom, zoom);
+        context.drawImage(image, -w / 2, -h / 2, w, h);
+        const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("Foto tidak dapat diproses.")), "image/jpeg", .88));
+        preparedPhoto.current = { cropKey, file: new File([blob], "variant-photo.jpg", { type: "image/jpeg" }) };
+      }
+      phase = "upload";
+      setProgress("Mengunggah foto…");
+      if (savedUpload.current?.cropKey !== cropKey) {
+        const prepared = preparedPhoto.current;
+        if (!prepared || prepared.cropKey !== cropKey) throw new Error("Hasil crop tidak tersedia. Pilih foto kembali.");
+        // Crop export is already a resized JPEG. Avoid a second encode when
+        // it fits the upload limit; keep compression for oversized exports.
+        const url = prepared.file.size <= MAX_SIZE_MB * 1024 * 1024
+          ? await uploadOne(prepared.file)
+          : await uploadAdminImage(prepared.file);
+        savedUpload.current = { cropKey, url };
+      }
+      const url = savedUpload.current.url;
+      phase = "load";
+      setProgress("Memeriksa foto…");
+      const loadedUrl = await waitForUploadedPhoto(url);
+      setVerifiedPhoto({ url, displayUrl: loadedUrl });
       setFailedImageUrl(null);
       onChange(url); setMode(null);
-    } catch {
-      setError("Foto belum bisa disimpan atau dimuat. Foto varian belum diganti. Coba simpan lagi atau pilih foto lain.");
-    } finally { busyRef.current = false; setBusy(false); onBusyChange?.(false); }
+    } catch (cause) {
+      if (phase === "load") {
+        setError("Foto sudah diunggah, tetapi belum dapat dimuat. Klik Simpan foto untuk memeriksa kembali tanpa mengunggah ulang. Foto varian belum diganti.");
+      } else if (phase === "upload") {
+        const detail = cause instanceof Error ? cause.message : "Koneksi atau server bermasalah.";
+        setError(`Upload gagal: ${detail}. Hasil crop tetap tersedia untuk dicoba kembali.`);
+      } else {
+        setError("Foto gagal diproses. Pilih foto dari perangkat kembali, lalu coba simpan. Foto varian belum diganti.");
+      }
+    } finally { busyRef.current = false; setBusy(false); setProgress(""); onBusyChange?.(false); }
   }
   const cropImage = (preview: boolean) => <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-white">
     <img key={editorRevision} ref={preview ? undefined : imageRef} src={source} crossOrigin="anonymous" alt={preview ? `Hasil crop ${label}` : label}
@@ -94,7 +140,7 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
   </div>;
   return <div className="variant-photo-field">
     <button type="button" className={`variant-photo-thumbnail ${imageUrl ? "" : "is-empty"}`} onClick={() => imageUrl && !imageFailed ? setMode("preview") : fileRef.current?.click()} aria-label={`${imageFailed ? "Ganti" : imageUrl ? "Pratinjau" : "Tambah"} foto ${label}`}>
-      {imageFailed ? <span className="text-xs leading-tight text-red-700">Gagal muat<br />Ganti foto</span> : imageUrl ? <img key={imageUrl} src={imageUrl} alt={label} onError={() => setFailedImageUrl(imageUrl)} /> : <span aria-hidden="true">+</span>}
+      {imageFailed ? <span className="text-xs leading-tight text-red-700">Gagal muat<br />Ganti foto</span> : imageUrl ? <img key={displayUrl} src={displayUrl} alt={label} onError={() => setFailedImageUrl(imageUrl)} /> : <span aria-hidden="true">+</span>}
     </button>
     {imageUrl && <div className="variant-photo-tools">
       <button type="button" onClick={() => openEditor(imageUrl)} aria-label={`Edit foto ${label}`} title="Edit foto"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z" /></svg></button>
@@ -103,7 +149,7 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
     <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) openEditor(URL.createObjectURL(file)); }} />
     <AdminDialog open={dialogOpen} title={mode === "remove" ? "Hapus foto varian?" : mode === "preview" ? `Foto ${label}` : `Ubah foto ${label}`} onClose={() => { if (!busyRef.current) setMode(null); }} busy={busy}
       footer={mode === "edit" ? <><Button type="button" variant="secondary" disabled={busy} onClick={() => fileRef.current?.click()}>Ganti foto</Button><Button type="button" variant="secondary" disabled={busy} onClick={() => setMode(null)}>Batal</Button><Button type="button" disabled={busy || !ready} onClick={() => void savePhoto()}>{busy ? "Menyimpan…" : "Simpan foto"}</Button></> : mode === "remove" ? <><Button type="button" variant="secondary" onClick={() => setMode(null)}>Batal</Button><Button type="button" onClick={() => { onChange(""); setMode(null); }}>Hapus foto</Button></> : <Button type="button" onClick={() => openEditor(imageUrl)}>Edit foto</Button>}>
-      {mode === "preview" && <img src={imageUrl} alt={label} className="mx-auto max-h-[60vh] w-full object-contain" />}
+      {mode === "preview" && <img src={displayUrl} alt={label} className="mx-auto max-h-[60vh] w-full object-contain" />}
       {mode === "remove" && <p>Foto {label} akan dilepas dari varian. Perubahan berlaku setelah produk disimpan.</p>}
       {mode === "edit" && <div>
         <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_110px]">
@@ -114,6 +160,7 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
           <div className="hidden sm:block"><p className="mb-2 text-xs text-zinc-500">Pratinjau</p>{cropImage(true)}</div>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3"><label className="flex min-w-0 flex-1 items-center gap-3 text-sm">Zoom<input aria-label="Zoom foto" type="range" min="1" max="3" step=".05" value={zoom} disabled={busy} onChange={e => setZoom(Number(e.target.value))} className="min-w-0 flex-1" /></label><Button type="button" variant="secondary" disabled={busy} onClick={() => setRotation(r => (r + 90) % 360)}>Putar</Button><Button type="button" variant="secondary" disabled={busy} onClick={() => { setZoom(1); setRotation(0); setPosition({ x: 0, y: 0 }); }}>Atur ulang</Button></div>
+        {busy && <p role="status" aria-live="polite" className="mt-3 text-sm text-blue-700">{progress}</p>}
         {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
       </div>}
     </AdminDialog>

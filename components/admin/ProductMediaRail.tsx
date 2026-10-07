@@ -56,6 +56,7 @@ export function ProductMediaRail({
   changeRef.current = onImagesChange;
   const cleanupRef = useRef<(() => void) | null>(null);
   const uploadingRef = useRef(false);
+  const pendingPreviewUrls = useRef<string[]>([]);
   const suppressClick = useRef(false);
   const [preview, setPreview] = useState<string | null>(null);
   const previewIndex = preview === null ? -1 : images.indexOf(preview);
@@ -67,10 +68,15 @@ export function ProductMediaRail({
   const [error, setError] = useState<string | null>(null);
   const [dragged, setDragged] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
+  const [pendingPhotos, setPendingPhotos] = useState<{ index: number; url: string; name: string }[]>([]);
   const [videoBusy, setVideoBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   useEffect(() => () => cleanupRef.current?.(), []);
+  useEffect(() => () => {
+    pendingPreviewUrls.current.forEach(url => URL.revokeObjectURL(url));
+    pendingPreviewUrls.current = [];
+  }, []);
   useEffect(() => {
     onBusyChange?.(uploading || videoBusy);
   }, [uploading, videoBusy, onBusyChange]);
@@ -88,6 +94,11 @@ export function ProductMediaRail({
     setUploading(true);
     setError(null);
     setPending(incoming.length);
+    const previews = incoming.map((file, index) => ({
+      index, name: file.name, url: URL.createObjectURL(file),
+    }));
+    pendingPreviewUrls.current = previews.map(photo => photo.url);
+    setPendingPhotos(previews);
     const base = [...latest.current];
     const slots = new Array<string | undefined>(incoming.length);
     try {
@@ -96,6 +107,7 @@ export function ProductMediaRail({
         remaining,
         (settled) => {
           setPending((count) => Math.max(0, count - 1));
+          setPendingPhotos(photos => photos.filter(photo => photo.index !== settled.index));
           if (settled.url) {
             slots[settled.index] = settled.url;
             change([
@@ -109,6 +121,9 @@ export function ProductMediaRail({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unggah foto gagal.");
     } finally {
+      pendingPreviewUrls.current.forEach(url => URL.revokeObjectURL(url));
+      pendingPreviewUrls.current = [];
+      setPendingPhotos([]);
       setPending(0);
       uploadingRef.current = false;
       setUploading(false);
@@ -315,13 +330,17 @@ export function ProductMediaRail({
               </button>
             </div>
           ))}
-          {Array.from({ length: pending }, (_, index) => (
+          {pendingPhotos.map(photo => (
             <div
-              key={`pending-${index}`}
+              key={`pending-${photo.index}`}
               className="admin-photo-upload"
               role="status"
+              aria-label={`Mengunggah ${photo.name}`}
+              style={{ position: "relative", overflow: "hidden" }}
             >
-              Mengunggah…
+              <img src={photo.url} alt="" draggable={false}
+                className="absolute inset-0 h-full w-full object-contain opacity-70" />
+              <span className="relative rounded-md bg-white/95 px-2 py-1 text-xs text-blue-700">Mengunggah…</span>
             </div>
           ))}
           {images.length + pending < 9 && (

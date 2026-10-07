@@ -97,12 +97,28 @@ async function postImage(
     // mengulang tidak akan menolong. 5xx/429 = server sibuk (koneksi DB
     // habis, UploadThing throttle) → justru kasus yang layak diulang.
     const retriable = res.status >= 500 || res.status === 429;
-    throw new UploadError(data?.error || `Gagal upload "${displayName}"`, retriable);
+    const detail = res.status === 401
+      ? "Sesi admin berakhir. Masuk kembali sebelum mengunggah foto."
+      : res.status === 413
+        ? "Server menolak ukuran file upload."
+        : typeof data?.error === "string"
+          ? data.error
+          : `Gagal upload "${displayName}"`;
+    throw new UploadError(`${detail} (HTTP ${res.status})`, retriable);
   }
 
-  const url = String((await res.json()).url ?? "");
-  if (!url) throw new UploadError(`Server tidak mengembalikan URL untuk "${displayName}"`, false);
-  return url;
+  // A response with no usable URL must not become a broken product image.
+  const data = await res.json().catch(() => null);
+  if (typeof data?.url !== "string" || !data.url) {
+    throw new UploadError(`Respons upload tidak berisi URL foto untuk "${displayName}". Status penyimpanan belum dapat dipastikan.`, false);
+  }
+  try {
+    const url = new URL(data.url);
+    if (url.protocol !== "https:") throw new Error("Invalid protocol");
+    return url.href;
+  } catch {
+    throw new UploadError("Server mengembalikan URL foto yang tidak valid.", false);
+  }
 }
 
 /**
