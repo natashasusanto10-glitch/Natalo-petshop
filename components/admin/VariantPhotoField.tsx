@@ -5,6 +5,30 @@ import { uploadAdminImage } from "@/lib/admin-image-upload";
 import { AdminDialog } from "./ui/AdminDialog";
 import { Button } from "./ui";
 
+async function waitForUploadedPhoto(url: string): Promise<void> {
+  // A successful storage upload does not guarantee the CDN is readable yet.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const image = new Image();
+        const finish = (error?: Error) => {
+          clearTimeout(timeout);
+          image.onload = image.onerror = null;
+          if (error) reject(error); else resolve();
+        };
+        const timeout = setTimeout(() => finish(new Error("Foto belum dapat dimuat.")), 4000);
+        image.onload = () => image.naturalWidth > 0 ? finish() : finish(new Error("Foto tidak valid."));
+        image.onerror = () => finish(new Error("Foto belum dapat dimuat."));
+        image.src = url;
+      });
+      return;
+    } catch (error) {
+      if (attempt === 2) throw error;
+      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+}
+
 export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
   imageUrl: string; label: string; onChange(url: string): void; onBusyChange?(busy: boolean): void;
 }) {
@@ -27,6 +51,8 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
   const [rotation, setRotation] = useState(0);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [ratio, setRatio] = useState(1);
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const imageFailed = Boolean(imageUrl) && failedImageUrl === imageUrl;
   useEffect(() => () => { if (source.startsWith("blob:")) URL.revokeObjectURL(source); }, [source]);
   function openEditor(src: string) {
     setEditorRevision(value => value + 1);
@@ -52,9 +78,11 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
       context.drawImage(image, -w / 2, -h / 2, w, h);
       const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("Foto tidak dapat diproses.")), "image/jpeg", .88));
       const url = await uploadAdminImage(new File([blob], "variant-photo.jpg", { type: "image/jpeg" }));
+      await waitForUploadedPhoto(url);
+      setFailedImageUrl(null);
       onChange(url); setMode(null);
     } catch {
-      setError("Foto gagal disimpan. Foto sebelumnya tetap tersedia. Coba lagi atau pilih foto dari perangkat.");
+      setError("Foto belum bisa disimpan atau dimuat. Foto varian belum diganti. Coba simpan lagi atau pilih foto lain.");
     } finally { busyRef.current = false; setBusy(false); onBusyChange?.(false); }
   }
   const cropImage = (preview: boolean) => <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-white">
@@ -65,8 +93,8 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
     {!preview && <div aria-hidden="true" className="pointer-events-none absolute inset-0 grid grid-cols-3 grid-rows-3 border-2 border-blue-500">{Array.from({ length: 9 }, (_, i) => <span key={i} className="border border-white/40" />)}</div>}
   </div>;
   return <div className="variant-photo-field">
-    <button type="button" className={`variant-photo-thumbnail ${imageUrl ? "" : "is-empty"}`} onClick={() => imageUrl ? setMode("preview") : fileRef.current?.click()} aria-label={`${imageUrl ? "Pratinjau" : "Tambah"} foto ${label}`}>
-      {imageUrl ? <img src={imageUrl} alt={label} /> : <span aria-hidden="true">+</span>}
+    <button type="button" className={`variant-photo-thumbnail ${imageUrl ? "" : "is-empty"}`} onClick={() => imageUrl && !imageFailed ? setMode("preview") : fileRef.current?.click()} aria-label={`${imageFailed ? "Ganti" : imageUrl ? "Pratinjau" : "Tambah"} foto ${label}`}>
+      {imageFailed ? <span className="text-xs leading-tight text-red-700">Gagal muat<br />Ganti foto</span> : imageUrl ? <img key={imageUrl} src={imageUrl} alt={label} onError={() => setFailedImageUrl(imageUrl)} /> : <span aria-hidden="true">+</span>}
     </button>
     {imageUrl && <div className="variant-photo-tools">
       <button type="button" onClick={() => openEditor(imageUrl)} aria-label={`Edit foto ${label}`} title="Edit foto"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z" /></svg></button>
