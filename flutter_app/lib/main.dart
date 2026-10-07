@@ -491,6 +491,14 @@ class NataloPetshopApp extends StatelessWidget {
                 ),
               '/member/postingan-edit' when settings.arguments is FeedPost =>
                 MemberPostEditScreen(post: settings.arguments as FeedPost),
+              '/member/order-detail'
+                  when settings.arguments is MemberOrderDetailArgs =>
+                MemberOrderDetailScreen(
+                  order: (settings.arguments as MemberOrderDetailArgs).order,
+                  focusTransferInstructions:
+                      (settings.arguments as MemberOrderDetailArgs)
+                          .focusTransferInstructions,
+                ),
               '/member/order-detail' when settings.arguments is OrderSummary =>
                 MemberOrderDetailScreen(
                     order: settings.arguments as OrderSummary),
@@ -523,8 +531,7 @@ class NataloPetshopApp extends StatelessWidget {
             return _SmoothPageRoute(
               settings: settings,
               child: isTabRoot
-                  ? TabBackHandler(
-                      isHomeTab: settings.name == '/', child: page)
+                  ? TabBackHandler(isHomeTab: settings.name == '/', child: page)
                   : page,
             );
           },

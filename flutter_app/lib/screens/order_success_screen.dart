@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'member_order_detail_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -197,6 +198,12 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
     Navigator.pushNamed(context, '/member/order-detail', arguments: _order);
   }
 
+  void _openTransferInstructions() {
+    Navigator.pushNamed(context, '/member/order-detail',
+        arguments: MemberOrderDetailArgs(
+            order: _order, focusTransferInstructions: true));
+  }
+
   void _goHome() {
     Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
   }
@@ -242,6 +249,7 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
                           order: _order,
                           onPayNow: _openMidtrans,
                           onOpenDetail: _openDetail,
+                          onOpenTransferInstructions: _openTransferInstructions,
                         ),
                         const SizedBox(height: 10),
                         Row(
@@ -633,11 +641,13 @@ class _PrimaryActions extends StatelessWidget {
   final OrderSummary order;
   final VoidCallback onPayNow;
   final VoidCallback onOpenDetail;
+  final VoidCallback onOpenTransferInstructions;
 
   const _PrimaryActions({
     required this.order,
     required this.onPayNow,
     required this.onOpenDetail,
+    required this.onOpenTransferInstructions,
   });
 
   @override
@@ -653,7 +663,11 @@ class _PrimaryActions extends StatelessWidget {
         : showManualInstruction
             ? 'Lihat Instruksi Transfer'
             : 'Lihat Detail Pesanan';
-    final primaryAction = canPayMidtrans ? onPayNow : onOpenDetail;
+    final primaryAction = canPayMidtrans
+        ? onPayNow
+        : showManualInstruction
+            ? onOpenTransferInstructions
+            : onOpenDetail;
 
     return Column(
       children: [

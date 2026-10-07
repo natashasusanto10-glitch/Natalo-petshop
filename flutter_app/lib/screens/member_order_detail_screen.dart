@@ -54,10 +54,20 @@ class _BankAccount {
   });
 }
 
+class MemberOrderDetailArgs {
+  final OrderSummary order;
+  final bool focusTransferInstructions;
+
+  const MemberOrderDetailArgs(
+      {required this.order, this.focusTransferInstructions = false});
+}
+
 class MemberOrderDetailScreen extends StatefulWidget {
   final OrderSummary order;
+  final bool focusTransferInstructions;
 
-  const MemberOrderDetailScreen({super.key, required this.order});
+  const MemberOrderDetailScreen(
+      {super.key, required this.order, this.focusTransferInstructions = false});
 
   @override
   State<MemberOrderDetailScreen> createState() =>
@@ -70,6 +80,37 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
   bool _reordering = false;
   bool _cancelling = false;
   bool _confirmingDelivered = false;
+  final _paymentSectionKey = GlobalKey();
+  final _scrollController = ScrollController();
+  bool _paymentFocusScheduled = false;
+  bool _initialPaymentFocusDone = false;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _focusInitialPaymentSection(OrderSummary order, bool loading) {
+    if (!widget.focusTransferInstructions ||
+        loading ||
+        _initialPaymentFocusDone ||
+        _paymentFocusScheduled) {
+      return;
+    }
+    _paymentFocusScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final target = _paymentSectionKey.currentContext;
+      if (order.paymentProvider.toUpperCase() == 'MANUAL' && target != null) {
+        // Position before revealing the page; no long scroll from its header.
+        await Scrollable.ensureVisible(target,
+            duration: Duration.zero, alignment: 0);
+      }
+      if (!mounted) return;
+      setState(() => _initialPaymentFocusDone = true);
+    });
+  }
 
   @override
   void initState() {
@@ -117,7 +158,8 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.xl)),
         icon: Container(
           width: 56,
           height: 56,
@@ -256,7 +298,8 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.xl)),
         icon: Container(
           width: 56,
           height: 56,
@@ -435,6 +478,9 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
       builder: (context, snapshot) {
         final order = snapshot.data ?? _order;
         final loading = snapshot.connectionState == ConnectionState.waiting;
+        _focusInitialPaymentSection(order, loading);
+        final positioningPayment =
+            widget.focusTransferInstructions && !_initialPaymentFocusDone;
 
         return Scaffold(
           appBar: AppBar(
@@ -448,125 +494,157 @@ class _MemberOrderDetailScreenState extends State<MemberOrderDetailScreen> {
               const SizedBox(width: 12),
             ],
           ),
-          body: NataloPawRefreshIndicator(
-            onRefresh: _refreshOrder,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 118),
-              children: [
-                AnimatedSwitcher(
-                  transitionBuilder: appFadeScaleTransition,
-                  duration: const Duration(milliseconds: 180),
-                  child: loading
-                      ? const LinearProgressIndicator(minHeight: 3)
-                      : const SizedBox(height: 3),
-                ),
-                const SizedBox(height: 9),
-                _OrderHeader(order: order),
-                const SizedBox(height: 12),
-                // Visual timeline 4-stage — animated pulse di stage aktif,
-                // connector lines hijau di stage selesai. Native feel yang
-                // PWA hard to replicate karena animated icon.
-                OrderTrackingTimeline(
-                  status: order.status,
-                  createdAt: order.createdAt,
-                  type: order.isSelfPickup
-                      ? OrderTimelineType.pickup
-                      : OrderTimelineType.delivery,
-                  timelineEvents: order.timelineEvents,
-                  readyForPickupAt: order.readyForPickupAt,
-                  pickedUpAt: order.pickedUpAt,
-                  shippedAt: order.shippedAt,
-                  deliveredAt: order.deliveredAt ?? order.completedAt,
-                ),
-                const SizedBox(height: 12),
-                // Core order detail first. Ini mencegah layar terlihat seperti
-                // blank card besar ketika payment/proof section gagal memuat
-                // atau belum diperlukan oleh status order tertentu.
-                _OrderItemsCard(order: order),
-                const SizedBox(height: 12),
-                // Alamat tujuan — pasangan _PickupInfoCard untuk pesanan yang
-                // dikirim. Ditaruh tepat di atas info resi supaya "ke mana" dan
-                // "sampai mana" terbaca sebagai satu blok pengiriman.
-                if (_shouldShowDeliveryAddress(order)) ...[
-                  _DeliveryAddressCard(order: order),
-                  const SizedBox(height: 12),
-                ],
-                // Info pengiriman — tampil mulai dari status SHIPPED.
-                // Display kondisional: nomor resi (kurir regular) atau
-                // info driver (kurir instant Gojek/Grab/dst).
-                if (_shouldShowShippingInfo(order)) ...[
-                  _ShippingInfoCard(order: order),
-                  const SizedBox(height: 12),
-                ],
-                _PaymentSummary(order: order),
-                const SizedBox(height: 12),
-                if (_shouldShowPaymentAction(order)) ...[
-                  _PaymentActionCard(order: order),
-                  const SizedBox(height: 12),
-                ],
-                if (_shouldShowPaymentProof(order)) ...[
-                  _PaymentProofCard(order: order, onUploaded: _refreshOrder),
-                  const SizedBox(height: 12),
-                ],
-                // Banner state pembatalan: PENDING (menunggu admin) atau
-                // REJECTED (ditolak admin) — tampil di atas tombol cancel.
-                // Untuk PENDING, tombol cancel disembunyikan oleh
-                // _canCancelOrder (anti double-submit).
-                if (order.hasPendingCancellationRequest) ...[
-                  _CancellationPendingBanner(
-                    reason: order.cancellationReason,
-                    requestedAt: order.cancellationRequestedAt,
-                  ),
-                  const SizedBox(height: 12),
-                ] else if (order.cancellationRejected) ...[
-                  _CancellationRejectedBanner(
-                    userReason: order.cancellationReason,
-                    rejectReason: order.cancellationRejectReason,
-                    respondedAt: order.cancellationRespondedAt,
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (_canCancelOrder(order)) ...[
-                  _CancelOrderCard(
-                    loading: _cancelling,
-                    onCancel: () => _confirmCancel(context, order),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                // Tombol "Pesanan Sudah Diterima" — tampil hanya kalau status
-                // SHIPPED (paket sudah di kurir, user nunggu sampai). Setelah
-                // tap → status DELIVERED, window refund tutup. Self-pickup
-                // tidak pakai tombol ini (admin handle via markAsPickedUp).
-                if (order.status.toUpperCase() == 'SHIPPED' &&
-                    !order.isSelfPickup) ...[
-                  _ConfirmDeliveredCard(
-                    loading: _confirmingDelivered,
-                    onConfirm: () => _confirmDelivered(context, order),
-                    autoConfirmAt: order.autoConfirmAt,
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                // Self-pickup layout: Pickup info → Pickup code →
-                // Google Maps button → Ready notice. Produk + payment summary
-                // sudah muncul di atas supaya detail utama selalu terlihat.
-                if (order.isSelfPickup) ...[
-                  _PickupInfoCard(order: order),
-                  const SizedBox(height: 12),
-                  _PickupCodeBox(
-                    pickupCode: order.pickupCode,
-                    orderStatus: order.status,
-                  ),
-                  const SizedBox(height: 12),
-                  _PickupGoogleMapsButton(order: order),
-                  const SizedBox(height: 12),
-                ],
-                if (order.isSelfPickup && _isReadyForPickup(order)) ...[
-                  const _ReadyPickupNoticeCard(),
-                ],
-              ],
-            ),
-          ),
+          body: Stack(children: [
+            IgnorePointer(
+                ignoring: positioningPayment,
+                child: ExcludeSemantics(
+                    excluding: positioningPayment,
+                    child: Opacity(
+                        opacity: positioningPayment ? 0 : 1,
+                        child: NataloPawRefreshIndicator(
+                          onRefresh: _refreshOrder,
+                          child: ListView(
+                            controller: _scrollController,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 118),
+                            children: [
+                              Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    AnimatedSwitcher(
+                                      transitionBuilder: appFadeScaleTransition,
+                                      duration:
+                                          const Duration(milliseconds: 180),
+                                      child: loading
+                                          ? const LinearProgressIndicator(
+                                              minHeight: 3)
+                                          : const SizedBox(height: 3),
+                                    ),
+                                    const SizedBox(height: 9),
+                                    _OrderHeader(order: order),
+                                    const SizedBox(height: 12),
+                                    // Visual timeline 4-stage — animated pulse di stage aktif,
+                                    // connector lines hijau di stage selesai. Native feel yang
+                                    // PWA hard to replicate karena animated icon.
+                                    OrderTrackingTimeline(
+                                      status: order.status,
+                                      createdAt: order.createdAt,
+                                      type: order.isSelfPickup
+                                          ? OrderTimelineType.pickup
+                                          : OrderTimelineType.delivery,
+                                      timelineEvents: order.timelineEvents,
+                                      readyForPickupAt: order.readyForPickupAt,
+                                      pickedUpAt: order.pickedUpAt,
+                                      shippedAt: order.shippedAt,
+                                      deliveredAt: order.deliveredAt ??
+                                          order.completedAt,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    // Core order detail first. Ini mencegah layar terlihat seperti
+                                    // blank card besar ketika payment/proof section gagal memuat
+                                    // atau belum diperlukan oleh status order tertentu.
+                                    _OrderItemsCard(order: order),
+                                    const SizedBox(height: 12),
+                                    // Alamat tujuan — pasangan _PickupInfoCard untuk pesanan yang
+                                    // dikirim. Ditaruh tepat di atas info resi supaya "ke mana" dan
+                                    // "sampai mana" terbaca sebagai satu blok pengiriman.
+                                    if (_shouldShowDeliveryAddress(order)) ...[
+                                      _DeliveryAddressCard(order: order),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    // Info pengiriman — tampil mulai dari status SHIPPED.
+                                    // Display kondisional: nomor resi (kurir regular) atau
+                                    // info driver (kurir instant Gojek/Grab/dst).
+                                    if (_shouldShowShippingInfo(order)) ...[
+                                      _ShippingInfoCard(order: order),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    _PaymentSummary(order: order),
+                                    const SizedBox(height: 12),
+                                    if (_shouldShowPaymentAction(order)) ...[
+                                      KeyedSubtree(
+                                          key: _paymentSectionKey,
+                                          child:
+                                              _PaymentActionCard(order: order)),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    if (_shouldShowPaymentProof(order)) ...[
+                                      _PaymentProofCard(
+                                          order: order,
+                                          onUploaded: _refreshOrder),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    // Banner state pembatalan: PENDING (menunggu admin) atau
+                                    // REJECTED (ditolak admin) — tampil di atas tombol cancel.
+                                    // Untuk PENDING, tombol cancel disembunyikan oleh
+                                    // _canCancelOrder (anti double-submit).
+                                    if (order
+                                        .hasPendingCancellationRequest) ...[
+                                      _CancellationPendingBanner(
+                                        reason: order.cancellationReason,
+                                        requestedAt:
+                                            order.cancellationRequestedAt,
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ] else if (order.cancellationRejected) ...[
+                                      _CancellationRejectedBanner(
+                                        userReason: order.cancellationReason,
+                                        rejectReason:
+                                            order.cancellationRejectReason,
+                                        respondedAt:
+                                            order.cancellationRespondedAt,
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    if (_canCancelOrder(order)) ...[
+                                      _CancelOrderCard(
+                                        loading: _cancelling,
+                                        onCancel: () =>
+                                            _confirmCancel(context, order),
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    // Tombol "Pesanan Sudah Diterima" — tampil hanya kalau status
+                                    // SHIPPED (paket sudah di kurir, user nunggu sampai). Setelah
+                                    // tap → status DELIVERED, window refund tutup. Self-pickup
+                                    // tidak pakai tombol ini (admin handle via markAsPickedUp).
+                                    if (order.status.toUpperCase() ==
+                                            'SHIPPED' &&
+                                        !order.isSelfPickup) ...[
+                                      _ConfirmDeliveredCard(
+                                        loading: _confirmingDelivered,
+                                        onConfirm: () =>
+                                            _confirmDelivered(context, order),
+                                        autoConfirmAt: order.autoConfirmAt,
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    // Self-pickup layout: Pickup info → Pickup code →
+                                    // Google Maps button → Ready notice. Produk + payment summary
+                                    // sudah muncul di atas supaya detail utama selalu terlihat.
+                                    if (order.isSelfPickup) ...[
+                                      _PickupInfoCard(order: order),
+                                      const SizedBox(height: 12),
+                                      _PickupCodeBox(
+                                        pickupCode: order.pickupCode,
+                                        orderStatus: order.status,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      _PickupGoogleMapsButton(order: order),
+                                      const SizedBox(height: 12),
+                                    ],
+                                    if (order.isSelfPickup &&
+                                        _isReadyForPickup(order)) ...[
+                                      const _ReadyPickupNoticeCard(),
+                                    ],
+                                  ]),
+                            ],
+                          ),
+                        )))),
+            if (positioningPayment)
+              const Center(child: CircularProgressIndicator()),
+          ]),
           bottomNavigationBar: _OrderBottomActions(
             order: order,
             reordering: _reordering,
@@ -932,7 +1010,8 @@ class _ManualPaymentBannerState extends State<_ManualPaymentBanner> {
                   style: TextStyle(
                     color: accent,
                     fontWeight: NataloWeight.strong,
-                    fontSize: mono ? NataloTextSize.subtitle : NataloTextSize.bodyLg,
+                    fontSize:
+                        mono ? NataloTextSize.subtitle : NataloTextSize.bodyLg,
                     fontFeatures:
                         mono ? const [FontFeature.tabularFigures()] : null,
                     letterSpacing: mono ? 0.5 : 0,
@@ -1746,7 +1825,8 @@ class _PickupCodeBox extends StatelessWidget {
                 // display (32): display disediakan untuk layar sukses penuh,
                 // sedangkan ini kartu di tengah halaman. letterSpacing 3 yang
                 // menjaga kodenya tetap menonjol, bukan ukurannya.
-                fontSize: hasCode ? NataloTextSize.headline : NataloTextSize.bodyLg,
+                fontSize:
+                    hasCode ? NataloTextSize.headline : NataloTextSize.bodyLg,
                 fontWeight: NataloWeight.strong,
                 letterSpacing: hasCode ? 3 : 0,
                 height: 1.15,
@@ -1821,10 +1901,10 @@ class _DeliveryAddressCard extends StatelessWidget {
     final city = order.shippingCity?.trim() ?? '';
     // Kota kadang sudah tertulis di dalam alamat; jangan diulang.
     final address = order.shippingAddress.trim();
-    final fullAddress = city.isNotEmpty &&
-            !address.toLowerCase().contains(city.toLowerCase())
-        ? '$address\n$city'
-        : address;
+    final fullAddress =
+        city.isNotEmpty && !address.toLowerCase().contains(city.toLowerCase())
+            ? '$address\n$city'
+            : address;
 
     // Nama & telepon digabung satu baris supaya barisnya tidak jadi tiga blok
     // untuk data yang secara konsep satu: "siapa penerimanya".
@@ -2047,7 +2127,8 @@ class _CopyRow extends StatelessWidget {
                   value,
                   style: TextStyle(
                     color: strong ? _brandBlue : cs.onSurface,
-                    fontSize: strong ? NataloTextSize.title : NataloTextSize.subtitle,
+                    fontSize:
+                        strong ? NataloTextSize.title : NataloTextSize.subtitle,
                     fontWeight: NataloWeight.strong,
                     fontFamily: monospace ? 'monospace' : null,
                   ),
@@ -3288,7 +3369,8 @@ class _CancelOrderCard extends StatelessWidget {
               onPressed: loading ? null : onCancel,
               style: OutlinedButton.styleFrom(
                 foregroundColor: NataloColors.danger,
-                side: const BorderSide(color: NataloColors.dangerBorder, width: 1.2),
+                side: const BorderSide(
+                    color: NataloColors.dangerBorder, width: 1.2),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppRadius.full),
