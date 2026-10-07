@@ -44,6 +44,8 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
   imageUrl: string; label: string; onChange(url: string): void; onBusyChange?(busy: boolean): void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const pickerIntent = useRef<"upload" | "edit">("upload");
+  const directUpload = useRef<{ file: File; url?: string } | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const busyRef = useRef(false);
@@ -62,6 +64,8 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
   const [progress, setProgress] = useState("");
   const [verifiedPhoto, setVerifiedPhoto] = useState<{ url: string; displayUrl: string } | null>(null);
   const [error, setError] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const [uploadPreview, setUploadPreview] = useState("");
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -69,11 +73,57 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
   const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const imageFailed = Boolean(imageUrl) && failedImageUrl === imageUrl;
   useEffect(() => () => { if (source.startsWith("blob:")) URL.revokeObjectURL(source); }, [source]);
+  useEffect(() => () => { if (uploadPreview) URL.revokeObjectURL(uploadPreview); }, [uploadPreview]);
+  function choosePhoto(intent: "upload" | "edit") {
+    if (busyRef.current) return;
+    pickerIntent.current = intent;
+    fileRef.current?.click();
+  }
+  async function uploadSelectedPhoto(file: File, retry = false) {
+    if (busyRef.current) return;
+    if (!retry) directUpload.current = { file };
+    const selected = directUpload.current;
+    if (!selected) return;
+    busyRef.current = true;
+    setBusy(true); onBusyChange?.(true); setUploadError("");
+    setUploadPreview(URL.createObjectURL(selected.file));
+    let phase: "upload" | "load" = "upload";
+    try {
+      setProgress("Mengunggah foto…");
+      if (!selected.url) selected.url = await uploadAdminImage(selected.file);
+      phase = "load";
+      setProgress("Memeriksa foto…");
+      const loadedUrl = await waitForUploadedPhoto(selected.url);
+      setVerifiedPhoto({ url: selected.url, displayUrl: loadedUrl });
+      setFailedImageUrl(null);
+      onChange(selected.url);
+      directUpload.current = null;
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : "Koneksi atau server bermasalah.";
+      setUploadError(phase === "load"
+        ? "Foto sudah diunggah, tetapi belum dapat dimuat. Coba lagi akan memeriksa foto tanpa mengunggah ulang."
+        : `Upload gagal: ${detail}. Klik Coba lagi atau pilih foto lain.`);
+    } finally {
+      setUploadPreview(""); setProgress(""); setBusy(false);
+      busyRef.current = false; onBusyChange?.(false);
+    }
+  }
   function openEditor(src: string) {
+    if (busyRef.current) return;
+    directUpload.current = null;
+    setUploadError("");
     savedUpload.current = null;
     preparedPhoto.current = null;
     setEditorRevision(value => value + 1);
     setSource(src); setReady(false); setError(""); setZoom(1); setRotation(0); setPosition({ x: 0, y: 0 }); setMode("edit");
+  }
+  function removePhoto() {
+    if (busyRef.current) return;
+    directUpload.current = null;
+    savedUpload.current = null;
+    preparedPhoto.current = null;
+    setUploadError(""); setError(""); setVerifiedPhoto(null); setFailedImageUrl(null);
+    onChange(""); setMode(null);
   }
   const width = ratio >= 1 ? 100 : ratio * 100;
   const height = ratio >= 1 ? 100 / ratio : 100;
@@ -139,16 +189,22 @@ export function VariantPhotoField({ imageUrl, label, onChange, onBusyChange }: {
     {!preview && <div aria-hidden="true" className="pointer-events-none absolute inset-0 grid grid-cols-3 grid-rows-3 border-2 border-blue-500">{Array.from({ length: 9 }, (_, i) => <span key={i} className="border border-white/40" />)}</div>}
   </div>;
   return <div className="variant-photo-field">
-    <button type="button" className={`variant-photo-thumbnail ${imageUrl ? "" : "is-empty"}`} onClick={() => imageUrl && !imageFailed ? setMode("preview") : fileRef.current?.click()} aria-label={`${imageFailed ? "Ganti" : imageUrl ? "Pratinjau" : "Tambah"} foto ${label}`}>
-      {imageFailed ? <span className="text-xs leading-tight text-red-700">Gagal muat<br />Ganti foto</span> : imageUrl ? <img key={displayUrl} src={displayUrl} alt={label} onError={() => setFailedImageUrl(imageUrl)} /> : <span aria-hidden="true">+</span>}
+    <button type="button" disabled={busy} aria-busy={busy} className={`variant-photo-thumbnail ${imageUrl ? "" : "is-empty"}`} onClick={() => imageUrl && !imageFailed ? setMode("preview") : choosePhoto("upload")} aria-label={`${imageFailed ? "Ganti" : imageUrl ? "Pratinjau" : "Tambah"} foto ${label}`}>
+      {uploadPreview ? <img src={uploadPreview} alt={`Mengunggah foto ${label}`} className="opacity-60" /> : imageFailed ? <span className="text-xs leading-tight text-red-700">Gagal muat<br />Ganti foto</span> : imageUrl ? <img key={displayUrl} src={displayUrl} alt={label} onError={() => setFailedImageUrl(imageUrl)} /> : <span aria-hidden="true">+</span>}
     </button>
-    {imageUrl && <div className="variant-photo-tools">
-      <button type="button" onClick={() => openEditor(imageUrl)} aria-label={`Edit foto ${label}`} title="Edit foto"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z" /></svg></button>
-      <button type="button" onClick={() => setMode("remove")} aria-label={`Hapus foto ${label}`} title="Hapus foto"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7" /></svg></button>
+    {imageUrl && <div className="variant-photo-tools" style={{ opacity: 1, pointerEvents: "auto", transform: "none" }}>
+      <button type="button" disabled={busy} onClick={() => openEditor(displayUrl)} aria-label={`Edit foto ${label}`} title="Edit foto"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z" /></svg></button>
+      <button type="button" disabled={busy} onClick={() => setMode("remove")} aria-label={`Hapus foto ${label}`} title="Hapus foto"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7" /></svg></button>
     </div>}
-    <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) openEditor(URL.createObjectURL(file)); }} />
+    <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) { if (pickerIntent.current === "edit") openEditor(URL.createObjectURL(file)); else void uploadSelectedPhoto(file); } }} />
+    {!dialogOpen && busy && <p role="status" aria-live="polite" className="text-xs text-blue-700">{progress}</p>}
+    {!dialogOpen && uploadError && <div>
+      <p role="alert" className="mt-2 text-xs text-red-700">{uploadError}</p>
+      <button type="button" disabled={busy} className="mt-1 text-xs font-medium text-blue-700 underline" onClick={() => { const selected = directUpload.current; if (selected) void uploadSelectedPhoto(selected.file, true); }}>Coba lagi</button>
+      <button type="button" disabled={busy} className="ml-2 text-xs text-blue-700 underline" onClick={() => choosePhoto("upload")}>Pilih foto lain</button>
+    </div>}
     <AdminDialog open={dialogOpen} title={mode === "remove" ? "Hapus foto varian?" : mode === "preview" ? `Foto ${label}` : `Ubah foto ${label}`} onClose={() => { if (!busyRef.current) setMode(null); }} busy={busy}
-      footer={mode === "edit" ? <><Button type="button" variant="secondary" disabled={busy} onClick={() => fileRef.current?.click()}>Ganti foto</Button><Button type="button" variant="secondary" disabled={busy} onClick={() => setMode(null)}>Batal</Button><Button type="button" disabled={busy || !ready} onClick={() => void savePhoto()}>{busy ? "Menyimpan…" : "Simpan foto"}</Button></> : mode === "remove" ? <><Button type="button" variant="secondary" onClick={() => setMode(null)}>Batal</Button><Button type="button" onClick={() => { onChange(""); setMode(null); }}>Hapus foto</Button></> : <Button type="button" onClick={() => openEditor(imageUrl)}>Edit foto</Button>}>
+      footer={mode === "edit" ? <><Button type="button" variant="secondary" disabled={busy} onClick={() => choosePhoto("edit")}>Ganti foto</Button><Button type="button" variant="secondary" disabled={busy} onClick={() => setMode(null)}>Batal</Button><Button type="button" disabled={busy || !ready} onClick={() => void savePhoto()}>{busy ? "Menyimpan…" : "Simpan foto"}</Button></> : mode === "remove" ? <><Button type="button" variant="secondary" onClick={() => setMode(null)}>Batal</Button><Button type="button" onClick={removePhoto}>Hapus foto</Button></> : <Button type="button" disabled={busy} onClick={() => openEditor(displayUrl)}>Edit foto</Button>}>
       {mode === "preview" && <img src={displayUrl} alt={label} className="mx-auto max-h-[60vh] w-full object-contain" />}
       {mode === "remove" && <p>Foto {label} akan dilepas dari varian. Perubahan berlaku setelah produk disimpan.</p>}
       {mode === "edit" && <div>
