@@ -1,4 +1,4 @@
-import { rotateRecommendationPool } from "@/lib/cart-recommendation-rotation";
+import { rotateRecommendationPool, selectManualRecommendations } from "@/lib/cart-recommendation-rotation";
 import { attachProductSoldCounts } from "@/lib/product-sold-counts";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
     .map((product) => product.brandId)
     .filter((id): id is string => Boolean(id));
 
-  const ruleIds = await getManualRuleIds(sourceIds, take * 2);
+  const ruleIds = await getManualRuleIds(sourceIds, seed ? poolSize : take * 2);
   if (ruleIds.length > 0) {
     const manualProducts = await prisma.product.findMany({
       where: { AND: [cartRecommendationWhere(excludeIds), { id: { in: ruleIds } }] },
@@ -158,7 +158,10 @@ export async function GET(request: NextRequest) {
     const order = new Map(ruleIds.map((id, index) => [id, index]));
     pushUnique(
       products,
-      manualProducts.sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999)),
+      selectManualRecommendations(
+        manualProducts.sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999)),
+        seed, limit,
+      ),
       seen,
     );
   }

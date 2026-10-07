@@ -1,5 +1,13 @@
 import { seededShuffle } from "./recommendation-rotation";
 
+/** Reserve room for fresh relevant products alongside curated suggestions. */
+export function selectManualRecommendations<T extends { id: string; brandId?: string | null }>(
+  candidates: T[], seed: string, limit: number,
+): T[] {
+  if (!seed) return candidates;
+  return rotateRecommendationPool(candidates, seed, Math.max(1, Math.ceil(limit / 3)));
+}
+
 /** Rotate within a relevance pool, spreading brands instead of repeating one. */
 export function rotateRecommendationPool<T extends { id: string; brandId?: string | null }>(
   candidates: T[], seed: string, limit: number,

@@ -60,6 +60,7 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
   MemberVoucher? _voucher;
   bool _loadingOrder = false;
   bool _loadingRecommendations = true;
+  bool _loadingSupportingContent = false;
 
   @override
   void initState() {
@@ -82,6 +83,8 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
   }
 
   Future<void> _loadSupportingContent() async {
+    if (_loadingSupportingContent) return;
+    _loadingSupportingContent = true;
     final ids = widget.purchasedProductIds
         .where((id) => id.trim().isNotEmpty)
         .toSet()
@@ -90,7 +93,11 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
       try {
         return await productService.fetchRecommendations(
           cartIds: ids,
-          excludeIds: ids,
+          excludeIds: {
+            ...ids,
+            ...cartStore.items.map((item) => item.product.id),
+            ..._recommendations.map((product) => product.id),
+          }.toList(),
           limit: 12,
         );
       } catch (_) {
@@ -114,6 +121,7 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
       recommendationsFuture,
       vouchersFuture,
     ]);
+    _loadingSupportingContent = false;
     if (!mounted) return;
 
     final vouchers = results[1] as ({
@@ -130,7 +138,8 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
       ..sort((a, b) => a.expiresAt.compareTo(b.expiresAt));
 
     setState(() {
-      _recommendations = (results[0] as List<Product>).take(12).toList();
+      final fresh = (results[0] as List<Product>).take(12).toList();
+      if (fresh.isNotEmpty) _recommendations = fresh;
       _voucher = validVouchers.firstOrNull;
       _loadingRecommendations = false;
     });
@@ -210,7 +219,9 @@ class _OrderSuccessScreenState extends State<OrderSuccessScreen>
     return Scaffold(
       backgroundColor: cs.surface,
       body: RefreshIndicator(
-        onRefresh: _refreshOrder,
+        onRefresh: () async {
+          await Future.wait([_refreshOrder(), _loadSupportingContent()]);
+        },
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [

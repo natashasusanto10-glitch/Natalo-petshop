@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { rotateRecommendationPool } from "../lib/cart-recommendation-rotation";
+import { rotateRecommendationPool, selectManualRecommendations } from "../lib/cart-recommendation-rotation";
 
 const pool = Array.from({ length: 30 }, (_, index) => ({
   id: `product-${index}`, brandId: `brand-${index % 5}`,
 }));
+
+test("curated suggestions rotate and leave most slots available for fresh recommendations", () => {
+  const first = selectManualRecommendations(pool, "order-one", 12);
+  const second = selectManualRecommendations(pool, "order-two", 12);
+  assert.equal(first.length, 4);
+  assert.notDeepEqual(first.map(p => p.id), second.map(p => p.id));
+  assert.deepEqual(selectManualRecommendations(pool, "", 12), pool);
+});
 
 test("rotation changes the selected products, remains stable per visit and spreads brands", () => {
   const first = rotateRecommendationPool(pool, "visit-one", 6);
