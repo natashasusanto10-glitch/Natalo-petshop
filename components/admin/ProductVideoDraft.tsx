@@ -9,7 +9,7 @@ import {
 } from "react";
 import { Button, DangerButton, useAdminToast } from "@/components/admin/ui";
 import { readVideoMetadata } from "@/lib/feed/video-thumbnail";
-import { USER_VIDEO_CONFIG, formatFileSize } from "@/lib/feed/video-config";
+import { formatFileSize } from "@/lib/feed/video-config";
 
 import {
   isVideoFileReadable,
@@ -18,9 +18,13 @@ import {
   type BunnyTusCredentials,
 } from "@/lib/feed/tus-upload";
 
-const MAX_SOURCE = 200 * 1024 * 1024;
-const MIN_DURATION = 10;
-const MAX_DURATION = 60;
+import {
+  isProductVideoType,
+  prepareProductVideo,
+  PRODUCT_VIDEO_MAX_BYTES as MAX_SOURCE,
+  PRODUCT_VIDEO_MIN_SECONDS as MIN_DURATION,
+  PRODUCT_VIDEO_MAX_SECONDS as MAX_DURATION,
+} from "@/lib/product/product-video-prepare";
 
 export type PreparedVideo = {
   file: File;
@@ -63,7 +67,7 @@ export const ProductVideoDraft = forwardRef<
   const pickVersion = useRef(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
-  const [phase, setPhase] = useState<"compress" | "upload" | null>(null);
+  const [phase, setPhase] = useState<"check" | "trim" | "compress" | "upload" | null>(null);
   const [picked, setPicked] = useState<PreparedVideo | null>(null);
   const [existingGuid, setExistingGuid] = useState(initial?.videoGuid ?? null);
   const [existingStatus, setExistingStatus] = useState(
@@ -105,7 +109,7 @@ export const ProductVideoDraft = forwardRef<
     setPicking(false);
     const version = ++pickVersion.current;
     if (!file) return;
-    if (!file.type.startsWith("video/"))
+    if (!isProductVideoType(file))
       return setError("Format video belum didukung. Pilih MP4/MOV/WebM.");
     if (file.size > MAX_SOURCE)
       return setError(`Ukuran video melebihi ${formatFileSize(MAX_SOURCE)}.`);
@@ -152,36 +156,27 @@ export const ProductVideoDraft = forwardRef<
           throw new Error(VIDEO_FILE_MISSING_MESSAGE);
         }
         setBusy(true);
-        setPhase("compress");
+        setPhase("check");
+        setError(null);
         setProgress(0);
         try {
-          const { compressVideo } = await import("@/lib/feed/video-compressor");
-          const file = await compressVideo(picked.file, {
-            config: {
-              ...USER_VIDEO_CONFIG,
-              videoBitrate: "1500k",
-              minDuration: MIN_DURATION,
-              maxFileSize: 30 * 1024 * 1024,
-            },
+          const result = await prepareProductVideo(picked.file, {
             trimStartSec: picked.trimStartSec,
-            trimDurationSec: picked.trimEndSec - picked.trimStartSec,
+            trimEndSec: picked.trimEndSec,
+            onPhase: setPhase,
             onProgress: setProgress,
           });
-          if (file.size > 30 * 1024 * 1024)
-            throw new Error(
-              "Video hasil kompresi melebihi 30 MB. Pilih video yang lebih pendek."
-            );
           const prepared = {
-            file,
-            durationSec: picked.durationSec,
+            file: result.file,
+            durationSec: result.durationSec,
             trimStartSec: 0,
-            trimEndSec: picked.durationSec,
+            trimEndSec: result.durationSec,
           };
           preparedRef.current = prepared;
           return prepared;
         } catch (err) {
           setError(
-            err instanceof Error ? err.message : "Kompresi video gagal."
+            err instanceof Error ? err.message : "Persiapan video gagal."
           );
           throw err;
         } finally {
@@ -193,7 +188,7 @@ export const ProductVideoDraft = forwardRef<
         if (!picked) return;
         if (!preparedRef.current)
           throw new Error(
-            "Video belum selesai dikompresi. Coba simpan kembali."
+            "Video belum siap diunggah. Coba simpan kembali."
           );
         const prepared = preparedRef.current;
         setBusy(true);
@@ -204,7 +199,7 @@ export const ProductVideoDraft = forwardRef<
           const provision = await fetch(`/api/admin/products/${id}/video`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ videoDurationSec: picked.durationSec }),
+            body: JSON.stringify({ videoDurationSec: prepared.durationSec }),
           });
           const data = (await provision.json().catch(() => ({}))) as {
             videoGuid?: string;
@@ -217,7 +212,7 @@ export const ProductVideoDraft = forwardRef<
           await uploadToBunnyViaTus({
             file: prepared.file,
             credentials: data.tus,
-            filetype: "video/mp4",
+            filetype: prepared.file.type,
             title: `product-${id}`,
             onProgress: (percent) => setProgress(percent),
           });
@@ -226,7 +221,7 @@ export const ProductVideoDraft = forwardRef<
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               videoGuid: createdGuid,
-              videoDurationSec: picked.durationSec,
+              videoDurationSec: prepared.durationSec,
             }),
           });
           if (!done.ok)
@@ -337,7 +332,7 @@ export const ProductVideoDraft = forwardRef<
                 }`
               : "MP4, MOV, atau WebM · 10–60 detik"}
           </p>
-          <p className="mt-1">Video dikompresi sebelum diunggah.</p>
+          <p className="mt-1">Maks. 200 MB · Video utuh yang sesuai langsung diunggah saat produk disimpan, lalu diproses untuk pemutaran.</p>
           {(picked || existingGuid) && (
             <div className="mt-2 flex flex-wrap gap-2">
               <Button
@@ -413,14 +408,13 @@ export const ProductVideoDraft = forwardRef<
       {busy && (
         <div className="mt-3 text-xs text-blue-700" role="status">
           <p>
-            {phase === "compress" ? "Mengompresi video" : "Mengunggah video"} ·{" "}
-            {Math.round(progress)}%
+            {phase === "check" ? "Memeriksa video…" : `${phase === "trim" ? "Memotong video" : phase === "compress" ? "Menyesuaikan potongan video" : "Mengunggah video"} · ${Math.round(progress)}%`}
           </p>
           <progress
             aria-label={
-              phase === "compress" ? "Kompresi video" : "Unggah video"
+              phase === "check" ? "Pemeriksaan video" : phase === "trim" ? "Pemotongan video" : phase === "compress" ? "Penyesuaian video" : "Unggah video"
             }
-            value={progress}
+            value={phase === "check" ? undefined : progress}
             max={100}
             className="mt-2 h-1 w-full"
           />
