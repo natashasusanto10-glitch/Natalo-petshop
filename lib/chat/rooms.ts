@@ -24,6 +24,8 @@
  *   `notifyNewCustomerMessage`, Plan 3 — proxy tak punya akses daftar staff)
  */
 
+import type { OrderContextV1 } from "@/lib/chat/order-contract";
+
 // ---------------------------------------------------------------------------
 // Interface Firestore minimal (subset Admin SDK) — dipakai sebagai kontrak DI.
 // Struktur method sama persis dgn `firebase-admin/firestore` (collection,
@@ -167,17 +169,8 @@ export type WriteOrderContextInput = {
   customerId: string;
   orderId: string;
   schemaVersion: number;
-  order: {
-    orderNumber: string;
-    status: string;
-    paymentStatus: string;
-    paymentProofStatus: string;
-    total: number;
-    itemCount: number;
-    hasPaymentProof: boolean;
-    proofVersion: number;
-    createdAt: string;
-  };
+  refreshOnly?: boolean;
+  order: OrderContextV1["order"];
 };
 
 /**
@@ -185,7 +178,6 @@ export type WriteOrderContextInput = {
  * Unlike query-before-write client message dedupe, concurrent retries target
  * the same Firestore document and therefore cannot create duplicate bubbles.
  */
-import type { OrderContextV1 } from "@/lib/chat/order-contract";
 export async function upsertOrderContextMessage(
   deps: WriteCustomerMessageDeps,
   input: WriteOrderContextInput,
@@ -212,22 +204,25 @@ export async function upsertOrderContextMessage(
       applied = false;
       return;
     }
-    const roomData = roomSnap.exists ? roomSnap.data() : undefined;
-    const roomUpdate: Record<string, unknown> = {
-      customerId: input.customerId,
-      updatedAt: nowMs,
-      lastMessageType: "order_context",
-      lastMessageAt: nowMs,
-      lastMessageSender: "customer",
-      lastMessageText: `Pesanan ${input.order.orderNumber}`,
-    };
-    if (!roomData || roomData.createdAt === undefined) roomUpdate.createdAt = nowMs;
-    if (!roomData || roomData.status === undefined) {
-      roomUpdate.status = "waiting_staff";
-      roomUpdate.statusChangedAt = nowMs;
-      roomUpdate.statusChangedBy = "system";
+    const touchRoom = !messageSnap.exists || input.refreshOnly !== true;
+    if (touchRoom) {
+      const roomData = roomSnap.exists ? roomSnap.data() : undefined;
+      const roomUpdate: Record<string, unknown> = {
+        customerId: input.customerId,
+        updatedAt: nowMs,
+        lastMessageType: "order_context",
+        lastMessageAt: nowMs,
+        lastMessageSender: "customer",
+        lastMessageText: `Pesanan ${input.order.orderNumber}`,
+      };
+      if (!roomData || roomData.createdAt === undefined) roomUpdate.createdAt = nowMs;
+      if (!roomData || roomData.status === undefined) {
+        roomUpdate.status = "waiting_staff";
+        roomUpdate.statusChangedAt = nowMs;
+        roomUpdate.statusChangedBy = "system";
+      }
+      tx.set(roomRef, roomUpdate, { merge: true });
     }
-    tx.set(roomRef, roomUpdate, { merge: true });
 
     tx.set(messageRef, {
       clientMsgId: `payment-proof-${input.orderId}`,
@@ -246,6 +241,40 @@ export async function upsertOrderContextMessage(
   });
 
   return { messageId, created, applied };
+}
+
+/**
+ * Catatan sistem KHUSUS STAF setelah bukti transfer dicek. Id deterministik
+ * per versi bukti -> percobaan ulang antrean tidak menggandakan catatan.
+ * staffOnly:true -> tidak pernah tampil di aplikasi customer
+ * (projectMessageForCustomer) dan CF classifyMessage tidak mengirim notifikasi.
+ * Room sengaja tidak disentuh: catatan ini bukan pesan baru dari customer.
+ */
+export async function writeOrderReviewNotice(
+  deps: WriteCustomerMessageDeps,
+  input: { chatId: string; orderId: string; proofVersion: number; text: string },
+): Promise<{ messageId: string; created: boolean }> {
+  const messageId = `order_review_${input.orderId}_v${input.proofVersion}`;
+  const ref = deps.firestore
+    .collection(ROOM_COLLECTION).doc(input.chatId)
+    .collection(MESSAGE_SUBCOLLECTION).doc(messageId);
+  let created = false;
+  await deps.firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists) return;
+    created = true;
+    tx.set(ref, {
+      senderRole: "system",
+      senderId: "system",
+      type: "system",
+      text: input.text,
+      staffOnly: true,
+      auto: true,
+      createdAt: deps.now(),
+      status: "sent",
+    });
+  });
+  return { messageId, created };
 }
 
 export async function writeCustomerMessage(

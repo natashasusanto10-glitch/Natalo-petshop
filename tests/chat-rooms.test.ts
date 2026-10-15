@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildCustomerSnapshot,
   upsertOrderContextMessage,
+  writeOrderReviewNotice,
   writeCustomerMessage,
   type FirestoreLike,
   type CollectionRefLike,
@@ -331,4 +332,60 @@ test("order context auto-forward upserts one deterministic bubble and preserves 
   assert.equal(stale.applied, false);
   assert.equal((messages[0][1].order as Record<string, unknown>).proofVersion, 2);
   assert.equal(messages[0][1].updatedAt, 2000);
+});
+
+test("refreshOnly updates existing order card without bumping the room", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  const base = {
+    chatId: "cust_u9", customerId: "u9", orderId: "order9", schemaVersion: 1,
+    order: { orderNumber: "ORD-9", status: "PENDING", paymentStatus: "UNPAID",
+      paymentProofStatus: "PENDING_REVIEW", total: 1000, itemCount: 2,
+      hasPaymentProof: true, proofVersion: 1, createdAt: "2026-10-07T00:00:00.000Z" },
+  };
+  await upsertOrderContextMessage({ firestore, now: () => 1000 }, base);
+  const roomBefore = { ...store.get("customerChats/cust_u9")! };
+  const res = await upsertOrderContextMessage({ firestore, now: () => 5000 }, {
+    ...base, refreshOnly: true,
+    order: { ...base.order, paymentStatus: "PAID", paymentProofStatus: "VERIFIED",
+      reviewedAt: "2026-10-07T03:31:00.000Z", reviewedByName: "Natasha" },
+  });
+  assert.equal(res.applied, true);
+  assert.deepEqual(store.get("customerChats/cust_u9"), roomBefore);
+  const msg = store.get("customerChats/cust_u9/messages/order_context_order9")!;
+  assert.equal((msg.order as Record<string, unknown>).paymentProofStatus, "VERIFIED");
+  assert.equal((msg.order as Record<string, unknown>).reviewedByName, "Natasha");
+  assert.equal(msg.createdAt, 1000);
+});
+
+test("refreshOnly creates the card and bumps room when card is missing", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  const res = await upsertOrderContextMessage({ firestore, now: () => 7000 }, {
+    chatId: "cust_u10", customerId: "u10", orderId: "order10", schemaVersion: 1,
+    refreshOnly: true,
+    order: { orderNumber: "ORD-10", status: "PAID", paymentStatus: "PAID",
+      paymentProofStatus: "VERIFIED", total: 1, itemCount: 1,
+      hasPaymentProof: true, proofVersion: 1, createdAt: "2026-10-07T00:00:00.000Z" },
+  });
+  assert.equal(res.created, true);
+  assert.equal(store.get("customerChats/cust_u10")!.lastMessageAt, 7000);
+});
+
+test("writeOrderReviewNotice writes one staff-only system message per proof version", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  const input = { chatId: "cust_u9", orderId: "order9", proofVersion: 1,
+    text: "Natasha menandai pembayaran ORD-9 sudah masuk" };
+  const a = await writeOrderReviewNotice({ firestore, now: () => 6000 }, input);
+  const b = await writeOrderReviewNotice({ firestore, now: () => 6500 }, input);
+  assert.equal(a.messageId, "order_review_order9_v1");
+  assert.equal(a.created, true);
+  assert.equal(b.created, false);
+  const msg = store.get("customerChats/cust_u9/messages/order_review_order9_v1")!;
+  assert.equal(msg.staffOnly, true);
+  assert.equal(msg.senderRole, "system");
+  assert.equal(msg.type, "system");
+  assert.equal(msg.createdAt, 6000);
+  assert.equal(store.has("customerChats/cust_u9"), false); // room tidak disentuh
 });
