@@ -5,7 +5,7 @@ import {
   deterministicOrderMessageId,
   isOrderContextV1,
 } from "@/lib/chat/order-contract";
-import { parseOrderContextOutboxPayload } from "@/lib/chat/order-outbox";
+import { buildReviewNoticeText, parseOrderContextOutboxPayload } from "@/lib/chat/order-outbox";
 import { validateChatSendContent } from "@/lib/chat/send-content";
 
 const context = buildOrderContextV1({
@@ -52,4 +52,28 @@ test("context-only chat send requires a server-resolved context", () => {
   assert.equal(validateChatSendContent("halo", false).ok, true);
   assert.equal(validateChatSendContent("", false).ok, false);
   assert.equal(validateChatSendContent("x".repeat(4001), true).ok, false);
+});
+
+test("review notice text is plain Indonesian for both outcomes", () => {
+  assert.equal(
+    buildReviewNoticeText({ status: "VERIFIED", byName: "Natasha", orderNumber: "ORD-1" }),
+    "Natasha menandai pembayaran ORD-1 sudah masuk",
+  );
+  assert.equal(
+    buildReviewNoticeText({ status: "REJECTED", byName: "Natasha", orderNumber: "ORD-1", reason: "nominal kurang" }),
+    "Natasha menolak bukti transfer ORD-1: nominal kurang",
+  );
+});
+
+test("outbox payload keeps refreshOnly and notice", () => {
+  const ctx = buildOrderContextV1({
+    orderNumber: "ORD-1", status: "PAID", paymentStatus: "PAID", paymentProofStatus: "VERIFIED",
+    total: 10, itemCount: 1, paymentProofUrl: "https://x", paymentProofVersion: 2,
+    createdAt: new Date("2026-10-07T00:00:00Z"),
+  });
+  const parsed = parseOrderContextOutboxPayload({
+    ...ctx, orderId: "o1", customerId: "u1", refreshOnly: true, notice: "hai",
+  });
+  assert.equal(parsed?.refreshOnly, true);
+  assert.equal(parsed?.notice, "hai");
 });
