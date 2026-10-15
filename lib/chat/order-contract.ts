@@ -1,5 +1,11 @@
 export const ORDER_CONTEXT_SCHEMA_VERSION = 1 as const;
 
+export type OrderReview = {
+  reviewedAt?: string | null;
+  reviewedByName?: string;
+  rejectReason?: string;
+};
+
 export type OrderContextV1 = {
   schemaVersion: typeof ORDER_CONTEXT_SCHEMA_VERSION;
   order: {
@@ -12,7 +18,7 @@ export type OrderContextV1 = {
     hasPaymentProof: boolean;
     proofVersion: number;
     createdAt: string;
-  };
+  } & OrderReview;
 };
 
 export type OrderContextSource = {
@@ -25,23 +31,29 @@ export type OrderContextSource = {
   paymentProofUrl: string | null;
   paymentProofVersion: number;
   createdAt: Date;
+  paymentProofReviewedAt?: Date | null;
+  paymentProofRejectReason?: string | null;
 };
 
-export function buildOrderContextV1(source: OrderContextSource): OrderContextV1 {
-  return {
-    schemaVersion: ORDER_CONTEXT_SCHEMA_VERSION,
-    order: {
-      orderNumber: source.orderNumber,
-      status: source.status,
-      paymentStatus: source.paymentStatus,
-      paymentProofStatus: source.paymentProofStatus,
-      total: source.total,
-      itemCount: source.itemCount,
-      hasPaymentProof: Boolean(source.paymentProofUrl),
-      proofVersion: source.paymentProofVersion,
-      createdAt: source.createdAt.toISOString(),
-    },
+export function buildOrderContextV1(
+  source: OrderContextSource,
+  review: { reviewedByName?: string } = {},
+): OrderContextV1 {
+  const order: OrderContextV1["order"] = {
+    orderNumber: source.orderNumber,
+    status: source.status,
+    paymentStatus: source.paymentStatus,
+    paymentProofStatus: source.paymentProofStatus,
+    total: source.total,
+    itemCount: source.itemCount,
+    hasPaymentProof: Boolean(source.paymentProofUrl),
+    proofVersion: source.paymentProofVersion,
+    createdAt: source.createdAt.toISOString(),
   };
+  if (source.paymentProofReviewedAt) order.reviewedAt = source.paymentProofReviewedAt.toISOString();
+  if (review.reviewedByName) order.reviewedByName = review.reviewedByName;
+  if (source.paymentProofRejectReason) order.rejectReason = source.paymentProofRejectReason;
+  return { schemaVersion: ORDER_CONTEXT_SCHEMA_VERSION, order };
 }
 
 export function isOrderContextV1(value: unknown): value is OrderContextV1 {

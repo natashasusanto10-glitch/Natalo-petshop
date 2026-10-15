@@ -49,6 +49,7 @@ async function verifyPaymentProof(
     await confirmOrderPayment({
       orderId: order.id,
       actorId: auth.uid,
+      reviewerName: auth.name,
       expectedProofVersion: expectedVersion as number,
       allowAlreadyPaid: true,
     });

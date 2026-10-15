@@ -1,15 +1,30 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getTokochatFirestore } from "@/lib/chat/firestore-admin";
 import { chatIdForUser } from "@/lib/chat/core";
-import { isOrderContextV1, type OrderContextV1 } from "@/lib/chat/order-contract";
-import { upsertOrderContextMessage } from "@/lib/chat/rooms";
+import { buildOrderContextV1, isOrderContextV1, type OrderContextV1 } from "@/lib/chat/order-contract";
+import {
+  upsertOrderContextMessage,
+  writeOrderReviewNotice,
+  type WriteCustomerMessageDeps,
+} from "@/lib/chat/rooms";
 
 export const ORDER_CONTEXT_OUTBOX_TYPE = "ORDER_CONTEXT_UPSERT_V1";
+
+/** Apa yang terjadi pada pesanan: bukti dicek, bukti ditolak, atau admin menandai lunas. */
+export type OrderReviewOutcome = "VERIFIED" | "REJECTED" | "PAID";
 
 export type OrderContextOutboxPayload = OrderContextV1 & {
   orderId: string;
   customerId: string;
+  refreshOnly?: boolean;
+  notice?: string;
+  noticeOutcome?: OrderReviewOutcome;
 };
+
+function isOrderReviewOutcome(value: unknown): value is OrderReviewOutcome {
+  return value === "VERIFIED" || value === "REJECTED" || value === "PAID";
+}
 
 export function orderContextOutboxKey(orderId: string): string {
   return `payment-proof:${orderId}`;
@@ -21,6 +36,138 @@ export function parseOrderContextOutboxPayload(value: unknown): OrderContextOutb
   if (typeof root.orderId !== "string" || root.orderId.length === 0) return null;
   if (typeof root.customerId !== "string" || root.customerId.length === 0) return null;
   return value as OrderContextOutboxPayload;
+}
+
+export function buildReviewNoticeText(review: {
+  status: OrderReviewOutcome;
+  byName: string;
+  orderNumber: string;
+  reason?: string;
+}): string {
+  const who = review.byName.trim() || "Staf toko";
+  if (review.status === "VERIFIED") return `${who} menandai pembayaran ${review.orderNumber} sudah masuk`;
+  if (review.status === "PAID") return `${who} menandai pesanan ${review.orderNumber} sudah lunas`;
+  return `${who} menolak bukti transfer ${review.orderNumber}: ${review.reason ?? "tanpa alasan"}`;
+}
+
+const ORDER_REFRESH_SELECT = {
+  id: true, userId: true, orderNumber: true, status: true, paymentStatus: true,
+  paymentProofStatus: true, paymentProofUrl: true, paymentProofVersion: true,
+  paymentProofReviewedAt: true, paymentProofRejectReason: true,
+  total: true, createdAt: true, _count: { select: { items: true } },
+} as const;
+
+export type OrderRefreshSource = {
+  id: string;
+  userId: string | null;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  paymentProofStatus: string;
+  paymentProofUrl: string | null;
+  paymentProofVersion: number;
+  paymentProofReviewedAt: Date | null;
+  paymentProofRejectReason: string | null;
+  total: number;
+  createdAt: Date;
+  _count: { items: number };
+};
+
+/**
+ * Susun isi kartu + catatan staf. Nama pengecek hanya dipasang di kartu bila
+ * aksi ini memang memeriksa bukti (VERIFIED/REJECTED). Tanda lunas dari admin
+ * (PAID) tidak mengubah siapa yang memeriksa bukti, jadi kartu tidak diberi nama.
+ */
+export function buildOrderContextRefreshPayload(
+  order: OrderRefreshSource,
+  review: { outcome: OrderReviewOutcome; byName: string },
+): OrderContextOutboxPayload | null {
+  if (!order.userId || order.paymentProofVersion < 1) return null;
+  const reviewedByName = review.outcome === "PAID" ? undefined : review.byName;
+  const context = buildOrderContextV1(
+    { ...order, itemCount: order._count.items },
+    reviewedByName ? { reviewedByName } : {},
+  );
+  return {
+    ...context,
+    orderId: order.id,
+    customerId: order.userId,
+    refreshOnly: true,
+    notice: buildReviewNoticeText({
+      status: review.outcome,
+      byName: review.byName,
+      orderNumber: order.orderNumber,
+      reason: order.paymentProofRejectReason ?? undefined,
+    }),
+    noticeOutcome: review.outcome,
+  };
+}
+
+export async function enqueueOrderContextRefresh(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+  review: { outcome: OrderReviewOutcome; byName: string },
+): Promise<string | null> {
+  const order = await tx.order.findUnique({
+    where: { id: orderId },
+    select: ORDER_REFRESH_SELECT,
+  });
+  if (!order) return null;
+  const payload = buildOrderContextRefreshPayload(order, review);
+  if (!payload) return null;
+  const event = await tx.chatOutboxEvent.upsert({
+    where: { eventKey: orderContextOutboxKey(order.id) },
+    create: {
+      eventKey: orderContextOutboxKey(order.id),
+      type: ORDER_CONTEXT_OUTBOX_TYPE,
+      aggregateId: order.id,
+      payload,
+    },
+    update: {
+      type: ORDER_CONTEXT_OUTBOX_TYPE,
+      payload,
+      generation: { increment: 1 },
+      status: "PENDING",
+      attempts: 0,
+      availableAt: new Date(),
+      lockedAt: null,
+      processedAt: null,
+      lastError: null,
+    },
+    select: { id: true },
+  });
+  return event.id;
+}
+
+/**
+ * Kirim kartu ke Firestore; catatan staf hanya ditulis bila kartu benar-benar
+ * diperbarui (bukan muatan basi dari versi bukti lama).
+ */
+export async function deliverOrderContextPayload(
+  deps: WriteCustomerMessageDeps,
+  payload: OrderContextOutboxPayload,
+): Promise<{ messageId: string; created: boolean; applied: boolean; noticeWritten: boolean }> {
+  const chatId = chatIdForUser(payload.customerId);
+  const result = await upsertOrderContextMessage(deps, {
+    chatId,
+    customerId: payload.customerId,
+    orderId: payload.orderId,
+    schemaVersion: payload.schemaVersion,
+    order: payload.order,
+    refreshOnly: payload.refreshOnly === true,
+  });
+  let noticeWritten = false;
+  if (payload.notice && isOrderReviewOutcome(payload.noticeOutcome) && result.applied) {
+    const notice = await writeOrderReviewNotice(deps, {
+      chatId,
+      orderId: payload.orderId,
+      proofVersion: payload.order.proofVersion,
+      outcome: payload.noticeOutcome,
+      text: payload.notice.slice(0, 600),
+    });
+    noticeWritten = notice.created;
+  }
+  return { ...result, noticeWritten };
 }
 
 function safeError(error: unknown): string {
@@ -67,15 +214,9 @@ export async function processOrderContextOutboxEvent(eventId: string): Promise<b
     const payload = parseOrderContextOutboxPayload(event.payload);
     if (!payload) throw new Error("Invalid ORDER_CONTEXT_UPSERT_V1 payload");
 
-    const result = await upsertOrderContextMessage(
+    const result = await deliverOrderContextPayload(
       { firestore: getTokochatFirestore(), now: Date.now },
-      {
-        chatId: chatIdForUser(payload.customerId),
-        customerId: payload.customerId,
-        orderId: payload.orderId,
-        schemaVersion: payload.schemaVersion,
-        order: payload.order,
-      },
+      payload,
     );
 
     await prisma.chatOutboxEvent.updateMany({
