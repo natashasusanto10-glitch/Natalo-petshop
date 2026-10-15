@@ -4,12 +4,14 @@ import { sendOrderStatusEmail } from "@/lib/email-order";
 import { recordOrderStatusEvent } from "@/lib/order-transitions";
 import { sendOrderStatusPush } from "@/lib/push";
 import { SELF_PICKUP_METHOD } from "@/lib/self-pickup";
+import { enqueueOrderContextRefresh, processOrderContextOutboxEvent } from "@/lib/chat/order-outbox";
 
 export class PaymentConfirmationConflict extends Error {}
 
 export async function confirmOrderPayment(params: {
   orderId: string;
   actorId: string;
+  reviewerName?: string;
   expectedProofVersion?: number;
   allowAlreadyPaid?: boolean;
 }) {
@@ -99,6 +101,12 @@ export async function confirmOrderPayment(params: {
         throw new PaymentConfirmationConflict("Riwayat bukti transfer tidak sinkron.");
       }
     }
+    const outboxEventId = current.paymentProofVersion >= 1
+      ? await enqueueOrderContextRefresh(tx, current.id, {
+          status: "VERIFIED",
+          byName: params.reviewerName ?? "Admin toko",
+        })
+      : null;
     if (paymentChanged) {
       await recordOrderStatusEvent(tx, current.id, "PAID", {
         actorType: "ADMIN",
@@ -113,8 +121,12 @@ export async function confirmOrderPayment(params: {
         });
       }
     }
-    return { ...current, paymentChanged };
+    return { ...current, paymentChanged, outboxEventId };
   });
+
+  if (result.outboxEventId) {
+    await processOrderContextOutboxEvent(result.outboxEventId).catch(() => false);
+  }
 
   if (result.paymentChanged) {
     const emailContext = await prisma.order.findUnique({

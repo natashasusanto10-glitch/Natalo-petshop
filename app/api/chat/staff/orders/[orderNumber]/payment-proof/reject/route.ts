@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyPaymentStaffRequest } from "@/lib/chat/staff-auth";
 import { prisma } from "@/lib/prisma";
 import { PaymentConfirmationConflict } from "@/lib/order-payment-confirmation";
+import { enqueueOrderContextRefresh, processOrderContextOutboxEvent } from "@/lib/chat/order-outbox";
 import { runWithStaffCors, staffCorsPreflight } from "@/lib/chat/staff-cors";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
@@ -89,7 +90,11 @@ async function rejectPaymentProof(
       if (proofUpdated.count !== 1) {
         throw new PaymentConfirmationConflict("Riwayat bukti transfer tidak sinkron.");
       }
-      return { kind: "ok" as const, version: expectedVersion as number };
+      const outboxEventId = await enqueueOrderContextRefresh(tx, order.id, {
+        status: "REJECTED",
+        byName: auth.name,
+      });
+      return { kind: "ok" as const, version: expectedVersion as number, outboxEventId };
     });
     if (result.kind === "missing") {
       return NextResponse.json({ error: "Order tidak ditemukan" }, { status: 404, headers: NO_STORE });
@@ -110,6 +115,9 @@ async function rejectPaymentProof(
       proofVersion: result.version,
       staffUid: auth.uid,
     }));
+    if (result.outboxEventId) {
+      await processOrderContextOutboxEvent(result.outboxEventId).catch(() => false);
+    }
     return NextResponse.json({
       paymentProof: { status: "REJECTED", version: result.version, rejectReason: reason },
     }, { headers: NO_STORE });

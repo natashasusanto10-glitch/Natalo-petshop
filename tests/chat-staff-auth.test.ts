@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isPaymentStaffAuthorized, isStaffAuthorized } from "@/lib/chat/staff-auth";
+import { isPaymentStaffAuthorized, isStaffAuthorized, staffDisplayName } from "@/lib/chat/staff-auth";
 
 test("owner selalu boleh", () => {
   assert.equal(isStaffAuthorized({ role: "owner" }), true);
@@ -29,4 +29,11 @@ test("hak chat tidak otomatis memberi hak finansial", () => {
   const support = { role: "karyawan", canHandleCustomer: true };
   assert.equal(isStaffAuthorized(support), true);
   assert.equal(isPaymentStaffAuthorized(support), false);
+});
+
+test("staffDisplayName reads nama, trims, and falls back", () => {
+  assert.equal(staffDisplayName({ nama: "  Natasha " }), "Natasha");
+  assert.equal(staffDisplayName({ name: "Leo" }), "Leo");
+  assert.equal(staffDisplayName({ nama: "" }), "Staf toko");
+  assert.equal(staffDisplayName(null), "Staf toko");
 });
