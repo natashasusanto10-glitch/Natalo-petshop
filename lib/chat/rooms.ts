@@ -256,9 +256,18 @@ export async function upsertOrderContextMessage(
  */
 export async function writeOrderReviewNotice(
   deps: WriteCustomerMessageDeps,
-  input: { chatId: string; orderId: string; proofVersion: number; text: string },
+  input: {
+    chatId: string;
+    orderId: string;
+    proofVersion: number;
+    outcome: "VERIFIED" | "REJECTED" | "PAID";
+    text: string;
+  },
 ): Promise<{ messageId: string; created: boolean }> {
-  const messageId = `order_review_${input.orderId}_v${input.proofVersion}`;
+  // Satu catatan per aksi per versi bukti: ulang kirim aksi yang sama tidak
+  // menggandakan, tapi tolak lalu tandai lunas pada versi yang sama tetap dua catatan.
+  const messageId =
+    `order_review_${input.orderId}_v${input.proofVersion}_${input.outcome.toLowerCase()}`;
   const ref = deps.firestore
     .collection(ROOM_COLLECTION).doc(input.chatId)
     .collection(MESSAGE_SUBCOLLECTION).doc(messageId);

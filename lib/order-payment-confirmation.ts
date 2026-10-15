@@ -103,7 +103,9 @@ export async function confirmOrderPayment(params: {
     }
     const outboxEventId = current.paymentProofVersion >= 1
       ? await enqueueOrderContextRefresh(tx, current.id, {
-          status: "VERIFIED",
+          // Hanya jalur cek bukti yang benar-benar memeriksa bukti; tandai lunas
+          // dari admin tidak boleh menimpa nama pengecek di kartu.
+          outcome: withProof ? "VERIFIED" : "PAID",
           byName: params.reviewerName ?? "Admin toko",
         })
       : null;

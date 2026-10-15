@@ -91,7 +91,7 @@ async function rejectPaymentProof(
         throw new PaymentConfirmationConflict("Riwayat bukti transfer tidak sinkron.");
       }
       const outboxEventId = await enqueueOrderContextRefresh(tx, order.id, {
-        status: "REJECTED",
+        outcome: "REJECTED",
         byName: auth.name,
       });
       return { kind: "ok" as const, version: expectedVersion as number, outboxEventId };

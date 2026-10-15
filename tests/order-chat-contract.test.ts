@@ -5,7 +5,12 @@ import {
   deterministicOrderMessageId,
   isOrderContextV1,
 } from "@/lib/chat/order-contract";
-import { buildReviewNoticeText, parseOrderContextOutboxPayload } from "@/lib/chat/order-outbox";
+import {
+  buildOrderContextRefreshPayload,
+  buildReviewNoticeText,
+  parseOrderContextOutboxPayload,
+  type OrderRefreshSource,
+} from "@/lib/chat/order-outbox";
 import { validateChatSendContent } from "@/lib/chat/send-content";
 
 const context = buildOrderContextV1({
@@ -76,4 +81,73 @@ test("outbox payload keeps refreshOnly and notice", () => {
   });
   assert.equal(parsed?.refreshOnly, true);
   assert.equal(parsed?.notice, "hai");
+});
+
+function refreshSource(over: Partial<OrderRefreshSource> = {}): OrderRefreshSource {
+  return {
+    id: "o1", userId: "u1", orderNumber: "ORD-1", status: "PENDING",
+    paymentStatus: "UNPAID", paymentProofStatus: "PENDING_REVIEW",
+    paymentProofUrl: "https://bukti", paymentProofVersion: 1,
+    paymentProofReviewedAt: null, paymentProofRejectReason: null,
+    total: 10, createdAt: new Date("2026-10-07T00:00:00Z"), _count: { items: 3 },
+    ...over,
+  };
+}
+
+test("refresh payload: VERIFIED memasang nama pengecek", () => {
+  const p = buildOrderContextRefreshPayload(
+    refreshSource({ paymentStatus: "PAID", paymentProofStatus: "VERIFIED",
+      paymentProofReviewedAt: new Date("2026-10-07T03:31:00Z") }),
+    { outcome: "VERIFIED", byName: "Natasha" },
+  )!;
+  assert.equal(p.order.reviewedByName, "Natasha");
+  assert.equal(p.order.reviewedAt, "2026-10-07T03:31:00.000Z");
+  assert.equal(p.order.itemCount, 3);
+  assert.equal(p.refreshOnly, true);
+  assert.equal(p.noticeOutcome, "VERIFIED");
+  assert.equal(p.notice, "Natasha menandai pembayaran ORD-1 sudah masuk");
+  assert.equal(p.orderId, "o1");
+  assert.equal(p.customerId, "u1");
+});
+
+test("refresh payload: REJECTED memasang nama + alasan dari DB di kartu dan catatan", () => {
+  const p = buildOrderContextRefreshPayload(
+    refreshSource({ paymentProofStatus: "REJECTED", paymentProofRejectReason: "nominal kurang",
+      paymentProofReviewedAt: new Date("2026-10-07T03:31:00Z") }),
+    { outcome: "REJECTED", byName: "Natasha" },
+  )!;
+  assert.equal(p.order.reviewedByName, "Natasha");
+  assert.equal(p.order.rejectReason, "nominal kurang");
+  assert.equal(p.noticeOutcome, "REJECTED");
+  assert.equal(p.notice, "Natasha menolak bukti transfer ORD-1: nominal kurang");
+});
+
+test("refresh payload: PAID tanpa nama pengecek, catatan 'sudah lunas'", () => {
+  const p = buildOrderContextRefreshPayload(
+    refreshSource({ status: "PAID", paymentStatus: "PAID", paymentProofStatus: "REJECTED",
+      paymentProofRejectReason: "nominal kurang", paymentProofReviewedAt: new Date("2026-10-07T03:31:00Z") }),
+    { outcome: "PAID", byName: "Admin toko" },
+  )!;
+  assert.equal("reviewedByName" in p.order, false);
+  assert.equal(p.order.paymentStatus, "PAID");
+  assert.equal(p.order.rejectReason, "nominal kurang");
+  assert.equal(p.noticeOutcome, "PAID");
+  assert.equal(p.notice, "Admin toko menandai pesanan ORD-1 sudah lunas");
+  assert.equal(buildReviewNoticeText({ status: "PAID", byName: " ", orderNumber: "ORD-2" }),
+    "Staf toko menandai pesanan ORD-2 sudah lunas");
+});
+
+test("refresh payload: null tanpa pelanggan atau tanpa bukti", () => {
+  assert.equal(buildOrderContextRefreshPayload(refreshSource({ userId: null }),
+    { outcome: "VERIFIED", byName: "Natasha" }), null);
+  assert.equal(buildOrderContextRefreshPayload(refreshSource({ paymentProofVersion: 0 }),
+    { outcome: "PAID", byName: "Admin toko" }), null);
+});
+
+test("refresh payload: kolom pemeriksaan kosong di DB tidak ikut ke kartu", () => {
+  const p = buildOrderContextRefreshPayload(refreshSource(), { outcome: "PAID", byName: "Admin toko" })!;
+  assert.equal("reviewedAt" in p.order, false);
+  assert.equal("rejectReason" in p.order, false);
+  assert.equal("reviewedByName" in p.order, false);
+  assert.ok(parseOrderContextOutboxPayload(JSON.parse(JSON.stringify(p))));
 });

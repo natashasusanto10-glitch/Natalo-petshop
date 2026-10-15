@@ -13,6 +13,11 @@ import {
   type DocSnapshotLike,
   type TransactionLike,
 } from "@/lib/chat/rooms";
+import {
+  buildOrderContextRefreshPayload,
+  deliverOrderContextPayload,
+  type OrderRefreshSource,
+} from "@/lib/chat/order-outbox";
 
 // ---------------------------------------------------------------------------
 // Fake Firestore Admin SDK minimal — in-memory, keyed by full doc path
@@ -389,14 +394,14 @@ test("refreshOnly creates the card and bumps room when card is missing", async (
 test("writeOrderReviewNotice writes one staff-only system message per proof version", async () => {
   const store = new Map<string, Record<string, unknown>>();
   const firestore = makeFakeFirestore(store);
-  const input = { chatId: "cust_u9", orderId: "order9", proofVersion: 1,
+  const input = { chatId: "cust_u9", orderId: "order9", proofVersion: 1, outcome: "VERIFIED" as const,
     text: "Natasha menandai pembayaran ORD-9 sudah masuk" };
   const a = await writeOrderReviewNotice({ firestore, now: () => 6000 }, input);
   const b = await writeOrderReviewNotice({ firestore, now: () => 6500 }, input);
-  assert.equal(a.messageId, "order_review_order9_v1");
+  assert.equal(a.messageId, "order_review_order9_v1_verified");
   assert.equal(a.created, true);
   assert.equal(b.created, false);
-  const msg = store.get("customerChats/cust_u9/messages/order_review_order9_v1")!;
+  const msg = store.get("customerChats/cust_u9/messages/order_review_order9_v1_verified")!;
   assert.equal(msg.staffOnly, true);
   assert.equal(msg.senderRole, "system");
   assert.equal(msg.type, "system");
@@ -430,4 +435,119 @@ test("upsert replaces order wholesale: no stale review fields, other message fie
   assert.equal("reviewedAt" in order, false);
   assert.equal(msg.readByStaffAt, 123);
   assert.equal(msg.createdAt, 1000);
+});
+
+// ---------------------------------------------------------------------------
+// Pengiriman kartu + catatan staf (deliverOrderContextPayload) — urutan nyata
+// tolak / tandai lunas / cek bukti pada versi bukti yang sama.
+// ---------------------------------------------------------------------------
+function dbOrder(over: Partial<OrderRefreshSource> = {}): OrderRefreshSource {
+  return {
+    id: "orderA", userId: "uA", orderNumber: "ORD-A", status: "PENDING",
+    paymentStatus: "UNPAID", paymentProofStatus: "PENDING_REVIEW",
+    paymentProofUrl: "https://bukti", paymentProofVersion: 1,
+    paymentProofReviewedAt: null, paymentProofRejectReason: null,
+    total: 50000, createdAt: new Date("2026-10-07T00:00:00Z"), _count: { items: 2 },
+    ...over,
+  };
+}
+
+function reviewNotes(store: Map<string, Record<string, unknown>>, chatId: string) {
+  return [...store.entries()]
+    .filter(([k]) => k.startsWith(`customerChats/${chatId}/messages/order_review_`))
+    .map(([k, v]) => ({ id: k.split("/").pop()!, text: v.text as string }));
+}
+
+test("case A: tolak v1 lalu admin tandai lunas -> dua catatan, kartu tanpa 'Admin toko'", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  const rejectedDb = dbOrder({
+    paymentProofStatus: "REJECTED",
+    paymentProofReviewedAt: new Date("2026-10-07T03:00:00Z"),
+    paymentProofRejectReason: "nominal kurang",
+  });
+  const reject = buildOrderContextRefreshPayload(rejectedDb, { outcome: "REJECTED", byName: "Natasha" })!;
+  const r1 = await deliverOrderContextPayload({ firestore, now: () => 1000 }, reject);
+  assert.equal(r1.applied, true);
+
+  const paid = buildOrderContextRefreshPayload(
+    { ...rejectedDb, status: "PAID", paymentStatus: "PAID" },
+    { outcome: "PAID", byName: "Admin toko" },
+  )!;
+  const r2 = await deliverOrderContextPayload({ firestore, now: () => 2000 }, paid);
+  assert.equal(r2.applied, true);
+  assert.equal(r2.noticeWritten, true);
+
+  const notes = reviewNotes(store, "cust_uA");
+  assert.deepEqual(notes.map((n) => n.id).sort(), [
+    "order_review_orderA_v1_paid",
+    "order_review_orderA_v1_rejected",
+  ]);
+  assert.equal(
+    notes.find((n) => n.id.endsWith("_paid"))!.text,
+    "Admin toko menandai pesanan ORD-A sudah lunas",
+  );
+  const card = store.get("customerChats/cust_uA/messages/order_context_orderA")!;
+  const order = card.order as Record<string, unknown>;
+  assert.equal(order.paymentStatus, "PAID");
+  assert.equal(order.paymentProofStatus, "REJECTED");
+  assert.equal("reviewedByName" in order, false);
+  assert.equal(JSON.stringify(card).includes("Admin toko"), false);
+});
+
+test("case B: admin tandai lunas saat v1 menunggu, lalu Natasha cek v1 -> nama Natasha, dua catatan", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  const paidDb = dbOrder({ status: "PAID", paymentStatus: "PAID" });
+  const paid = buildOrderContextRefreshPayload(paidDb, { outcome: "PAID", byName: "Admin toko" })!;
+  await deliverOrderContextPayload({ firestore, now: () => 1000 }, paid);
+  const mid = store.get("customerChats/cust_uA/messages/order_context_orderA")!.order as Record<string, unknown>;
+  assert.equal("reviewedByName" in mid, false);
+
+  const verified = buildOrderContextRefreshPayload(
+    { ...paidDb, paymentProofStatus: "VERIFIED", paymentProofReviewedAt: new Date("2026-10-07T04:00:00Z") },
+    { outcome: "VERIFIED", byName: "Natasha" },
+  )!;
+  const r = await deliverOrderContextPayload({ firestore, now: () => 2000 }, verified);
+  assert.equal(r.applied, true);
+  assert.equal(r.noticeWritten, true);
+
+  const order = store.get("customerChats/cust_uA/messages/order_context_orderA")!.order as Record<string, unknown>;
+  assert.equal(order.reviewedByName, "Natasha");
+  assert.equal(order.paymentProofStatus, "VERIFIED");
+  assert.deepEqual(reviewNotes(store, "cust_uA").map((n) => n.id).sort(), [
+    "order_review_orderA_v1_paid",
+    "order_review_orderA_v1_verified",
+  ]);
+});
+
+test("muatan basi (versi bukti lebih lama dari kartu) tidak menulis catatan", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  const v2 = buildOrderContextRefreshPayload(
+    dbOrder({ paymentProofVersion: 2 }),
+    { outcome: "VERIFIED", byName: "Natasha" },
+  )!;
+  await deliverOrderContextPayload({ firestore, now: () => 1000 }, { ...v2, notice: undefined });
+  const stale = buildOrderContextRefreshPayload(
+    dbOrder({ paymentProofStatus: "REJECTED", paymentProofRejectReason: "buram" }),
+    { outcome: "REJECTED", byName: "Natasha" },
+  )!;
+  const r = await deliverOrderContextPayload({ firestore, now: () => 2000 }, stale);
+  assert.equal(r.applied, false);
+  assert.equal(r.noticeWritten, false);
+  assert.equal(reviewNotes(store, "cust_uA").length, 0);
+  const order = store.get("customerChats/cust_uA/messages/order_context_orderA")!.order as Record<string, unknown>;
+  assert.equal(order.proofVersion, 2);
+});
+
+test("ulang kirim aksi yang sama tidak menggandakan catatan", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  const p = buildOrderContextRefreshPayload(dbOrder(), { outcome: "PAID", byName: "Admin toko" })!;
+  await deliverOrderContextPayload({ firestore, now: () => 1000 }, p);
+  const again = await deliverOrderContextPayload({ firestore, now: () => 2000 }, p);
+  assert.equal(again.applied, true);
+  assert.equal(again.noticeWritten, false);
+  assert.equal(reviewNotes(store, "cust_uA").length, 1);
 });
