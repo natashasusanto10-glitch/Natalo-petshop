@@ -224,7 +224,11 @@ export async function upsertOrderContextMessage(
       tx.set(roomRef, roomUpdate, { merge: true });
     }
 
+    // Tanpa merge: `order` diganti utuh (merge Firestore asli menggabung peta
+    // bertingkat -> sisa alasan tolak lama bisa ikut). Field lain yang sudah ada
+    // (readByStaffAt, dst.) dipertahankan lewat spread data lama.
     tx.set(messageRef, {
+      ...(messageSnap.exists ? messageSnap.data() : {}),
       clientMsgId: `payment-proof-${input.orderId}`,
       senderRole: "customer",
       senderId: input.customerId,
@@ -237,7 +241,7 @@ export async function upsertOrderContextMessage(
         : nowMs,
       updatedAt: nowMs,
       status: "sent",
-    }, { merge: true });
+    });
   });
 
   return { messageId, created, applied };

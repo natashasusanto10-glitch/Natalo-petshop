@@ -21,6 +21,20 @@ import {
 //   collection(name).doc(id?) / .where(field, op, value).limit(n).get()
 //   runTransaction(fn) -> tx.get(docRef) / tx.set(docRef, data, {merge})
 // ---------------------------------------------------------------------------
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v) &&
+    Object.getPrototypeOf(v) === Object.prototype;
+}
+
+// Meniru merge-set Firestore asli: peta bertingkat digabung dalam, array/nilai lain diganti.
+function deepMerge(a: Record<string, unknown>, b: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    out[k] = isPlainObject(v) && isPlainObject(out[k]) ? deepMerge(out[k] as Record<string, unknown>, v) : v;
+  }
+  return out;
+}
+
 function makeFakeFirestore(store: Map<string, Record<string, unknown>>): FirestoreLike {
   let autoIdCounter = 0;
   const nextAutoId = () => `auto${++autoIdCounter}`;
@@ -95,7 +109,7 @@ function makeFakeFirestore(store: Map<string, Record<string, unknown>>): Firesto
         set(ref: DocRefLike, data: Record<string, unknown>, options?: { merge?: boolean }) {
           if (options?.merge) {
             const existing = store.get(ref.path) ?? {};
-            store.set(ref.path, { ...existing, ...data });
+            store.set(ref.path, deepMerge(existing, data));
           } else {
             store.set(ref.path, { ...data });
           }
@@ -388,4 +402,32 @@ test("writeOrderReviewNotice writes one staff-only system message per proof vers
   assert.equal(msg.type, "system");
   assert.equal(msg.createdAt, 6000);
   assert.equal(store.has("customerChats/cust_u9"), false); // room tidak disentuh
+});
+
+test("upsert replaces order wholesale: no stale review fields, other message fields survive", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  const base = {
+    chatId: "cust_u11", customerId: "u11", orderId: "order11", schemaVersion: 1,
+    order: { orderNumber: "ORD-11", status: "PENDING", paymentStatus: "UNPAID",
+      paymentProofStatus: "REJECTED", total: 1000, itemCount: 2,
+      hasPaymentProof: true, proofVersion: 1, createdAt: "2026-10-07T00:00:00.000Z",
+      rejectReason: "x", reviewedByName: "Natasha", reviewedAt: "2026-10-07T03:31:00.000Z" },
+  };
+  await upsertOrderContextMessage({ firestore, now: () => 1000 }, base);
+  const path = "customerChats/cust_u11/messages/order_context_order11";
+  store.set(path, { ...store.get(path)!, readByStaffAt: 123 });
+  const { rejectReason, reviewedByName, reviewedAt, ...fresh } = base.order;
+  void rejectReason; void reviewedByName; void reviewedAt;
+  await upsertOrderContextMessage({ firestore, now: () => 2000 }, {
+    ...base, order: { ...fresh, paymentProofStatus: "PENDING_REVIEW", proofVersion: 2 },
+  });
+  const msg = store.get(path)!;
+  const order = msg.order as Record<string, unknown>;
+  assert.equal(order.proofVersion, 2);
+  assert.equal("rejectReason" in order, false);
+  assert.equal("reviewedByName" in order, false);
+  assert.equal("reviewedAt" in order, false);
+  assert.equal(msg.readByStaffAt, 123);
+  assert.equal(msg.createdAt, 1000);
 });
