@@ -1,3 +1,5 @@
+import { AdminPage } from "@/components/admin/ui";
+
 /**
  * Loading skeleton kanonik untuk route group admin (protected).
  * Server component — Next.js otomatis menampilkannya selama segmen di-suspend
@@ -6,7 +8,7 @@
  */
 export default function Loading() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <AdminPage>
       <div className="animate-pulse space-y-8" aria-hidden="true">
         {/* Judul + subjudul */}
         <div className="space-y-3">
@@ -43,6 +45,6 @@ export default function Loading() {
       </div>
 
       <span className="sr-only">Memuat…</span>
-    </div>
+    </AdminPage>
   );
 }
