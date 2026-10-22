@@ -296,6 +296,8 @@ export default async function ProductDetailPage({
       {/* Sticky bottom bar — selalu terlihat di mobile */}
       <StickyAddToCartBar
         waHref={waHref}
+        productId={product.id}
+        productName={product.name}
         initialState={{
           hasVariants: product.hasVariants,
           canAdd: !product.hasVariants && !outOfStock,

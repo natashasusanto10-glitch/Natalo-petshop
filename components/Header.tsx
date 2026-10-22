@@ -6,6 +6,9 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CartCount } from "./CartCount";
 import { NotificationBell } from "./NotificationBell";
+import { ChatIcon } from "@/components/chat/ChatIcon";
+import { openChat } from "@/components/chat/ChatLauncher";
+import { useChatUnread } from "@/components/chat/useChatUnread";
 import { HomeSearchBar } from "@/components/home/HomeSearchBar";
 import { DesktopCategoryNav } from "@/components/header/DesktopCategoryNav";
 import { MobileMenu } from "@/components/header/MobileMenu";
@@ -96,6 +99,8 @@ export function Header() {
   // Search icon kecil di header sengaja dihilangkan total: search hanya via
   // search bar besar di /, /products. Lebih clean + native (HIG).
   const showBell = !isAuthPage;
+  const { chatEnabled, unread: chatUnread } = useChatUnread();
+  const showChat = chatEnabled && !isAuthPage && currentPath !== "/chat";
   const showProfileChip = false;
   const showLoginButton = !isLoggedIn && !isAuthPage;
   function handleBack() {
@@ -375,6 +380,37 @@ export function Header() {
 
             {/* Notifikasi — hanya untuk logged-in user. Guest tidak punya
               konteks notif (order, voucher, point) jadi bell dihide. */}
+            {showChat && (
+              <button
+                type="button"
+                onClick={() => openChat()}
+                aria-label={
+                  chatUnread > 0
+                    ? `Chat dengan toko, ${chatUnread} pesan belum dibaca`
+                    : "Chat dengan toko"
+                }
+                className="relative flex min-h-11 min-w-11 items-center justify-center"
+              >
+                <span
+                  className={`relative flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 ${
+                    chatUnread > 0
+                      ? "bg-natalo-50 text-natalo-600"
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <ChatIcon className="h-5 w-5" />
+                  {chatUnread > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-extrabold leading-none text-white ring-2 ring-white"
+                    >
+                      {chatUnread > 99 ? "99+" : chatUnread}
+                    </span>
+                  )}
+                </span>
+              </button>
+            )}
+
             {showBell && <NotificationBell compact />}
 
             {/* Cart: desktop header only; mobile already has bottom navigation. */}

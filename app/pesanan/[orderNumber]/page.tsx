@@ -88,6 +88,7 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
       initialOrder={serializeOrderDetail(order)}
       token={query.token ?? null}
       canReview={isOwner}
+      canChat={isOwner}
     />
   );
 }

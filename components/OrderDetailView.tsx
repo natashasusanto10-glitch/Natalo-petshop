@@ -12,6 +12,8 @@ import {
 } from "@/lib/order-detail";
 import { PaymentProofUpload } from "@/components/PaymentProofUpload";
 import { ExternalLink } from "@/components/ExternalLink";
+import { ChatIcon } from "@/components/chat/ChatIcon";
+import { openChat } from "@/components/chat/ChatLauncher";
 import { trackSuccessfulOrder } from "@/lib/app-rating";
 import { PageStatusBar } from "@/components/PageStatusBar";
 import { ReviewFlow, buildReviewItemFromOrder } from "@/components/review/ReviewFlow";
@@ -286,10 +288,12 @@ export function OrderDetailView({
   initialOrder,
   token,
   canReview = false,
+  canChat = false,
 }: {
   initialOrder: SerializedOrderDetail;
   token?: string | null;
   canReview?: boolean;
+  canChat?: boolean;
 }) {
   const [order, setOrder] = useState(initialOrder);
   const [refreshError, setRefreshError] = useState("");
@@ -756,6 +760,17 @@ export function OrderDetailView({
               >
                 Bayar Sekarang
               </a>
+            )}
+
+            {canChat && (
+              <button
+                type="button"
+                onClick={() => openChat({ orderNumber: order.orderNumber })}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-natalo-500 px-5 py-3 text-sm font-black text-white transition hover:bg-natalo-600 active:scale-[0.99]"
+              >
+                <ChatIcon className="h-5 w-5" />
+                Tanya soal pesanan ini
+              </button>
             )}
 
             <OrderFollowUpCard
