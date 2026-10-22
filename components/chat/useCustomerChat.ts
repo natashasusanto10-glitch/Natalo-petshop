@@ -21,7 +21,7 @@ const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const TEXT_FAIL = "Pesan belum terkirim. Coba lagi.";
 const IMAGE_FAIL = "Foto belum terkirim. Coba lagi.";
 const IMAGE_INVALID = "Foto harus JPG/PNG/WEBP, maksimal 5 MB.";
-const LOAD_FAIL = "Chat belum bisa dibuka. Coba lagi sebentar lagi.";
+const LOAD_FAIL = "Chat belum bisa dimuat. Coba lagi sebentar lagi.";
 const OLDER_FAIL = "Pesan lama belum bisa dimuat. Coba lagi.";
 
 export type CustomerChatStatus = "loading" | "guest" | "ready" | "disabled" | "error";
@@ -36,6 +36,34 @@ type PageJson = {
   nextCursor?: number | null;
   error?: string;
 };
+
+// Teks galat untuk pembeli: teks server hanya dipakai bila kodenya membawa
+// bahasa Indonesia (400/413/415/429/503); selain itu pakai teks umum.
+const FRIENDLY_STATUSES = [400, 413, 415, 429, 503];
+async function readErrorText(res: Response, fallback: string): Promise<string> {
+  if (!FRIENDLY_STATUSES.includes(res.status)) return fallback;
+  try {
+    const json = (await res.json()) as { error?: unknown };
+    return typeof json.error === "string" && json.error ? json.error : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function contextKey(c: ChatContext | null): string {
+  if (!c) return "";
+  return `${c.type}:${c.type === "order" ? c.orderNumber : c.productId}`;
+}
+
+function contextFromKey(key: string): ChatContext | null {
+  const i = key.indexOf(":");
+  if (i < 0) return null;
+  const type = key.slice(0, i);
+  const value = key.slice(i + 1);
+  if (type === "order") return { type: "order", orderNumber: value };
+  if (type === "product") return { type: "product", productId: value };
+  return null;
+}
 
 async function readJson<T>(res: Response): Promise<T | null> {
   try {
@@ -77,6 +105,7 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
   const pollBusyRef = useRef(false);
   const olderBusyRef = useRef(false);
   const roundRef = useRef(0);
+  const pollAgainRef = useRef(false);
   const pendingContextRef = useRef<ChatContext | null>(context);
   const outgoingRef = useRef(new Map<string, Outgoing>());
   const previewUrlsRef = useRef(new Map<string, string>());
@@ -114,9 +143,17 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
     setPendingContext(ctx);
   }, []);
 
+  // Bandingkan konteks menurut isinya (bukan identitas objek).
+  const ctxKey = contextKey(context);
   useEffect(() => {
-    setContext(context);
-  }, [context, setContext]);
+    autoSentRef.current = null;
+    setContext(contextFromKey(ctxKey));
+  }, [ctxKey, setContext]);
+
+  // Sesi habis di tengah jalan → layar "masuk dulu"; polling ikut berhenti.
+  const goGuest = useCallback(() => {
+    if (mountedRef.current) setStatus("guest");
+  }, []);
 
   const clearContext = useCallback(() => setContext(null), [setContext]);
 
@@ -164,10 +201,22 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
           credentials: "same-origin",
         });
         if (cancelled) return;
+        if (!res.ok) {
+          if (res.status === 401) setStatus("guest");
+          else {
+            setErrorText(await readErrorText(res, LOAD_FAIL));
+            if (!cancelled) setStatus("error");
+          }
+          return;
+        }
         const json = await readJson<PageJson>(res);
         if (cancelled) return;
+        if (res.status === 401) {
+          setStatus("guest");
+          return;
+        }
         if (!res.ok || !json) {
-          setErrorText(json?.error ?? LOAD_FAIL);
+          setErrorText(res.ok ? LOAD_FAIL : await readErrorText(res, LOAD_FAIL));
           setStatus("error");
           return;
         }
@@ -195,9 +244,13 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
   }, [enabled, checkConfig, applyMessages]);
 
   // ── Ambil berkala ────────────────────────────────────────────────────
-  const pollOnce = useCallback(async () => {
+  const pollOnce = useCallback(async (): Promise<void> => {
     const id = chatIdRef.current;
-    if (!id || pollBusyRef.current) return;
+    if (!id) return;
+    if (pollBusyRef.current) {
+      pollAgainRef.current = true; // ulangi begitu putaran berjalan selesai
+      return;
+    }
     pollBusyRef.current = true;
     try {
       const after = cursorRef.current;
@@ -206,9 +259,16 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
         cache: "no-store",
         credentials: "same-origin",
       });
+      if (res.status === 401) {
+        goGuest();
+        return;
+      }
       if (res.ok) {
         const json = await readJson<PageJson>(res);
         if (json && mountedRef.current) {
+          if ((json.messages ?? []).some((m) => m.senderRole !== "customer")) {
+            window.dispatchEvent(new Event("chat-read"));
+          }
           applyMessages((cur) => mergeMessages(cur, json.messages ?? []));
           cursorRef.current = forwardCursor(messagesRef.current, json.nextCursor ?? null, cursorRef.current);
         }
@@ -222,11 +282,15 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
       /* jaringan putus sesaat; putaran berikutnya mencoba lagi */
     } finally {
       pollBusyRef.current = false;
+      if (pollAgainRef.current && mountedRef.current) {
+        pollAgainRef.current = false;
+        void pollOnce();
+      }
     }
-  }, [applyMessages, checkConfig]);
+  }, [applyMessages, checkConfig, goGuest]);
 
   useEffect(() => {
-    if (status !== "ready") return;
+    if (status !== "ready" || !enabled) return;
     let stopped = false;
     let gen = 0;
     let timer: number | undefined;
@@ -246,14 +310,14 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
       if (document.visibilityState === "visible") restart();
     };
 
-    timer = window.setTimeout(() => void tick(gen), POLL_MS);
+    void tick(gen);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       stopped = true;
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [status, pollOnce]);
+  }, [status, enabled, pollOnce]);
 
   // ── Pesan lama ───────────────────────────────────────────────────────
   const loadOlder = useCallback(async () => {
@@ -267,10 +331,19 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
         cache: "no-store",
         credentials: "same-origin",
       });
+      if (res.status === 401) {
+        goGuest();
+        return;
+      }
+      if (!res.ok) {
+        const text = await readErrorText(res, OLDER_FAIL);
+        if (mountedRef.current) setErrorText(text);
+        return;
+      }
       const json = await readJson<PageJson>(res);
       if (!mountedRef.current) return;
-      if (!res.ok || !json) {
-        setErrorText(json?.error ?? OLDER_FAIL);
+      if (!json) {
+        setErrorText(OLDER_FAIL);
         return;
       }
       const prev = json.prevCursor ?? null;
@@ -283,7 +356,7 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
       olderBusyRef.current = false;
       if (mountedRef.current) setLoadingOlder(false);
     }
-  }, [applyMessages]);
+  }, [applyMessages, goGuest]);
 
   // ── Kirim ────────────────────────────────────────────────────────────
   const deliver = useCallback(
@@ -315,8 +388,9 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
           });
         }
         if (!res.ok) {
-          const json = await readJson<{ error?: string }>(res);
-          throw new Error(typeof json?.error === "string" ? json.error : "");
+          const fallback = out.kind === "image" ? IMAGE_FAIL : TEXT_FAIL;
+          if (res.status === 401) goGuest();
+          throw new Error(await readErrorText(res, fallback));
         }
         outgoingRef.current.delete(clientMsgId);
         if (mountedRef.current) setErrorText(null);
@@ -333,7 +407,7 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
         if (timeout !== undefined) window.clearTimeout(timeout);
       }
     },
-    [applyMessages, pollOnce],
+    [applyMessages, pollOnce, goGuest],
   );
 
   const sendText = useCallback(
@@ -392,8 +466,11 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
     autoSentRef.current = key;
     const ctx = pendingContext;
     clearContext();
-    void deliver(newClientMsgId(), { kind: "text", context: ctx }, false);
-  }, [status, chatId, pendingContext, clearContext, deliver]);
+    void deliver(newClientMsgId(), { kind: "text", context: ctx }, false).then((ok) => {
+      // Gagal: kartu pesanan ikut di pesan berikutnya yang diketik.
+      if (!ok && mountedRef.current && pendingContextRef.current === null) setContext(ctx);
+    });
+  }, [status, chatId, pendingContext, clearContext, deliver, setContext]);
 
   return {
     status,

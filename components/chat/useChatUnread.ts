@@ -46,7 +46,8 @@ export function useChatUnread(): {
       const cfg = cfgRes.ok ? ((await cfgRes.json().catch(() => null)) as { chatEnabled?: boolean } | null) : null;
       if (!activeRef.current) return;
       const isIn = Boolean(me?.id);
-      const enabled = cfg?.chatEnabled === true;
+      // Gagal ambil setelan dianggap aktif; hanya `false` eksplisit yang mematikan.
+      const enabled = cfg?.chatEnabled !== false;
       setLoggedIn(isIn);
       setChatEnabled(enabled);
       readyRef.current = isIn && enabled;
