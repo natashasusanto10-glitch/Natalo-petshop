@@ -74,7 +74,7 @@ function ConversationInner({
   const firstScrollRef = useRef(true);
   const lastCountRef = useRef(0);
   const forceBottomRef = useRef(false);
-  const olderRef = useRef<{ height: number; top: number; count: number } | null>(null);
+  const olderRef = useRef<{ firstKey: string | null; height: number; top: number } | null>(null);
 
   const onScroll = useCallback(() => {
     const el = listRef.current;
@@ -87,10 +87,11 @@ function ConversationInner({
     if (!el || status !== "ready") return;
     const grew = messages.length > lastCountRef.current;
     lastCountRef.current = messages.length;
-    if (olderRef.current && grew) {
+    const snap = olderRef.current;
+    const firstKey = messages.length > 0 ? messages[0].localKey : null;
+    if (snap && firstKey !== snap.firstKey) {
       // Pesan lama ditambahkan di atas: pertahankan posisi baca.
-      const { height, top } = olderRef.current;
-      el.scrollTop = el.scrollHeight - height + top;
+      el.scrollTop = el.scrollHeight - snap.height + snap.top;
       olderRef.current = null;
     } else if (firstScrollRef.current && messages.length > 0) {
       el.scrollTop = el.scrollHeight;
@@ -101,24 +102,39 @@ function ConversationInner({
     if (grew) forceBottomRef.current = false;
   }, [messages, status]);
 
+  // Tidak ada halaman lebih lama / gagal: buang catatan posisi tanpa memulihkan.
+  const loadingOlder = chat.loadingOlder;
+  useLayoutEffect(() => {
+    if (!loadingOlder) olderRef.current = null;
+  }, [loadingOlder]);
+
   const loadOlder = useCallback(async () => {
     const el = listRef.current;
-    if (el) olderRef.current = { height: el.scrollHeight, top: el.scrollTop, count: lastCountRef.current };
+    if (el) {
+      olderRef.current = {
+        firstKey: messages.length > 0 ? messages[0].localKey : null,
+        height: el.scrollHeight,
+        top: el.scrollTop,
+      };
+    }
     await chat.loadOlder();
-    if (olderRef.current && olderRef.current.count === lastCountRef.current) olderRef.current = null;
-  }, [chat]);
+  }, [chat, messages]);
 
   const sendText = useCallback(
     (t: string) => {
       forceBottomRef.current = true;
-      return chat.sendText(t);
+      return chat.sendText(t).finally(() => {
+        forceBottomRef.current = false;
+      });
     },
     [chat],
   );
   const sendImage = useCallback(
     (f: File) => {
       forceBottomRef.current = true;
-      return chat.sendImage(f);
+      return chat.sendImage(f).finally(() => {
+        forceBottomRef.current = false;
+      });
     },
     [chat],
   );

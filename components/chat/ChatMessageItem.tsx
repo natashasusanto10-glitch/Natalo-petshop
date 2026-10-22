@@ -114,7 +114,7 @@ export function ChatMessageItem({
     const p = m.product;
     const body = (
       <div className="flex items-center gap-3">
-        {p.imageUrl ? (
+        {p.imageUrl && /^(https:|blob:)/i.test(p.imageUrl) ? (
           <img src={p.imageUrl} alt="" loading="lazy" className="h-12 w-12 flex-none rounded-lg bg-slate-100 object-cover" />
         ) : (
           <div className="h-12 w-12 flex-none rounded-lg bg-slate-100" />
