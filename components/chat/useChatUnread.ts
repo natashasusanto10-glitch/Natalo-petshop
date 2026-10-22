@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import { getChatConfig } from "./chatConfig";
 
 const UNREAD_INTERVAL_MS = 30_000;
 
@@ -52,13 +53,12 @@ function loadAll(): Promise<void> {
   if (loading) return loading;
   loading = (async () => {
     try {
-      const [meRes, cfgRes] = await Promise.all([
-        fetch("/api/auth/me", { cache: "no-store", credentials: "same-origin" }),
-        fetch("/api/chat/config", { cache: "no-store", credentials: "same-origin" }),
-      ]);
+      const meRes = await fetch("/api/auth/me", { cache: "no-store", credentials: "same-origin" });
       const me = meRes.ok ? ((await meRes.json().catch(() => null)) as { id?: string } | null) : null;
-      const cfg = cfgRes.ok ? ((await cfgRes.json().catch(() => null)) as { chatEnabled?: boolean } | null) : null;
       const isIn = Boolean(me?.id);
+      // Setelan chat dibaca hanya untuk yang sudah masuk akun (hemat baca data);
+      // tamu tetap melihat chat "aktif" — di dalamnya muncul layar masuk.
+      const cfg = isIn ? await getChatConfig() : null;
       const enabled = cfg?.chatEnabled !== false;
       ready = isIn && enabled;
       loaded = true;

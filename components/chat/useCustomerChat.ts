@@ -11,9 +11,14 @@ import {
   type ChatContext,
   type WebChatMessage,
 } from "@/lib/chat/web-client";
+import { forgetChatConfig, getChatConfig } from "./chatConfig";
 
 const POLL_MS = 4000;
+// Sepi 60 detik (tanpa pesan baru / kiriman) → ambil tiap 10 detik (hemat baca data).
+const POLL_IDLE_MS = 10_000;
+const IDLE_AFTER_MS = 60_000;
 const CONFIG_EVERY_ROUNDS = 5;
+const ANNOUNCE_MAX = 100;
 const IMAGE_TIMEOUT_MS = 90_000;
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -39,15 +44,30 @@ type PageJson = {
 
 // Teks galat untuk pembeli: teks server hanya dipakai bila kodenya membawa
 // bahasa Indonesia (400/413/415/429/503); selain itu pakai teks umum.
+// 400 bisa membawa teks teknis ("Invalid JSON", "clientMsgId …") → teks umum.
 const FRIENDLY_STATUSES = [400, 413, 415, 429, 503];
+const TECHNICAL_400 = [/invalid json/i, /clientmsgid/i];
 async function readErrorText(res: Response, fallback: string): Promise<string> {
   if (!FRIENDLY_STATUSES.includes(res.status)) return fallback;
   try {
     const json = (await res.json()) as { error?: unknown };
-    return typeof json.error === "string" && json.error ? json.error : fallback;
+    const err = json.error;
+    if (typeof err !== "string" || !err) return fallback;
+    if (res.status === 400 && TECHNICAL_400.some((re) => re.test(err))) return fallback;
+    return err;
   } catch {
     return fallback;
   }
+}
+
+// Kalimat singkat untuk pembaca layar saat pesan toko masuk.
+function announceText(m: CustomerMessage): string {
+  const raw =
+    m.text?.trim() ||
+    (m.type === "image" ? "Foto" : m.type === "product" || m.type === "product_context" ? "Info produk" : "");
+  const preview = raw.length > ANNOUNCE_MAX ? `${raw.slice(0, ANNOUNCE_MAX - 1)}…` : raw;
+  const who = m.senderName?.trim() || "toko";
+  return preview ? `Pesan baru dari ${who}: ${preview}` : `Pesan baru dari ${who}`;
 }
 
 function contextKey(c: ChatContext | null): string {
@@ -73,7 +93,12 @@ async function readJson<T>(res: Response): Promise<T | null> {
   }
 }
 
-export function useCustomerChat(opts: { enabled: boolean; context: ChatContext | null }): {
+export function useCustomerChat(opts: {
+  enabled: boolean;
+  context: ChatContext | null;
+  /** Dipanggil setelah konteks terkirim (otomatis / ikut pesan pertama) atau dibatalkan. */
+  onContextConsumed?: () => void;
+}): {
   status: CustomerChatStatus;
   messages: WebChatMessage[];
   online: boolean | null;
@@ -86,8 +111,10 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
   pendingContext: ChatContext | null;
   clearContext(): void;
   errorText: string | null;
+  /** Pengumuman pembaca layar untuk pesan toko yang baru masuk. */
+  announcement: { id: number; text: string } | null;
 } {
-  const { enabled, context } = opts;
+  const { enabled, context, onContextConsumed } = opts;
 
   const [status, setStatus] = useState<CustomerChatStatus>("loading");
   const [messages, setMessages] = useState<WebChatMessage[]>([]);
@@ -97,6 +124,7 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
   const [pendingContext, setPendingContext] = useState<ChatContext | null>(context);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState<{ id: number; text: string } | null>(null);
 
   const mountedRef = useRef(true);
   const messagesRef = useRef<WebChatMessage[]>([]);
@@ -111,6 +139,24 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
   const previewUrlsRef = useRef(new Map<string, string>());
   const autoSentRef = useRef<string | null>(null);
   const chatIdRef = useRef<string | null>(null);
+  const lastActivityRef = useRef(0);
+  const wakeRef = useRef<(() => void) | null>(null);
+  const consumedRef = useRef(onContextConsumed);
+  useEffect(() => {
+    consumedRef.current = onContextConsumed;
+  }, [onContextConsumed]);
+
+  // Hanya saat masih terpasang: halaman /chat yang sudah ditinggal tidak boleh
+  // mengganti alamat lagi (router.replace) setelah kiriman telat selesai.
+  const notifyConsumed = useCallback(() => {
+    if (mountedRef.current) consumedRef.current?.();
+  }, []);
+
+  // Ada kegiatan (kirim pesan) → ambil berkala kembali cepat.
+  const markActive = useCallback(() => {
+    lastActivityRef.current = Date.now();
+    wakeRef.current?.();
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -155,20 +201,20 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
     if (mountedRef.current) setStatus("guest");
   }, []);
 
-  const clearContext = useCallback(() => setContext(null), [setContext]);
+  // Dibatalkan pembeli (tombol ×) atau ikut terkirim bersama pesan pertama.
+  const clearContext = useCallback(() => {
+    const had = pendingContextRef.current !== null;
+    setContext(null);
+    if (had) notifyConsumed();
+  }, [setContext, notifyConsumed]);
 
   // true = chat aktif, false = dimatikan, null = tidak tahu (gagal ambil).
+  // Hasil disimpan 5 menit (chatConfig.ts) supaya tidak membaca ulang terus.
   const checkConfig = useCallback(async (): Promise<boolean | null> => {
-    try {
-      const res = await fetch("/api/chat/config", { cache: "no-store", credentials: "same-origin" });
-      if (!res.ok) return null;
-      const json = await readJson<{ chatEnabled?: boolean; online?: boolean }>(res);
-      if (!json || !mountedRef.current) return null;
-      if (typeof json.online === "boolean") setOnline(json.online);
-      return json.chatEnabled !== false;
-    } catch {
-      return null;
-    }
+    const cfg = await getChatConfig();
+    if (!cfg || !mountedRef.current) return null;
+    if (cfg.online !== null) setOnline(cfg.online);
+    return cfg.chatEnabled;
   }, []);
 
   // ── Muat awal ────────────────────────────────────────────────────────
@@ -180,10 +226,8 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
 
     (async () => {
       try {
-        const [meRes, cfg] = await Promise.all([
-          fetch("/api/auth/me", { cache: "no-store", credentials: "same-origin" }),
-          checkConfig(),
-        ]);
+        // Setelan chat dibaca hanya setelah jelas sudah masuk akun (tamu: tanpa baca data).
+        const meRes = await fetch("/api/auth/me", { cache: "no-store", credentials: "same-origin" });
         if (cancelled) return;
         const me = meRes.ok ? await readJson<{ id?: string }>(meRes) : null;
         if (cancelled) return;
@@ -191,6 +235,8 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
           setStatus("guest");
           return;
         }
+        const cfg = await checkConfig();
+        if (cancelled) return;
         if (cfg === false) {
           setStatus("disabled");
           return;
@@ -227,6 +273,7 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
         applyMessages((cur) => mergeMessages(cur, json.messages ?? []));
         cursorRef.current = forwardCursor(messagesRef.current, null, null);
         chatIdRef.current = id;
+        lastActivityRef.current = Date.now();
         setChatId(id);
         setStatus("ready");
         window.dispatchEvent(new Event("chat-read"));
@@ -266,10 +313,26 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
       if (res.ok) {
         const json = await readJson<PageJson>(res);
         if (json && mountedRef.current) {
-          if ((json.messages ?? []).some((m) => m.senderRole !== "customer")) {
+          const incoming = json.messages ?? [];
+          if (incoming.some((m) => m.senderRole !== "customer")) {
             window.dispatchEvent(new Event("chat-read"));
           }
-          applyMessages((cur) => mergeMessages(cur, json.messages ?? []));
+          // Pesan yang benar-benar baru (belum ada di layar), bukan salinan ulang.
+          const known = new Set<string>();
+          for (const m of messagesRef.current) {
+            known.add(m.localKey);
+            if (m.clientMsgId) known.add(m.clientMsgId);
+          }
+          const fresh = incoming.filter(
+            (m) => !(m.id && known.has(m.id)) && !(m.clientMsgId && known.has(m.clientMsgId)),
+          );
+          if (fresh.length > 0) lastActivityRef.current = Date.now();
+          const fromStaff = fresh.filter((m) => m.senderRole === "staff");
+          if (fromStaff.length > 0) {
+            const text = fromStaff.map(announceText).join(". ");
+            setAnnouncement((prev) => ({ id: (prev?.id ?? 0) + 1, text }));
+          }
+          applyMessages((cur) => mergeMessages(cur, incoming));
           cursorRef.current = forwardCursor(messagesRef.current, json.nextCursor ?? null, cursorRef.current);
         }
       }
@@ -295,11 +358,19 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
     let gen = 0;
     let timer: number | undefined;
 
+    let delay = POLL_MS;
+
     // Rantai setTimeout: satu putaran selesai dulu baru dijadwalkan berikutnya.
+    // Jeda 4 detik; sepi 60 detik (tanpa pesan baru/kiriman) → 10 detik.
+    const schedule = (myGen: number) => {
+      delay = Date.now() - lastActivityRef.current >= IDLE_AFTER_MS ? POLL_IDLE_MS : POLL_MS;
+      timer = window.setTimeout(() => void tick(myGen), delay);
+    };
     const tick = async (myGen: number) => {
+      timer = undefined;
       if (document.visibilityState === "visible") await pollOnce();
       if (stopped || myGen !== gen) return;
-      timer = window.setTimeout(() => void tick(myGen), POLL_MS);
+      schedule(myGen);
     };
     const restart = () => {
       gen += 1;
@@ -307,13 +378,26 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
       void tick(gen);
     };
     const onVisible = () => {
-      if (document.visibilityState === "visible") restart();
+      if (document.visibilityState === "visible") {
+        lastActivityRef.current = Date.now();
+        restart();
+      }
+    };
+    // Dari markActive(): bila sedang menunggu jeda panjang, jadwalkan ulang ke
+    // 4 detik tanpa ambil tambahan (pengirim memicu pollOnce sendiri). Bila
+    // putaran sedang berjalan (timer kosong), putaran itu memakai jeda baru.
+    wakeRef.current = () => {
+      if (stopped || timer === undefined || delay <= POLL_MS) return;
+      gen += 1;
+      window.clearTimeout(timer);
+      schedule(gen);
     };
 
     void tick(gen);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       stopped = true;
+      wakeRef.current = null;
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
@@ -390,10 +474,16 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
         if (!res.ok) {
           const fallback = out.kind === "image" ? IMAGE_FAIL : TEXT_FAIL;
           if (res.status === 401) goGuest();
+          if (res.status === 503) {
+            // Chat dimatikan toko → langsung layar WhatsApp; simpanan setelan basi.
+            forgetChatConfig();
+            if (mountedRef.current) setStatus("disabled");
+          }
           throw new Error(await readErrorText(res, fallback));
         }
         outgoingRef.current.delete(clientMsgId);
         if (mountedRef.current) setErrorText(null);
+        markActive();
         void pollOnce();
         return true;
       } catch (e) {
@@ -407,7 +497,7 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
         if (timeout !== undefined) window.clearTimeout(timeout);
       }
     },
-    [applyMessages, pollOnce, goGuest],
+    [applyMessages, pollOnce, goGuest, markActive],
   );
 
   const sendText = useCallback(
@@ -420,10 +510,11 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
       const out: Outgoing = { kind: "text", text, context: ctx };
       outgoingRef.current.set(clientMsgId, out);
       applyMessages((cur) => [...cur, pendingMessage({ clientMsgId, text, now: Date.now() })]);
+      markActive();
       if (ctx) clearContext();
       await deliver(clientMsgId, out, true);
     },
-    [applyMessages, clearContext, deliver],
+    [applyMessages, clearContext, deliver, markActive],
   );
 
   const sendImage = useCallback(
@@ -438,9 +529,10 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
       const out: Outgoing = { kind: "image", file };
       outgoingRef.current.set(clientMsgId, out);
       applyMessages((cur) => [...cur, pendingMessage({ clientMsgId, imagePreviewUrl, now: Date.now() })]);
+      markActive();
       await deliver(clientMsgId, out, true);
     },
-    [applyMessages, deliver],
+    [applyMessages, deliver, markActive],
   );
 
   // Kirim ulang dengan clientMsgId yang SAMA (server idempoten).
@@ -459,18 +551,29 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
   );
 
   // ── Konteks pesanan: kirim otomatis sekali per percakapan+konteks ────
+  // autoSentRef hanya berlaku selama terpasang; maka dicek juga apakah kartu
+  // pesanan yang sama SUDAH ada di percakapan (jendela dibuka ulang, kembali /
+  // muat ulang /chat?order=…) — kalau sudah, tidak dikirim lagi.
   useEffect(() => {
     if (status !== "ready" || !chatId || pendingContext?.type !== "order") return;
     const key = `${chatId}|${pendingContext.orderNumber}`;
     if (autoSentRef.current === key) return;
     autoSentRef.current = key;
     const ctx = pendingContext;
-    clearContext();
+    setContext(null);
+    const alreadySent = messagesRef.current.some(
+      (m) => m.type === "order_context" && m.order?.orderNumber === ctx.orderNumber,
+    );
+    if (alreadySent) {
+      notifyConsumed();
+      return;
+    }
     void deliver(newClientMsgId(), { kind: "text", context: ctx }, false).then((ok) => {
+      if (ok) notifyConsumed();
       // Gagal: kartu pesanan ikut di pesan berikutnya yang diketik.
-      if (!ok && mountedRef.current && pendingContextRef.current === null) setContext(ctx);
+      else if (mountedRef.current && pendingContextRef.current === null) setContext(ctx);
     });
-  }, [status, chatId, pendingContext, clearContext, deliver, setContext]);
+  }, [status, chatId, pendingContext, deliver, setContext, notifyConsumed]);
 
   return {
     status,
@@ -485,5 +588,6 @@ export function useCustomerChat(opts: { enabled: boolean; context: ChatContext |
     pendingContext,
     clearContext,
     errorText,
+    announcement,
   };
 }

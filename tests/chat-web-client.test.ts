@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  chatHref, forwardCursor, markFailed, mergeMessages, newClientMsgId,
+  chatHref, chatHrefWithName, forwardCursor, markFailed, mergeMessages, newClientMsgId,
   orderCardLabel, isChatId, parseChatContext, pendingMessage, toWebMessage,
 } from "@/lib/chat/web-client";
 
@@ -63,4 +63,14 @@ test("tautan & konteks chat aman", () => {
   assert.equal(isChatId("ORD-1_a"), true);
   assert.equal(isChatId("a b"), false);
   assert.equal(isChatId(""), false);
+});
+
+test("tautan chat membawa nama produk (pname) maks 80 huruf", () => {
+  assert.equal(chatHrefWithName({ productId: "p_1" }, "Whiskas 1,2 kg"), "/chat?product=p_1&pname=Whiskas%201%2C2%20kg");
+  assert.equal(chatHrefWithName({ orderNumber: "ORD-1" }), "/chat?order=ORD-1");
+  assert.equal(chatHrefWithName({ orderNumber: "ORD-1" }, "   "), "/chat?order=ORD-1");
+  assert.equal(chatHrefWithName(undefined, "Kucing"), "/chat?pname=Kucing");
+  const long = "a".repeat(120);
+  assert.equal(chatHrefWithName({ productId: "p_1" }, long), `/chat?product=p_1&pname=${"a".repeat(80)}`);
+  assert.equal(chatHrefWithName({ productId: "p_1" }, "a&b=c"), "/chat?product=p_1&pname=a%26b%3Dc");
 });

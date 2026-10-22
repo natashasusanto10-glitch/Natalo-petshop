@@ -107,3 +107,18 @@ export function parseChatContext(search: URLSearchParams): ChatContext | null {
   if (product && ID_SAFE.test(product)) return { type: "product", productId: product };
   return null;
 }
+
+/**
+ * Alamat /chat lengkap dengan konteks + nama produk (pname, maks 80 huruf) —
+ * dipakai untuk tujuan kembali setelah masuk/daftar akun dan untuk membuka
+ * halaman chat dari tombol.
+ */
+export function chatHrefWithName(
+  ctx?: { orderNumber?: string; productId?: string },
+  name?: string,
+): string {
+  const href = chatHref(ctx);
+  const pname = name?.trim().slice(0, 80);
+  if (!pname) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}pname=${encodeURIComponent(pname)}`;
+}

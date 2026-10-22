@@ -1,12 +1,13 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChatConversation } from "@/components/chat/ChatConversation";
 import { parseChatContext } from "@/lib/chat/web-client";
 
 function ChatPageInner() {
   const router = useRouter();
+  const pathname = usePathname();
   const search = useSearchParams();
   const context = parseChatContext(new URLSearchParams(search.toString()));
   const pname = (search.get("pname") ?? "").trim().slice(0, 80);
@@ -16,6 +17,20 @@ function ChatPageInner() {
     root.setAttribute("data-chat-route", "true");
     return () => root.removeAttribute("data-chat-route");
   }, []);
+
+  // Kartu sudah terkirim / dibatalkan → buang order/product/pname dari alamat
+  // (replace: tanpa entri riwayat baru, posisi gulir tetap). Kembali atau muat
+  // ulang halaman ini tidak lagi membawa konteks yang sama. Halaman yang sama →
+  // ChatConversation TIDAK dipasang ulang; konteks prop menjadi null.
+  const dropContextFromUrl = useCallback(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.delete("order");
+    params.delete("product");
+    params.delete("pname");
+    const qs = params.toString();
+    const path = pathname || "/chat";
+    router.replace(qs ? `${path}?${qs}` : path, { scroll: false });
+  }, [pathname, router]);
 
   function goBack() {
     if (typeof window !== "undefined" && window.history.length > 1) router.back();
@@ -29,6 +44,7 @@ function ChatPageInner() {
         context={context}
         onBack={goBack}
         contextLabel={pname || undefined}
+        onContextConsumed={dropContextFromUrl}
       />
     </div>
   );

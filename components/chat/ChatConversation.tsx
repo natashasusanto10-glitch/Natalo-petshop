@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { IoArrowBack, IoClose, IoRemove } from "react-icons/io5";
-import type { ChatContext } from "@/lib/chat/web-client";
+import { chatHrefWithName, type ChatContext } from "@/lib/chat/web-client";
 import { ChatComposer } from "./ChatComposer";
 import { ChatIcon } from "./ChatIcon";
 import { ChatMessageItem } from "./ChatMessageItem";
@@ -17,6 +17,8 @@ type Props = {
   onClose?: () => void;
   /** Nama konteks (mis. nama produk) untuk bilah di atas kotak tulis; hanya tampilan. */
   contextLabel?: string;
+  /** Konteks sudah terkirim / dibatalkan → pemanggil boleh membuangnya (tanpa pasang ulang). */
+  onContextConsumed?: () => void;
 };
 
 const dayFmt = new Intl.DateTimeFormat("id-ID", {
@@ -39,10 +41,18 @@ function dayLabel(ms: number): string {
   return dayFmt.format(new Date(ms));
 }
 
-function loginHref(): string {
-  const here =
-    typeof window !== "undefined" ? window.location.pathname + window.location.search : "/chat";
-  return `/member/login?redirect=${encodeURIComponent(here)}`;
+// Tujuan kembali setelah masuk/daftar: SELALU halaman /chat dengan konteks yang
+// sama (bukan halaman tempat jendela kecil dibuka), supaya pertanyaan soal
+// pesanan/produk tidak hilang. Murni dari props — tidak membaca window, jadi
+// aman dihitung saat render (hasil server & peramban sama).
+function authHref(base: "/member/login" | "/member/register", context: ChatContext | null, label?: string): string {
+  const ctx =
+    context?.type === "order"
+      ? { orderNumber: context.orderNumber }
+      : context?.type === "product"
+        ? { productId: context.productId }
+        : undefined;
+  return `${base}?redirect=${encodeURIComponent(chatHrefWithName(ctx, label))}`;
 }
 
 const btnPrimary =
@@ -63,10 +73,11 @@ function ConversationInner({
   onMinimize,
   onClose,
   contextLabel,
+  onContextConsumed,
   onReload,
 }: Props & { onReload: () => void }) {
   const isWindow = variant === "window";
-  const chat = useCustomerChat({ enabled: true, context });
+  const chat = useCustomerChat({ enabled: true, context, onContextConsumed });
   const { status, messages, online } = chat;
 
   const listRef = useRef<HTMLDivElement>(null);
@@ -224,10 +235,10 @@ function ConversationInner({
           Supaya toko tahu pesanan dan riwayat belanjamu, chat hanya bisa dipakai setelah masuk akun.
         </p>
         <div className="mt-2 flex w-full max-w-[300px] flex-col gap-2">
-          <a href={loginHref()} className={btnPrimary}>
+          <a href={authHref("/member/login", context, contextLabel)} className={btnPrimary}>
             Masuk
           </a>
-          <a href="/member/register" className={btnSecondary}>
+          <a href={authHref("/member/register", context, contextLabel)} className={btnSecondary}>
             Daftar akun baru
           </a>
         </div>
@@ -272,8 +283,6 @@ function ConversationInner({
         <div
           ref={listRef}
           onScroll={onScroll}
-          aria-live="polite"
-          aria-relevant="additions"
           className="flex-1 overflow-y-auto bg-[#f8fafc] p-3"
         >
           {chat.hasOlder && (
@@ -342,6 +351,12 @@ function ConversationInner({
     >
       {header}
       {body}
+      {/* Hanya pesan toko yang baru masuk yang diumumkan (bukan seluruh daftar). */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {status === "ready" && chat.announcement && (
+          <span key={chat.announcement.id}>{chat.announcement.text}</span>
+        )}
+      </div>
     </section>
   );
 }

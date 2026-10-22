@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { chatHref, isChatId, type ChatContext } from "@/lib/chat/web-client";
+import { chatHrefWithName, isChatId, type ChatContext } from "@/lib/chat/web-client";
 
 const ChatConversation = dynamic(
   () => import("./ChatConversation").then((m) => m.ChatConversation),
@@ -27,7 +27,10 @@ function toContext(d: OpenChatDetail): ChatContext | null {
   return null;
 }
 
-type WindowState = { ctx: ChatContext | null; label?: string; minimized: boolean };
+// `session` = kunci pasang ChatConversation. Hanya naik saat dibuka dengan
+// konteks BARU; membuang konteks yang sudah terpakai (onContextConsumed)
+// tidak mengubahnya, jadi percakapan tidak dipasang ulang.
+type WindowState = { ctx: ChatContext | null; label?: string; minimized: boolean; session: number };
 
 export function ChatLauncher() {
   const router = useRouter();
@@ -44,20 +47,20 @@ export function ChatLauncher() {
       const onChatRoute = /^\/chat(\/|$)/.test(pathRef.current ?? "");
       const desktop = window.matchMedia(DESKTOP_QUERY).matches;
       if (!desktop || onChatRoute) {
-        let href = chatHref(detail);
-        const name = detail.productName?.trim().slice(0, 80);
-        if (name && href.includes("?")) href += `&pname=${encodeURIComponent(name)}`;
-        router.push(href);
+        const hasCtx = Boolean(detail.orderNumber || detail.productId);
+        router.push(chatHrefWithName(detail, hasCtx ? detail.productName : undefined));
         return;
       }
       const active = document.activeElement;
       openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
       if (!detail.orderNumber && !detail.productId) {
         // Tanpa konteks baru: buka lagi yang tersimpan (kalau ada).
-        setState((s) => (s ? { ...s, minimized: false } : { ctx: null, minimized: false }));
+        setState((s) => (s ? { ...s, minimized: false } : { ctx: null, minimized: false, session: 0 }));
         return;
       }
-      setState({ ctx: toContext(detail), label: detail.productName?.trim().slice(0, 80) || undefined, minimized: false });
+      const ctx = toContext(detail);
+      const label = detail.productName?.trim().slice(0, 80) || undefined;
+      setState((s) => ({ ctx, label, minimized: false, session: (s?.session ?? 0) + 1 }));
     }
     window.addEventListener(EVENT, onOpen);
     return () => window.removeEventListener(EVENT, onOpen);
@@ -74,6 +77,12 @@ export function ChatLauncher() {
     restoreFocus();
   }, [restoreFocus]);
 
+  // Konteks sudah terkirim/dibatalkan: buang dari simpanan jendela supaya
+  // dibuka lagi (setelah dikecilkan) tidak mengirim kartu pesanan dua kali.
+  const dropContext = useCallback(() => {
+    setState((s) => (s && (s.ctx || s.label) ? { ...s, ctx: null, label: undefined } : s));
+  }, []);
+
   const minimize = useCallback(() => {
     setState((s) => (s ? { ...s, minimized: true } : s));
     restoreFocus();
@@ -81,7 +90,7 @@ export function ChatLauncher() {
 
   const hidden = HIDDEN_ROUTES.some((re) => re.test(pathname ?? ""));
   const visible = Boolean(state && !state.minimized && !hidden);
-  const ctxKey = state?.ctx ? JSON.stringify(state.ctx) : "none";
+  const session = state?.session ?? 0;
 
   // Fokus ke kolom tulis (muncul setelah percakapan selesai dimuat); tamu: ke jendela.
   useEffect(() => {
@@ -108,7 +117,7 @@ export function ChatLauncher() {
       }
     }, 100);
     return () => window.clearInterval(timer);
-  }, [visible, ctxKey]);
+  }, [visible, session]);
 
   if (!visible || !state) return null;
 
@@ -127,10 +136,11 @@ export function ChatLauncher() {
       className="fixed bottom-6 right-6 z-[90] h-[min(560px,calc(100vh-120px))] w-[370px] overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,40,70,.28)] outline-none"
     >
       <ChatConversation
-        key={ctxKey}
+        key={session}
         variant="window"
         context={state.ctx}
         contextLabel={state.label}
+        onContextConsumed={dropContext}
         onMinimize={minimize}
         onClose={close}
       />

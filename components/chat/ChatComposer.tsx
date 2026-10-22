@@ -68,7 +68,9 @@ export function ChatComposer({
           </div>
           <button
             type="button"
-            aria-label="Hapus konteks"
+            aria-label={
+            pendingContext.type === "order" ? "Batal tanya soal pesanan ini" : "Batal tanya soal produk ini"
+          }
             onClick={onClearContext}
             className="flex h-11 w-11 flex-none items-center justify-center text-slate-500"
           >
