@@ -42,6 +42,7 @@ export function ChatComposer({
     const value = text.trim();
     if (!value) return;
     setText("");
+    setDismissedError(null);
     void onSendText(value);
   }
 
@@ -97,6 +98,7 @@ export function ChatComposer({
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
+            setDismissedError(null);
             if (f) void onSendImage(f);
           }}
         />

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { IoArrowBack, IoClose, IoRemove } from "react-icons/io5";
 import type { ChatContext } from "@/lib/chat/web-client";
 import { ChatComposer } from "./ChatComposer";
@@ -15,6 +15,8 @@ type Props = {
   onBack?: () => void;
   onMinimize?: () => void;
   onClose?: () => void;
+  /** Nama konteks (mis. nama produk) untuk bilah di atas kotak tulis; hanya tampilan. */
+  contextLabel?: string;
 };
 
 const dayFmt = new Intl.DateTimeFormat("id-ID", {
@@ -60,6 +62,7 @@ function ConversationInner({
   onBack,
   onMinimize,
   onClose,
+  contextLabel,
   onReload,
 }: Props & { onReload: () => void }) {
   const isWindow = variant === "window";
@@ -70,6 +73,8 @@ function ConversationInner({
   const atBottomRef = useRef(true);
   const firstScrollRef = useRef(true);
   const lastCountRef = useRef(0);
+  const forceBottomRef = useRef(false);
+  const olderRef = useRef<{ height: number; top: number; count: number } | null>(null);
 
   const onScroll = useCallback(() => {
     const el = listRef.current;
@@ -82,19 +87,46 @@ function ConversationInner({
     if (!el || status !== "ready") return;
     const grew = messages.length > lastCountRef.current;
     lastCountRef.current = messages.length;
-    if (firstScrollRef.current && messages.length > 0) {
+    if (olderRef.current && grew) {
+      // Pesan lama ditambahkan di atas: pertahankan posisi baca.
+      const { height, top } = olderRef.current;
+      el.scrollTop = el.scrollHeight - height + top;
+      olderRef.current = null;
+    } else if (firstScrollRef.current && messages.length > 0) {
       el.scrollTop = el.scrollHeight;
       firstScrollRef.current = false;
-    } else if (grew && atBottomRef.current) {
+    } else if (grew && (atBottomRef.current || forceBottomRef.current)) {
       el.scrollTop = el.scrollHeight;
     }
+    if (grew) forceBottomRef.current = false;
   }, [messages, status]);
 
-  // Pesan paling bawah berubah jadi "sending" lalu terkirim; tetap di dasar bila pengguna di dasar.
-  useEffect(() => {
+  const loadOlder = useCallback(async () => {
     const el = listRef.current;
-    if (el && atBottomRef.current && status === "ready") el.scrollTop = el.scrollHeight;
-  }, [messages.length, status]);
+    if (el) olderRef.current = { height: el.scrollHeight, top: el.scrollTop, count: lastCountRef.current };
+    await chat.loadOlder();
+    if (olderRef.current && olderRef.current.count === lastCountRef.current) olderRef.current = null;
+  }, [chat]);
+
+  const sendText = useCallback(
+    (t: string) => {
+      forceBottomRef.current = true;
+      return chat.sendText(t);
+    },
+    [chat],
+  );
+  const sendImage = useCallback(
+    (f: File) => {
+      forceBottomRef.current = true;
+      return chat.sendImage(f);
+    },
+    [chat],
+  );
+
+  const onImageLoad = useCallback(() => {
+    const el = listRef.current;
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
+  }, []);
 
   const header = (
     <header
@@ -225,6 +257,7 @@ function ConversationInner({
           ref={listRef}
           onScroll={onScroll}
           aria-live="polite"
+          aria-relevant="additions"
           className="flex-1 overflow-y-auto bg-[#f8fafc] p-3"
         >
           {chat.hasOlder && (
@@ -232,7 +265,7 @@ function ConversationInner({
               <button
                 type="button"
                 disabled={chat.loadingOlder}
-                onClick={() => void chat.loadOlder()}
+                onClick={() => void loadOlder()}
                 className="min-h-[44px] rounded-full border border-slate-200 bg-white px-4 text-[13px] font-bold text-natalo-500 disabled:opacity-60"
               >
                 {chat.loadingOlder ? "Memuat…" : "Muat pesan sebelumnya"}
@@ -262,17 +295,22 @@ function ConversationInner({
                       </span>
                     </div>
                   )}
-                  <ChatMessageItem message={m} onRetry={(id) => void chat.retry(id)} />
+                  <ChatMessageItem
+                    message={m}
+                    onRetry={(id) => void chat.retry(id)}
+                    onImageLoad={onImageLoad}
+                  />
                 </Fragment>
               );
             })
           )}
         </div>
         <ChatComposer
-          onSendText={chat.sendText}
-          onSendImage={chat.sendImage}
+          onSendText={sendText}
+          onSendImage={sendImage}
           errorText={chat.errorText}
           pendingContext={chat.pendingContext}
+          contextLabel={contextLabel}
           onClearContext={chat.clearContext}
         />
       </>

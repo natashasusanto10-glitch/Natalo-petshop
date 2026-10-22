@@ -42,9 +42,11 @@ const TONE: Record<"ok" | "warn" | "bad" | "info", string> = {
 export function ChatMessageItem({
   message,
   onRetry,
+  onImageLoad,
 }: {
   message: WebChatMessage;
   onRetry?: (clientMsgId: string) => void;
+  onImageLoad?: () => void;
 }) {
   const m = message;
 
@@ -113,7 +115,6 @@ export function ChatMessageItem({
     const body = (
       <div className="flex items-center gap-3">
         {p.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img src={p.imageUrl} alt="" loading="lazy" className="h-12 w-12 flex-none rounded-lg bg-slate-100 object-cover" />
         ) : (
           <div className="h-12 w-12 flex-none rounded-lg bg-slate-100" />
@@ -140,7 +141,8 @@ export function ChatMessageItem({
     );
   }
 
-  const imgSrc = m.imagePreviewUrl ?? m.image?.url;
+  const rawSrc = m.imagePreviewUrl ?? m.image?.url;
+  const imgSrc = rawSrc && /^(https:|blob:)/i.test(rawSrc) ? rawSrc : undefined;
   const bubble = mine
     ? "bg-natalo-500 text-white rounded-xl rounded-tr-[4px]"
     : "bg-white border border-slate-200 text-slate-800 rounded-xl rounded-tl-[4px]";
@@ -163,13 +165,16 @@ export function ChatMessageItem({
               <p className="line-clamp-2 break-words opacity-90">{m.replyTo.text || "Foto"}</p>
             </div>
           )}
+          {m.type === "image" && !imgSrc && (
+            <p className="text-[12.5px] opacity-80">Foto tidak bisa ditampilkan</p>
+          )}
           {m.type === "image" && imgSrc && (
             <a href={imgSrc} target="_blank" rel="noopener noreferrer" className="block">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={imgSrc}
                 alt="Foto dalam percakapan"
                 loading="lazy"
+                onLoad={onImageLoad}
                 className="max-h-72 w-full max-w-[240px] rounded-xl object-cover"
               />
             </a>
