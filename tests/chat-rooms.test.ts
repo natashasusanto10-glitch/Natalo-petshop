@@ -551,3 +551,97 @@ test("ulang kirim aksi yang sama tidak menggandakan catatan", async () => {
   assert.equal(again.noticeWritten, false);
   assert.equal(reviewNotes(store, "cust_uA").length, 1);
 });
+
+// ---------------------------------------------------------------------------
+// Nama & ringkasan pembeli ikut ditulis ke room oleh kartu bukti transfer
+// (pembeli web yang belum pernah chat dulu tampil "Pelanggan").
+// ---------------------------------------------------------------------------
+
+const snapOrder = {
+  orderNumber: "ORD-S1", status: "PENDING", paymentStatus: "UNPAID",
+  paymentProofStatus: "PENDING_REVIEW", total: 166400, itemCount: 6,
+  hasPaymentProof: true, proofVersion: 1, createdAt: "2026-10-22T00:00:00.000Z",
+};
+const snapshotSusanto = buildCustomerSnapshot(
+  { name: "Susanto Hadi", phone: "0812" },
+  { totalBelanja: 500000, orderCount: 3, lastOrder: { inv: "ORD-S0", status: "COMPLETED", total: 100 } },
+  () => 900,
+);
+
+test("kartu pertama menulis nama, nomor HP, dan ringkasan belanja ke room", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  await upsertOrderContextMessage({ firestore, now: () => 1000 }, {
+    chatId: "cust_s1", customerId: "s1", orderId: "os1", schemaVersion: 1,
+    order: snapOrder, snapshot: snapshotSusanto,
+  });
+  const room = store.get("customerChats/cust_s1")!;
+  assert.equal(room.customerName, "Susanto Hadi");
+  assert.equal(room.customerPhone, "0812");
+  assert.deepEqual(room.summary, snapshotSusanto.summary);
+  assert.equal(room.summaryUpdatedAt, 900);
+  assert.equal(room.lastMessageAt, 1000);
+});
+
+test("refreshOnly mengisi nama yang kosong tanpa menaikkan urutan chat", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  await upsertOrderContextMessage({ firestore, now: () => 1000 }, {
+    chatId: "cust_s2", customerId: "s2", orderId: "os2", schemaVersion: 1, order: snapOrder,
+  });
+  assert.equal(store.get("customerChats/cust_s2")!.customerName, undefined);
+  await upsertOrderContextMessage({ firestore, now: () => 5000 }, {
+    chatId: "cust_s2", customerId: "s2", orderId: "os2", schemaVersion: 1, refreshOnly: true,
+    order: { ...snapOrder, paymentStatus: "PAID", paymentProofStatus: "VERIFIED" },
+    snapshot: snapshotSusanto,
+  });
+  const room = store.get("customerChats/cust_s2")!;
+  assert.equal(room.customerName, "Susanto Hadi");
+  assert.deepEqual(room.summary, snapshotSusanto.summary);
+  assert.equal(room.lastMessageAt, 1000);
+  assert.equal(room.updatedAt, 1000);
+});
+
+test("nama/nomor kosong di snapshot tidak menimpa nama yang sudah ada", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  store.set("customerChats/cust_s3", { customerId: "s3", customerName: "Maddy", customerPhone: "0813", lastMessageAt: 10 });
+  const firestore = makeFakeFirestore(store);
+  await upsertOrderContextMessage({ firestore, now: () => 1000 }, {
+    chatId: "cust_s3", customerId: "s3", orderId: "os3", schemaVersion: 1, order: snapOrder,
+    snapshot: buildCustomerSnapshot({ name: "  ", phone: null }, { totalBelanja: 0, orderCount: 0 }, () => 1),
+  });
+  const room = store.get("customerChats/cust_s3")!;
+  assert.equal(room.customerName, "Maddy");
+  assert.equal(room.customerPhone, "0813");
+});
+
+test("muatan basi tidak menulis apa pun ke room, termasuk nama", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  await upsertOrderContextMessage({ firestore, now: () => 1000 }, {
+    chatId: "cust_s4", customerId: "s4", orderId: "os4", schemaVersion: 1,
+    order: { ...snapOrder, proofVersion: 2 },
+  });
+  const before = { ...store.get("customerChats/cust_s4")! };
+  const res = await upsertOrderContextMessage({ firestore, now: () => 2000 }, {
+    chatId: "cust_s4", customerId: "s4", orderId: "os4", schemaVersion: 1, order: snapOrder,
+    snapshot: snapshotSusanto,
+  });
+  assert.equal(res.applied, false);
+  assert.deepEqual(store.get("customerChats/cust_s4"), before);
+});
+
+test("pesan chat dengan nama akun kosong tidak menghapus nama yang sudah ada", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  store.set("customerChats/cust_s5", { customerId: "s5", customerName: "Budi Santoso", customerPhone: "0814" });
+  const firestore = makeFakeFirestore(store);
+  await writeCustomerMessage({ firestore, now: () => 3000 }, {
+    ...buildCustomerSnapshot({ name: "", phone: "" }, { totalBelanja: 0, orderCount: 0 }, () => 1),
+    chatId: "cust_s5", customerId: "s5", senderRole: "customer", senderId: "s5",
+    type: "text", text: "halo", clientMsgId: "c-s5-1",
+  });
+  const room = store.get("customerChats/cust_s5")!;
+  assert.equal(room.customerName, "Budi Santoso");
+  assert.equal(room.customerPhone, "0814");
+  assert.equal(room.lastMessageText, "halo");
+});

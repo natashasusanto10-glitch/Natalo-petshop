@@ -114,6 +114,25 @@ export function buildCustomerSnapshot(
   };
 }
 
+/**
+ * Field room dari snapshot pembeli. Nama/nomor yang kosong TIDAK ditulis:
+ * pembeli web sering tak mengisi nama akun, dan string kosong akan menghapus
+ * nama yang sudah tercatat (mis. dari checkout) -> staf melihat "Pelanggan".
+ */
+export function customerSnapshotRoomFields(
+  snapshot?: Partial<CustomerSnapshot>,
+): Record<string, unknown> {
+  if (!snapshot) return {};
+  const fields: Record<string, unknown> = {};
+  const name = snapshot.customerName?.trim();
+  const phone = snapshot.customerPhone?.trim();
+  if (name) fields.customerName = name;
+  if (phone) fields.customerPhone = phone;
+  if (snapshot.summary !== undefined) fields.summary = snapshot.summary;
+  if (snapshot.summaryUpdatedAt !== undefined) fields.summaryUpdatedAt = snapshot.summaryUpdatedAt;
+  return fields;
+}
+
 // ---------------------------------------------------------------------------
 // writeCustomerMessage — idempoten via clientMsgId + merge-update room.
 // ---------------------------------------------------------------------------
@@ -171,6 +190,8 @@ export type WriteOrderContextInput = {
   schemaVersion: number;
   refreshOnly?: boolean;
   order: OrderContextV1["order"];
+  /** Nama, nomor HP & ringkasan belanja pembeli — ikut ditulis ke room. */
+  snapshot?: CustomerSnapshot;
 };
 
 /**
@@ -205,6 +226,11 @@ export async function upsertOrderContextMessage(
       return;
     }
     const touchRoom = !messageSnap.exists || input.refreshOnly !== true;
+    const snapshotFields = customerSnapshotRoomFields(input.snapshot);
+    if (!touchRoom && Object.keys(snapshotFields).length > 0) {
+      // Mode segarkan: data pembeli boleh diperbarui, urutan chat tidak.
+      tx.set(roomRef, snapshotFields, { merge: true });
+    }
     if (touchRoom) {
       const roomData = roomSnap.exists ? roomSnap.data() : undefined;
       const roomUpdate: Record<string, unknown> = {
@@ -214,6 +240,7 @@ export async function upsertOrderContextMessage(
         lastMessageAt: nowMs,
         lastMessageSender: "customer",
         lastMessageText: `Pesanan ${input.order.orderNumber}`,
+        ...snapshotFields,
       };
       if (!roomData || roomData.createdAt === undefined) roomUpdate.createdAt = nowMs;
       if (!roomData || roomData.status === undefined) {
@@ -322,10 +349,7 @@ export async function writeCustomerMessage(
       lastMessageSender: input.senderRole,
     };
     if (input.text !== undefined) roomUpdate.lastMessageText = input.text;
-    if (input.customerName !== undefined) roomUpdate.customerName = input.customerName;
-    if (input.customerPhone !== undefined) roomUpdate.customerPhone = input.customerPhone;
-    if (input.summary !== undefined) roomUpdate.summary = input.summary;
-    if (input.summaryUpdatedAt !== undefined) roomUpdate.summaryUpdatedAt = input.summaryUpdatedAt;
+    Object.assign(roomUpdate, customerSnapshotRoomFields(input));
     if (!roomData || roomData.createdAt === undefined) {
       roomUpdate.createdAt = nowMs; // hanya bila absen — cegah double-init
     }

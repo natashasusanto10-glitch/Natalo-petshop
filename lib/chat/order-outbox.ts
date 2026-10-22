@@ -2,10 +2,12 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getTokochatFirestore } from "@/lib/chat/firestore-admin";
 import { chatIdForUser } from "@/lib/chat/core";
+import { loadCustomerSnapshot } from "@/lib/chat/customer-snapshot";
 import { buildOrderContextV1, isOrderContextV1, type OrderContextV1 } from "@/lib/chat/order-contract";
 import {
   upsertOrderContextMessage,
   writeOrderReviewNotice,
+  type CustomerSnapshot,
   type WriteCustomerMessageDeps,
 } from "@/lib/chat/rooms";
 
@@ -146,6 +148,7 @@ export async function enqueueOrderContextRefresh(
 export async function deliverOrderContextPayload(
   deps: WriteCustomerMessageDeps,
   payload: OrderContextOutboxPayload,
+  snapshot?: CustomerSnapshot,
 ): Promise<{ messageId: string; created: boolean; applied: boolean; noticeWritten: boolean }> {
   const chatId = chatIdForUser(payload.customerId);
   const result = await upsertOrderContextMessage(deps, {
@@ -155,6 +158,7 @@ export async function deliverOrderContextPayload(
     schemaVersion: payload.schemaVersion,
     order: payload.order,
     refreshOnly: payload.refreshOnly === true,
+    snapshot,
   });
   let noticeWritten = false;
   if (payload.notice && isOrderReviewOutcome(payload.noticeOutcome) && result.applied) {
@@ -214,9 +218,13 @@ export async function processOrderContextOutboxEvent(eventId: string): Promise<b
     const payload = parseOrderContextOutboxPayload(event.payload);
     if (!payload) throw new Error("Invalid ORDER_CONTEXT_UPSERT_V1 payload");
 
+    // Nama & ringkasan pembeli dibaca saat kirim (bukan saat antre) supaya
+    // selalu terbaru. Gagal baca tidak boleh menggagalkan kartu.
+    const snapshot = await loadCustomerSnapshot(payload.customerId).catch(() => undefined);
     const result = await deliverOrderContextPayload(
       { firestore: getTokochatFirestore(), now: Date.now },
       payload,
+      snapshot,
     );
 
     await prisma.chatOutboxEvent.updateMany({
