@@ -86,12 +86,14 @@ export function ChatLauncher() {
   // Fokus ke kolom tulis (muncul setelah percakapan selesai dimuat); tamu: ke jendela.
   useEffect(() => {
     if (!visible) return;
+    // Fokus ke jendela langsung (supaya Escape langsung bekerja), lalu ke kolom tulis.
+    dialogRef.current?.focus({ preventScroll: true });
     let tries = 0;
     const timer = window.setInterval(() => {
       const box = dialogRef.current;
       if (!box) return;
       const current = document.activeElement;
-      if (current && current !== document.body && !box.contains(current)) {
+      if (current && current !== document.body && current !== box && !box.contains(current)) {
         window.clearInterval(timer);
         return;
       }
