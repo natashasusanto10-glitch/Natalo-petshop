@@ -252,6 +252,7 @@ function VariantChoiceSheet({
       open={Boolean(product)}
       onClose={onClose}
       title="Pilih Varian"
+      desktopDialog
       footer={
         <button
           type="button"

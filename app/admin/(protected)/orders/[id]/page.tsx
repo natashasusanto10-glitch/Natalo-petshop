@@ -1,5 +1,9 @@
 import Link from "next/link";
-import Image from "next/image";
+import localFont from "next/font/local";
+import { FiArrowLeft, FiArrowRight, FiCheck, FiClock, FiInfo, FiPrinter } from "react-icons/fi";
+import { ConfirmOrderPayment, CopySku, InspectOrderItems, OrderPaymentProof, OrderProductImage } from "./OrderDetailClient";
+import "./order-detail.css";
+
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { formatRupiah } from "@/lib/format";
@@ -25,12 +29,20 @@ import CancellationRequestBanner from "./CancellationRequestBanner";
 import ShippingForm from "./ShippingForm";
 import {
   Button,
+  SubmitButton,
   AdminPage,
   Badge,
   STATUS_BADGE_VARIANT,
   PAY_BADGE_VARIANT,
 } from "@/components/admin/ui";
 import { orderStatusLabel, paymentStatusLabel } from "@/lib/order-labels";
+
+const orderFont = localFont({
+  src: "../../../../../public/fonts/PlusJakartaSans.ttf",
+  weight: "100 900",
+  display: "swap",
+  preload: false,
+});
 
 export default async function AdminOrderDetailPage({
   params,
@@ -56,7 +68,20 @@ export default async function AdminOrderDetailPage({
   const order = await prisma.order.findUnique({
     where: { id },
     include: {
-      items: true,
+      items: {
+        include: {
+          product: { select: { imageUrl: true, sku: true } },
+          variant: {
+            select: {
+              sku: true,
+              imageUrl: true,
+              options: { select: { option: { select: {
+                value: true, position: true, attribute: { select: { position: true } },
+              } } } },
+            },
+          },
+        },
+      },
       refundCases: {
         orderBy: { createdAt: "desc" },
       },
@@ -112,56 +137,43 @@ export default async function AdminOrderDetailPage({
     order.status === "CANCELLED" ||
     order.status === "REFUNDED";
 
-  return (
-    <AdminPage maxWidth="xl" className="admin-operational-page">
-      <Link
-        href="/admin/orders"
-        className="text-sm font-bold text-zinc-500 hover:text-zinc-950"
-      >
-        ← Kembali ke daftar order
-      </Link>
+  // Keep the packing list and refund picker aligned, including older orders.
+  const variantLabels = new Map(order.items.map(item => {
+    const currentLabel = item.variant?.options.slice().sort((a, b) =>
+      a.option.attribute.position - b.option.attribute.position || a.option.position - b.option.position
+    ).map(entry => entry.option.value.trim()).filter(Boolean).join(" / ");
+    return [item.id, item.variantLabel?.trim() || currentLabel || null] as const;
+  }));
+  const unitCount = order.items.reduce((total, item) => total + item.quantity, 0);
+  const transferAmount = order.total + (order.paymentProvider === "MANUAL" && order.total > 0 ? order.uniqueCode ?? 0 : 0);
+  const stepIndex = order.status === "DELIVERED" ? 4
+    : order.status === "SHIPPED" || order.status === "READY_FOR_PICKUP" ? 2
+    : order.paymentStatus === "PAID" ? 1 : 0;
+  const steps = ["Verifikasi pembayaran", "Siapkan barang", isSelfPickup ? "Siap diambil" : "Kirim pesanan", "Selesai"];
+  const canStartPacking = order.paymentStatus === "PAID" && (order.status === "PENDING" || order.status === "PAID");
 
-      <div className="mt-4 flex flex-wrap items-start justify-between gap-3 md:mt-6 md:gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 md:text-3xl">
-            Detail pesanan
-          </h1>
-          <p className="mt-1 truncate text-zinc-500">{order.orderNumber}</p>
+  return (
+    <AdminPage maxWidth="xl" className={`admin-operational-page od-detail ${orderFont.className}`}>
+      <Link href="/admin/orders" className="od-back"><FiArrowLeft aria-hidden="true" /> Kembali ke pesanan</Link>
+      <header className="od-heading">
+        <div>
+          <p className="od-eyebrow">DETAIL PESANAN</p>
+          <div className="od-title-row">
+            <h1>{order.orderNumber}</h1>
+            <Badge variant={PAY_BADGE_VARIANT[order.paymentStatus] ?? "neutral"} size="md">{paymentStatusLabel(order.paymentStatus)}</Badge>
+            <Badge variant={STATUS_BADGE_VARIANT[order.status] ?? "neutral"} size="md">{orderStatusLabel(order.status)}</Badge>
+          </div>
+          <p className="od-date">Dibuat {new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(order.createdAt)} WIB</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          <Badge
-            variant={PAY_BADGE_VARIANT[order.paymentStatus] ?? "neutral"}
-            size="md"
-          >
-            {paymentStatusLabel(order.paymentStatus)}
-          </Badge>
-          <Badge
-            variant={STATUS_BADGE_VARIANT[order.status] ?? "neutral"}
-            size="md"
-          >
-            {orderStatusLabel(order.status)}
-          </Badge>
-          <Button
-            href={`/admin/orders/${id}/print`}
-            target="_blank"
-            variant="secondary"
-            size="sm"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              className="h-4 w-4"
-            >
-              <path d="M6 9V2h12v7" />
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-              <rect x="6" y="14" width="12" height="8" />
-            </svg>
-            Cetak Label
-          </Button>
-        </div>
-      </div>
+        <Button href={`/admin/orders/${id}/print`} target="_blank" variant="secondary"><FiPrinter aria-hidden="true" /> Cetak label</Button>
+      </header>
+      {order.status !== "CANCELLED" && order.status !== "REFUNDED" && (
+        <ol className="od-stepper" aria-label="Tahapan pesanan">
+          {steps.map((label, index) => <li key={label} className={index < stepIndex ? "is-complete" : index === stepIndex ? "is-current" : ""} aria-current={index === stepIndex ? "step" : undefined}>
+            <span>{index < stepIndex ? <FiCheck aria-hidden="true" /> : index + 1}</span>{label}
+          </li>)}
+        </ol>
+      )}
 
       {/* Cancellation request banner — muncul kalau customer sudah submit
           request batal (paymentStatus=PAID flow). Untuk status APPROVED/
@@ -184,49 +196,44 @@ export default async function AdminOrderDetailPage({
         />
       )}
 
-      <div className="mt-5 grid gap-4 md:mt-8 md:gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        {/* ── Produk ── */}
-        <section className="admin-detail-section rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
-          <h2 className="font-bold text-zinc-950">Produk dibeli</h2>
-
-          <div className="mt-4 space-y-3">
-            {order.items.map((item) => (
-              <div key={item.id} className="rounded-2xl bg-zinc-50 p-4 text-sm">
-                <div className="flex flex-wrap justify-between gap-4">
-                  <div>
-                    <p className="font-semibold text-zinc-950">{item.name}</p>
-                    <p className="mt-1 text-zinc-500">
-                      {item.quantity} × {formatRupiah(item.price)}
-                    </p>
-                  </div>
-                  <p className="font-bold text-zinc-950">
-                    {formatRupiah(item.price * item.quantity)}
-                  </p>
-                </div>
-                {/* Quick action: tandai item kosong saat packing → auto-
-                    refund. Cuma muncul kalau order belum FINAL (DELIVERED
-                    /CANCELLED). Reuse RefundFormClient untuk kasus
-                    kompleks (full form di section bawah). */}
-                {order.status !== "CANCELLED" &&
-                  order.status !== "REFUNDED" && order.status !== "DELIVERED" && (
-                    <div className="mt-2 flex justify-end">
-                      <ItemOutOfStockButton
-                        itemId={item.id}
-                        itemName={item.name}
-                        itemPrice={item.price}
-                        itemQuantity={item.quantity}
-                        orderSubtotal={order.subtotal ?? 0}
-                        orderProductDiscount={order.productDiscount ?? 0}
-                        paymentPaid={order.paymentStatus === "PAID"}
-                        action={markItemOutOfStockAction}
-                      />
-                    </div>
-                  )}
-              </div>
-            ))}
+      <div className="od-layout">
+        <div className="od-primary">
+        <section className="od-panel od-items" aria-labelledby="order-items-title">
+          <div className="od-panel-heading">
+            <div>
+              <h2 id="order-items-title" tabIndex={-1}>Produk yang dipesan <span className="od-count">{order.items.length}</span></h2>
+              <p>{order.items.length} baris produk · {unitCount} unit. Cocokkan pilihan sebelum menyiapkan barang.</p>
+            </div>
           </div>
-
-          <div className="mt-6 space-y-2 border-t border-zinc-100 pt-4 text-sm">
+          <div className="od-item-list">
+            {order.items.map((item) => {
+              // The checkout snapshot takes precedence over editable catalog data.
+              const snapshot = item.variantLabel?.trim();
+              const variantLabel = variantLabels.get(item.id);
+              const sku = item.variantId ? item.variant?.sku : item.product.sku;
+              return <article key={item.id} className="od-item">
+                <OrderProductImage src={item.variant?.imageUrl || item.product.imageUrl} name={variantLabel ? `${item.name} · ${variantLabel}` : item.name} />
+                <div className="od-item-description">
+                  <h3>{item.name}</h3>
+                  {variantLabel && <div className="od-variant"><span>{snapshot ? "Varian" : "Varian saat ini"}</span><strong>{variantLabel}</strong></div>}
+                  {item.variantId && !variantLabel && <p className="od-unresolved">Nama varian tidak tersimpan. ID varian: <code>{item.variantId}</code>. Konfirmasi pilihan sebelum menyiapkan barang.</p>}
+                  {sku && <div className="od-sku"><span>SKU</span><code title="SKU katalog saat ini">{sku}</code><CopySku sku={sku} /></div>}
+                  <p className="od-quantity"><strong>{item.quantity} unit</strong> × {formatRupiah(item.price)}</p>
+                </div>
+                <p className="od-item-total">{formatRupiah(item.price * item.quantity)}</p>
+                {!isDone && order.paymentStatus === "PAID" && <div className="od-stock-action">
+                  <ItemOutOfStockButton itemId={item.id} itemPrice={item.price} itemQuantity={item.quantity}
+                    orderSubtotal={order.subtotal ?? 0} orderProductDiscount={order.productDiscount ?? 0}
+                    paymentPaid={true} action={markItemOutOfStockAction} />
+                </div>}
+              </article>;
+            })}
+          </div>
+          <p className="od-list-note"><FiInfo aria-hidden="true" /> Produk yang sama tetap dipisahkan jika pilihan variannya berbeda.</p>
+        </section>
+        <section className="od-panel od-payment" aria-labelledby="order-payment-title">
+          <div className="od-panel-heading"><h2 id="order-payment-title">Ringkasan pembayaran</h2></div>
+          <div className="od-payment-lines space-y-2 text-sm">
             {/* Subtotal & Ongkir — base nominal sebelum diskon */}
             <div className="flex justify-between text-zinc-600">
               <span>Subtotal</span>
@@ -338,7 +345,7 @@ export default async function AdminOrderDetailPage({
             {order.paymentProvider === "MANUAL" &&
               order.uniqueCode != null &&
               order.total > 0 && (
-                <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                <div className="od-transfer-total">
                   <div className="flex justify-between text-sm font-bold text-blue-900">
                     <span>Total transfer yang harus masuk</span>
                     <span>{formatRupiah(order.total + order.uniqueCode)}</span>
@@ -392,7 +399,7 @@ export default async function AdminOrderDetailPage({
               <RefundFormClient
                 items={order.items.map((it) => ({
                   id: it.id,
-                  name: it.name,
+                  name: variantLabels.get(it.id) ? `${it.name} · ${variantLabels.get(it.id)}` : it.name,
                   quantity: it.quantity,
                   price: it.price,
                 }))}
@@ -484,11 +491,12 @@ export default async function AdminOrderDetailPage({
           )}
         </section>
 
+        </div>
         {/* ── Sidebar ── */}
-        <aside className="flex flex-col gap-5">
+        <aside className="od-sidebar flex flex-col gap-5">
           {/* Customer */}
-          <section className="admin-detail-section rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
-            <h2 className="font-bold text-zinc-950">Customer</h2>
+          <section className="od-panel od-info-panel">
+            <h2 className="font-bold text-zinc-950">Pelanggan</h2>
             <div className="mt-4 space-y-2 text-sm text-zinc-700">
               <p>
                 <span className="font-semibold">Nama:</span>{" "}
@@ -512,7 +520,7 @@ export default async function AdminOrderDetailPage({
                 href={`https://wa.me/${waNumber}?text=${waText}`}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-5 inline-flex w-full justify-center rounded-full bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700"
+                className="od-contact"
               >
                 Hubungi via WhatsApp
               </a>
@@ -558,7 +566,7 @@ export default async function AdminOrderDetailPage({
 
           {/* Pengiriman */}
           <section
-            className={`rounded-3xl border border-zinc-200 p-5 ${
+            className={`od-panel od-info-panel ${
               isSelfPickup ? "hidden" : ""
             }`}
           >
@@ -646,28 +654,9 @@ export default async function AdminOrderDetailPage({
 
           {/* Bukti transfer */}
           {order.paymentProofUrl && (
-            <section className="admin-detail-section rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
+            <section className="od-panel od-info-panel">
               <h2 className="font-bold text-zinc-950">Bukti Transfer</h2>
-              <div className="mt-3 overflow-hidden rounded-2xl border border-zinc-100">
-                <Image
-                  src={order.paymentProofUrl}
-                  alt="Bukti transfer"
-                  width={600}
-                  height={400}
-                  className="w-full object-contain"
-                />
-              </div>
-              <Button
-                href={order.paymentProofUrl}
-                target="_blank"
-                rel="noreferrer"
-                variant="secondary"
-                size="sm"
-                fullWidth
-                className="mt-3"
-              >
-                Lihat fullscreen →
-              </Button>
+              <OrderPaymentProof url={order.paymentProofUrl} fontClassName={orderFont.className} />
             </section>
           )}
 
@@ -681,7 +670,7 @@ export default async function AdminOrderDetailPage({
             order.manualVoucherCode ||
             order.privateVoucherCode ||
             order.notes) && (
-            <section className="admin-detail-section rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5">
+            <section className="od-panel od-info-panel">
               <h2 className="font-bold text-zinc-950">Info tambahan</h2>
               <div className="mt-4 space-y-2 text-sm text-zinc-700">
                 {/* Metode bayar — conditional render berdasarkan komposisi
@@ -790,34 +779,12 @@ export default async function AdminOrderDetailPage({
             </section>
           )}
 
-          {/* ── Aksi ──
-              order-first di mobile: naikkan panel Aksi ke atas sidebar supaya
-              tidak terkubur di bawah info Customer/Pengiriman. Di lg reset ke
-              urutan DOM (order-none) — layout desktop tidak berubah. */}
+          {/* Secondary actions; the next fulfillment step is in the persistent action bar. */}
           {!isDone && (
-            <section className="order-first admin-detail-section rounded-2xl border border-zinc-200 bg-white p-4 md:rounded-3xl md:p-5 lg:order-none">
+            <section id="order-actions" tabIndex={-1} className="od-panel od-info-panel">
               <h2 className="font-bold text-zinc-950">Aksi</h2>
 
               <div className="mt-5 space-y-3">
-                {/* 1. Konfirmasi pembayaran */}
-                {order.paymentStatus !== "PAID" && (
-                  <form action={markAsPaidAction}>
-                    <Button type="submit" fullWidth>
-                      ✅ Konfirmasi pembayaran ({formatRupiah(order.total)})
-                    </Button>
-                  </form>
-                )}
-
-                {/* 2. Proses packing (setelah bayar) */}
-                {order.paymentStatus === "PAID" &&
-                  (order.status === "PENDING" || order.status === "PAID") && (
-                    <form action={markAsProcessingAction}>
-                      <Button type="submit" fullWidth>
-                        📦 Mulai packing
-                      </Button>
-                    </form>
-                  )}
-
                 {order.paymentStatus === "PAID" &&
                   !isSelfPickup &&
                   order.courierCode &&
@@ -890,24 +857,6 @@ export default async function AdminOrderDetailPage({
                   </details>
                 )}
 
-                {isSelfPickup &&
-                  order.paymentStatus === "PAID" &&
-                  order.status === "PROCESSING" && (
-                    <form action={markAsReadyForPickupAction}>
-                      <Button type="submit" fullWidth>
-                        Siap Diambil
-                      </Button>
-                    </form>
-                  )}
-
-                {isSelfPickup && order.status === "READY_FOR_PICKUP" && (
-                  <form action={markAsPickedUpAction}>
-                    <Button type="submit" fullWidth>
-                      Serahkan Pesanan
-                    </Button>
-                  </form>
-                )}
-
                 {/* Batalkan order — wrapped in CancelOrderButton (client)
                     untuk konfirmasi dialog yang surface nominal auto-refund
                     sebelum eksekusi. markAsCancelled sekarang otomatis
@@ -937,6 +886,19 @@ export default async function AdminOrderDetailPage({
           )}
         </aside>
       </div>
+      {!isDone && <footer className="od-actionbar" aria-label="Aksi pesanan">
+        <div className="od-action-status"><span className="od-status-icon"><FiClock aria-hidden="true" /></span><div>
+          <strong>{order.paymentStatus !== "PAID" ? "Menunggu verifikasi pembayaran" : orderStatusLabel(order.status)}</strong>
+          <p>{order.paymentStatus !== "PAID" ? "Cocokkan nominal dengan pembayaran yang diterima." : "Cocokkan barang, varian, dan jumlah sebelum melanjutkan."}</p>
+        </div></div>
+        <div className="od-action-buttons"><InspectOrderItems />
+          {order.paymentStatus !== "PAID" ? <ConfirmOrderPayment action={markAsPaidAction} amount={transferAmount} orderNumber={order.orderNumber} manual={order.paymentProvider === "MANUAL"} fontClassName={orderFont.className} />
+            : canStartPacking ? <form action={markAsProcessingAction}><SubmitButton pendingText="Memproses…">Mulai siapkan barang <FiArrowRight aria-hidden="true" /></SubmitButton></form>
+            : isSelfPickup && order.status === "PROCESSING" ? <form action={markAsReadyForPickupAction}><SubmitButton pendingText="Memproses…">Siap diambil <FiArrowRight aria-hidden="true" /></SubmitButton></form>
+            : isSelfPickup && order.status === "READY_FOR_PICKUP" ? <form action={markAsPickedUpAction}><SubmitButton pendingText="Memproses…">Serahkan pesanan <FiArrowRight aria-hidden="true" /></SubmitButton></form>
+            : <Button href="#order-actions">{order.status === "PROCESSING" ? "Atur pengiriman" : "Aksi pesanan"} <FiArrowRight aria-hidden="true" /></Button>}
+        </div>
+      </footer>}
     </AdminPage>
   );
 }

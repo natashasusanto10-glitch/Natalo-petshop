@@ -29,7 +29,6 @@ function formatRupiah(n: number): string {
 
 export default function ItemOutOfStockButton({
   itemId,
-  itemName,
   itemPrice,
   itemQuantity,
   orderSubtotal,
@@ -38,7 +37,6 @@ export default function ItemOutOfStockButton({
   action,
 }: {
   itemId: string;
-  itemName: string;
   itemPrice: number;
   itemQuantity: number;
   orderSubtotal: number;

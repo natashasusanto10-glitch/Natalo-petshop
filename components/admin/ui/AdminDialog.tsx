@@ -20,6 +20,7 @@ export function AdminDialog({
   busy = false,
   className = "",
   side = false,
+  motion = true,
   onKeyDown,
 }: {
   open: boolean;
@@ -30,6 +31,7 @@ export function AdminDialog({
   busy?: boolean;
   className?: string;
   side?: boolean;
+  motion?: boolean;
   onKeyDown?: KeyboardEventHandler<HTMLDialogElement>;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -57,7 +59,7 @@ export function AdminDialog({
         dialog.close();
         restore();
       };
-      if (!adminMotionAllowed()) {
+      if (!motion || !adminMotionAllowed()) {
         close();
         return;
       }
@@ -82,7 +84,7 @@ export function AdminDialog({
         )
         ?.focus({ preventScroll: true });
     }
-    const animation = adminMotionAllowed()
+    const animation = motion && adminMotionAllowed()
       ? dialog.animate(
           [
             { opacity: 0, transform: side ? "translateX(24px)" : "scale(.98)" },
@@ -92,7 +94,7 @@ export function AdminDialog({
         )
       : null;
     return () => animation?.cancel();
-  }, [open, mounted, side]);
+  }, [open, mounted, side, motion]);
   useEffect(() => () => restore(), []);
   if (!mounted) return null;
   return createPortal(

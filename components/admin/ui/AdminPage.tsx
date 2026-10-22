@@ -1,25 +1,15 @@
 import type { ReactNode } from "react";
 
 /**
- * AdminPage — pembungkus konten halaman admin: max-width + gutter + padding
- * vertikal yang konsisten. Menggantikan `mx-auto max-w-... px-4 py-...` yang
- * sebelumnya dirakit beda-beda tiap halaman (2xl…7xl acak).
- *
- * Tier lebar:
- *   - "md" (max-w-2xl)  → form/detail sempit
- *   - "lg" (max-w-4xl)  → daftar/detail sedang
- *   - "xl" (max-w-6xl)  → tabel lebar / dashboard (default)
+ * Full-width workspace content with shared responsive gutters.
+ * Keep the legacy maxWidth hint for existing callers, but do not cap the
+ * outer page: tables, forms and dashboards all use the available workspace.
+ * Size individual inputs, previews and dialogs within their own components.
  */
-type AdminPageWidth = "md" | "lg" | "xl";
-
-const WIDTH_CLASSES: Record<AdminPageWidth, string> = {
-  md: "max-w-2xl",
-  lg: "max-w-4xl",
-  xl: "max-w-6xl",
-};
+type AdminPageWidth = "md" | "lg" | "xl" | "full";
 
 export function AdminPage({
-  maxWidth = "xl",
+  maxWidth = "full",
   className = "",
   children,
 }: {
@@ -29,7 +19,8 @@ export function AdminPage({
 }) {
   return (
     <div
-      className={`admin-page mx-auto w-full ${WIDTH_CLASSES[maxWidth]} ${className}`.trim()}
+      data-content-size={maxWidth}
+      className={`admin-page min-w-0 w-full max-w-none ${className}`.trim()}
     >
       {children}
     </div>

@@ -1003,7 +1003,10 @@
   }
 }
 .admin-page {
-  padding: 28px 32px 40px;
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  padding: 24px 24px 40px;
 }
 .admin-content {
   min-width: 0;
