@@ -227,7 +227,7 @@ export async function upsertOrderContextMessage(
     }
     const touchRoom = !messageSnap.exists || input.refreshOnly !== true;
     const snapshotFields = customerSnapshotRoomFields(input.snapshot);
-    if (!touchRoom && Object.keys(snapshotFields).length > 0) {
+    if (!touchRoom && roomSnap.exists && Object.keys(snapshotFields).length > 0) {
       // Mode segarkan: data pembeli boleh diperbarui, urutan chat tidak.
       tx.set(roomRef, snapshotFields, { merge: true });
     }

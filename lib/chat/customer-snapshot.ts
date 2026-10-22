@@ -9,6 +9,14 @@ export function pickCustomerName(
   return accountName?.trim() || checkoutName?.trim() || "";
 }
 
+/** Nomor HP akun bila diisi; kalau kosong pakai nomor saat checkout. */
+export function pickCustomerPhone(
+  accountPhone: string | null | undefined,
+  checkoutPhone: string | null | undefined,
+): string {
+  return accountPhone?.trim() || checkoutPhone?.trim() || "";
+}
+
 // Sama dengan /api/chat/send: pesanan batal/refund/belum dibayar bukan
 // riwayat belanja "nyata", jadi tidak ikut dihitung.
 const NOT_COUNTED = ["CANCELLED", "REFUNDED", "PENDING"] as const;
@@ -40,7 +48,7 @@ export async function loadCustomerSnapshot(userId: string): Promise<CustomerSnap
   return buildCustomerSnapshot(
     {
       name: pickCustomerName(user?.name, lastAny?.customerName),
-      phone: user?.phone?.trim() || lastAny?.customerPhone?.trim() || "",
+      phone: pickCustomerPhone(user?.phone, lastAny?.customerPhone),
     },
     {
       totalBelanja: agg._sum.total ?? 0,

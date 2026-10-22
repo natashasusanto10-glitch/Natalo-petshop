@@ -645,3 +645,25 @@ test("pesan chat dengan nama akun kosong tidak menghapus nama yang sudah ada", a
   assert.equal(room.customerPhone, "0814");
   assert.equal(room.lastMessageText, "halo");
 });
+
+test("deliverOrderContextPayload meneruskan data pembeli ke room", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  const firestore = makeFakeFirestore(store);
+  await deliverOrderContextPayload({ firestore, now: () => 1000 }, {
+    schemaVersion: 1, order: snapOrder, orderId: "os6", customerId: "s6",
+  }, snapshotSusanto);
+  assert.equal(store.get("customerChats/cust_s6")!.customerName, "Susanto Hadi");
+});
+
+test("refreshOnly tidak membuat room kosong bila room belum ada", async () => {
+  const store = new Map<string, Record<string, unknown>>();
+  store.set("customerChats/cust_s7/messages/order_context_os7", {
+    type: "order_context", createdAt: 1, order: { ...snapOrder },
+  });
+  const firestore = makeFakeFirestore(store);
+  await upsertOrderContextMessage({ firestore, now: () => 2000 }, {
+    chatId: "cust_s7", customerId: "s7", orderId: "os7", schemaVersion: 1, refreshOnly: true,
+    order: snapOrder, snapshot: snapshotSusanto,
+  });
+  assert.equal(store.has("customerChats/cust_s7"), false);
+});

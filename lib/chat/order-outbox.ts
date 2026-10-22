@@ -220,7 +220,14 @@ export async function processOrderContextOutboxEvent(eventId: string): Promise<b
 
     // Nama & ringkasan pembeli dibaca saat kirim (bukan saat antre) supaya
     // selalu terbaru. Gagal baca tidak boleh menggagalkan kartu.
-    const snapshot = await loadCustomerSnapshot(payload.customerId).catch(() => undefined);
+    const snapshot = await loadCustomerSnapshot(payload.customerId).catch((error) => {
+      console.warn(JSON.stringify({
+        event: "chat_customer_snapshot_failed",
+        outboxEventId: event.id,
+        error: safeError(error),
+      }));
+      return undefined;
+    });
     const result = await deliverOrderContextPayload(
       { firestore: getTokochatFirestore(), now: Date.now },
       payload,
