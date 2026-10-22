@@ -96,6 +96,10 @@ export type ChatContext =
   | { type: "order"; orderNumber: string }
   | { type: "product"; productId: string };
 
+export function isChatId(v: string): boolean {
+  return ID_SAFE.test(v);
+}
+
 export function parseChatContext(search: URLSearchParams): ChatContext | null {
   const order = search.get("order");
   if (order && ID_SAFE.test(order)) return { type: "order", orderNumber: order };

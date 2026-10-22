@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   chatHref, forwardCursor, markFailed, mergeMessages, newClientMsgId,
-  orderCardLabel, parseChatContext, pendingMessage, toWebMessage,
+  orderCardLabel, isChatId, parseChatContext, pendingMessage, toWebMessage,
 } from "@/lib/chat/web-client";
 
 test("newClientMsgId lolos aturan server", () => {
@@ -60,4 +60,7 @@ test("tautan & konteks chat aman", () => {
   assert.deepEqual(parseChatContext(new URLSearchParams("product=cm9abc")), { type: "product", productId: "cm9abc" });
   assert.equal(parseChatContext(new URLSearchParams("order=<script>")), null);
   assert.equal(parseChatContext(new URLSearchParams("")), null);
+  assert.equal(isChatId("ORD-1_a"), true);
+  assert.equal(isChatId("a b"), false);
+  assert.equal(isChatId(""), false);
 });

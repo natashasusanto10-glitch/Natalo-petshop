@@ -452,7 +452,8 @@ body[data-feed-route="true"] .nat-main-shell {
   padding-bottom: 0;
 }
 
-html[data-feed-route="true"] .site-footer {
+html[data-feed-route="true"] .site-footer,
+html[data-chat-route="true"] .site-footer {
   display: none;
 }
 

@@ -1,9 +1,14 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { chatHref, type ChatContext } from "@/lib/chat/web-client";
-import { ChatConversation } from "./ChatConversation";
+import { chatHref, isChatId, type ChatContext } from "@/lib/chat/web-client";
+
+const ChatConversation = dynamic(
+  () => import("./ChatConversation").then((m) => m.ChatConversation),
+  { ssr: false },
+);
 
 export type OpenChatDetail = { orderNumber?: string; productId?: string; productName?: string };
 
@@ -17,8 +22,8 @@ export function openChat(ctx?: OpenChatDetail): void {
 }
 
 function toContext(d: OpenChatDetail): ChatContext | null {
-  if (d.orderNumber) return { type: "order", orderNumber: d.orderNumber };
-  if (d.productId) return { type: "product", productId: d.productId };
+  if (d.orderNumber && isChatId(d.orderNumber)) return { type: "order", orderNumber: d.orderNumber };
+  if (d.productId && isChatId(d.productId)) return { type: "product", productId: d.productId };
   return null;
 }
 
@@ -47,6 +52,11 @@ export function ChatLauncher() {
       }
       const active = document.activeElement;
       openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      if (!detail.orderNumber && !detail.productId) {
+        // Tanpa konteks baru: buka lagi yang tersimpan (kalau ada).
+        setState((s) => (s ? { ...s, minimized: false } : { ctx: null, minimized: false }));
+        return;
+      }
       setState({ ctx: toContext(detail), label: detail.productName?.trim().slice(0, 80) || undefined, minimized: false });
     }
     window.addEventListener(EVENT, onOpen);
@@ -80,6 +90,11 @@ export function ChatLauncher() {
     const timer = window.setInterval(() => {
       const box = dialogRef.current;
       if (!box) return;
+      const current = document.activeElement;
+      if (current && current !== document.body && !box.contains(current)) {
+        window.clearInterval(timer);
+        return;
+      }
       const area = box.querySelector("textarea");
       tries += 1;
       if (area) {
@@ -93,15 +108,6 @@ export function ChatLauncher() {
     return () => window.clearInterval(timer);
   }, [visible, ctxKey]);
 
-  useEffect(() => {
-    if (!visible) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") close();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [visible, close]);
-
   if (!visible || !state) return null;
 
   return (
@@ -110,6 +116,12 @@ export function ChatLauncher() {
       role="dialog"
       aria-label="Chat dengan Natalo Petshop"
       tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && !e.nativeEvent.isComposing) {
+          e.stopPropagation();
+          close();
+        }
+      }}
       className="fixed bottom-6 right-6 z-[90] h-[min(560px,calc(100vh-120px))] w-[370px] overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,40,70,.28)] outline-none"
     >
       <ChatConversation

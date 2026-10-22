@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChatConversation } from "@/components/chat/ChatConversation";
 import { parseChatContext } from "@/lib/chat/web-client";
@@ -10,6 +10,12 @@ function ChatPageInner() {
   const search = useSearchParams();
   const context = parseChatContext(new URLSearchParams(search.toString()));
   const pname = (search.get("pname") ?? "").trim().slice(0, 80);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute("data-chat-route", "true");
+    return () => root.removeAttribute("data-chat-route");
+  }, []);
 
   function goBack() {
     if (typeof window !== "undefined" && window.history.length > 1) router.back();
