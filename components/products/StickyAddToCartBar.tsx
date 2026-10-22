@@ -22,7 +22,7 @@ type Props = {
 };
 
 export function StickyAddToCartBar({ initialState, waHref, productId, productName }: Props) {
-  const { chatEnabled } = useChatUnread();
+  const { chatEnabled } = useChatUnread({ withUnread: false });
   const [state, setState] = useState<PdpState>(initialState);
 
   useEffect(() => {

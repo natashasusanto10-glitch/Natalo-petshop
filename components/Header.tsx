@@ -378,8 +378,6 @@ export function Header() {
               </svg>
             </Link>
 
-            {/* Notifikasi — hanya untuk logged-in user. Guest tidak punya
-              konteks notif (order, voucher, point) jadi bell dihide. */}
             {showChat && (
               <button
                 type="button"
@@ -411,6 +409,8 @@ export function Header() {
               </button>
             )}
 
+            {/* Notifikasi — hanya untuk logged-in user. Guest tidak punya
+              konteks notif (order, voucher, point) jadi bell dihide. */}
             {showBell && <NotificationBell compact />}
 
             {/* Cart: desktop header only; mobile already has bottom navigation. */}
