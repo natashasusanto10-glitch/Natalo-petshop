@@ -65,8 +65,8 @@ export function SwipeableCartRow({ onDelete, disabled, children }: Props) {
 
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (disabled || isCommittingRef.current) return;
-    // Hanya respond ke touch + mouse left button
-    if (e.pointerType === "mouse" && e.button !== 0) return;
+    // Mouse users select text and use the visible delete button.
+    if (e.pointerType === "mouse") return;
     startXRef.current = e.clientX;
     startYRef.current = e.clientY;
     isHorizontalRef.current = null;

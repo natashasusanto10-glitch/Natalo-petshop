@@ -784,12 +784,12 @@ export default function CartPage() {
 
   return (
     <div
-      className={`mx-auto max-w-3xl px-4 ${
+      className={`mx-auto max-w-7xl px-4 md:px-6 ${
         isCartEmpty ? "pb-10" : "pb-[calc(168px+env(safe-area-inset-bottom))] md:pb-10"
       }`}
     >
       <header className="cart-sticky-header -mx-4 px-4 pb-3">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
@@ -826,7 +826,7 @@ export default function CartPage() {
             </button>
           )}
         </div>
-        <p className="mx-auto mt-1 max-w-3xl pl-11 text-sm font-semibold text-gray-500">
+        <p className="mx-auto mt-1 max-w-7xl pl-11 text-sm font-semibold text-gray-500">
           {selectionLabel}
         </p>
       </header>
@@ -838,7 +838,8 @@ export default function CartPage() {
         </>
       ) : (
         <>
-          <section className="mt-4 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm md:mt-8">
+          <div className="mt-4 items-start gap-6 md:mt-8 md:grid md:grid-cols-[minmax(0,1fr)_320px] lg:grid-cols-[minmax(0,1fr)_360px]">
+          <section className="min-w-0 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
             <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
               <label className="flex min-w-0 items-center gap-3 text-sm font-black text-gray-900">
                 <input
@@ -896,8 +897,8 @@ export default function CartPage() {
                 return (
                   <Fragment key={key}>
                   <SwipeableCartRow onDelete={() => handleSwipeDelete(item)}>
-                  <article className="bg-white px-4 py-4">
-                    <div className="flex gap-3">
+                  <article className="bg-white px-4 py-4 lg:px-6 lg:py-5">
+                    <div className="flex gap-3 lg:gap-4">
                       <input
                         type="checkbox"
                         checked={checked}
@@ -908,14 +909,14 @@ export default function CartPage() {
                       <Link
                         href={`/products/${item.slug ?? item.productId}`}
                         aria-label={`Lihat detail produk ${item.name}`}
-                        className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gray-100"
+                        className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gray-100 lg:h-28 lg:w-28"
                       >
                         {item.imageUrl ? (
                           <Image
                             src={item.imageUrl}
                             alt={item.name}
                             fill
-                            sizes="80px"
+                            sizes="(min-width: 1024px) 112px, 80px"
                             placeholder="blur"
                             blurDataURL={IMAGE_BLUR_GRAY}
                             className="object-cover"
@@ -929,7 +930,7 @@ export default function CartPage() {
                           <div className="min-w-0">
                             <Link
                               href={`/products/${item.slug ?? item.productId}`}
-                              className="line-clamp-2 text-sm font-bold leading-snug text-gray-900"
+                              className="line-clamp-2 text-sm font-bold leading-snug text-gray-900 lg:text-base"
                             >
                               {item.name}
                             </Link>
@@ -990,9 +991,8 @@ export default function CartPage() {
             </div>
           </section>
 
-          <CartRecommendationSections cartItems={items} />
-
-          <section className="mt-4 hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100 md:block">
+          <aside className="hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-100 md:sticky md:top-28 md:block">
+            <h2 className="mb-4 text-lg font-black text-gray-950">Ringkasan Belanja</h2>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-sm text-gray-600">
                 <span>Subtotal produk</span>
@@ -1033,7 +1033,10 @@ export default function CartPage() {
             >
               Tambah produk lagi
             </Link>
-          </section>
+          </aside>
+          </div>
+
+          <CartRecommendationSections cartItems={items} />
         </>
       )}
 
