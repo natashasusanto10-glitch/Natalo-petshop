@@ -387,25 +387,21 @@ export function Header() {
                     ? `Chat dengan toko, ${chatUnread} pesan belum dibaca`
                     : "Chat dengan toko"
                 }
-                className="relative flex min-h-11 min-w-11 items-center justify-center"
+                // Gaya sama persis dengan lonceng & keranjang (compact):
+                // lingkaran kaca putih 44px, ikon 24px, angka merah di pojok.
+                className={`nat-header-action-glass relative flex h-11 w-11 items-center justify-center rounded-full transition active:scale-95 ${
+                  chatUnread > 0 ? "text-natalo-600" : "text-slate-600"
+                }`}
               >
-                <span
-                  className={`relative flex h-10 w-10 items-center justify-center rounded-full transition active:scale-95 ${
-                    chatUnread > 0
-                      ? "bg-natalo-50 text-natalo-600"
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
-                >
-                  <ChatIcon className="h-5 w-5" />
-                  {chatUnread > 0 && (
-                    <span
-                      aria-hidden="true"
-                      className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-extrabold leading-none text-white ring-2 ring-white"
-                    >
-                      {chatUnread > 99 ? "99+" : chatUnread}
-                    </span>
-                  )}
-                </span>
+                <ChatIcon className="h-6 w-6" />
+                {chatUnread > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-none text-white ring-2 ring-white"
+                  >
+                    {chatUnread > 99 ? "99+" : chatUnread}
+                  </span>
+                )}
               </button>
             )}
 
