@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat Website Natalo</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --p:#1e5fbf; --p6:#1a52a8; --p7:#143e7e; --soft:#eef4ff; --surface:#f8fafc; --border:#e2e8f0;
+  --t1:#0f172a; --t2:#475569; --t3:#64748b; --ok:#22c55e; --okt:#15803d; --bad:#ef4444;
+  --page:#f8f8f8; --warnbg:#fef3c7; --warnt:#92400e;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Nunito,system-ui,sans-serif;background:#eef1f5;color:var(--t1);padding:24px 16px 64px}
+h1{font-size:23px;font-weight:800;margin-bottom:6px}
+.lead{color:var(--t2);font-size:15px;max-width:900px;line-height:1.55;margin-bottom:8px}
+h2{font-size:18px;font-weight:800;margin:44px 0 6px}
+.sub{color:var(--t2);font-size:14px;max-width:900px;line-height:1.55;margin-bottom:16px}
+.row{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.col{display:flex;flex-direction:column;gap:10px}
+.cap{font-size:13px;font-weight:800;color:var(--p7);background:var(--soft);padding:5px 12px;border-radius:999px;align-self:flex-start}
+svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+/* ===== HP ===== */
+.phone{width:360px;max-width:calc(100vw - 48px);height:720px;border-radius:30px;background:#fff;overflow:hidden;position:relative;
+  box-shadow:0 10px 30px rgba(15,40,70,.15),0 0 0 8px #1f2933;display:flex;flex-direction:column}
+.sb{height:28px;display:flex;justify-content:space-between;align-items:center;padding:0 20px;font-size:12px;font-weight:700}
+.shophead{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--border)}
+.logo{font-weight:800;font-size:18px;color:var(--p);flex:1}
+.ib{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--t1);position:relative}
+.ib.hi{background:var(--soft);color:var(--p)}
+.badge{position:absolute;top:3px;right:2px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center;border:2px solid #fff}
+.shopbody{flex:1;background:var(--page);padding:14px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.ph{background:#fff;border-radius:14px;height:120px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.ph.s{height:70px}
+.bnav{height:68px;border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:center;font-size:11px;font-weight:700;color:var(--t3)}
+.bnav div{display:flex;flex-direction:column;align-items:center;gap:2px}
+.bnav .on{color:var(--p)}
+.callout{position:absolute;font-size:11px;font-weight:800;color:#fff;background:var(--p7);padding:3px 9px;border-radius:999px;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+
+/* layar chat */
+.chead{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);background:#fff;min-height:64px}
+.chead .tt{flex:1;min-width:0}
+.chead b{display:block;font-size:17px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st{font-size:11px;font-weight:800;color:var(--okt);display:flex;align-items:center;gap:5px}
+.st i{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.st.off{color:var(--t3)} .st.off i{background:#cbd5e1}
+.msgs{flex:1;background:var(--surface);padding:12px 12px 8px;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.day{align-self:center;font-size:11.5px;font-weight:700;color:var(--t2);background:#fff;border:1px solid var(--border);padding:3px 11px;border-radius:999px;margin:4px 0}
+.note{align-self:center;max-width:88%;text-align:center;font-size:12.5px;color:var(--t2);background:#fff;border:1px dashed #cbd5e1;border-radius:12px;padding:7px 11px;line-height:1.45}
+.b{max-width:78%;padding:8px 11px;font-size:14px;line-height:1.4;border-radius:12px}
+.b.me{align-self:flex-end;background:var(--p);color:#fff;border-top-right-radius:4px}
+.b.them{align-self:flex-start;background:#fff;border:1px solid var(--border);border-top-left-radius:4px}
+.tm{font-size:10px;margin-left:8px;opacity:.8;white-space:nowrap;float:right;margin-top:5px}
+.b.them .tm{color:var(--t3);opacity:1}
+.who{font-size:11.5px;font-weight:800;color:var(--p);margin-bottom:2px}
+.card{align-self:flex-end;width:82%;background:#fff;border:1px solid var(--border);border-radius:16px;padding:10px 12px}
+.card .k{font-size:11.5px;font-weight:800;color:var(--p);margin-bottom:3px}
+.card .r{display:flex;justify-content:space-between;font-size:13.5px;font-weight:800}
+.card .s{font-size:12px;color:var(--t2);margin-top:2px}
+.pill{display:inline-block;font-size:11.5px;font-weight:800;padding:2px 9px;border-radius:999px;margin-top:6px}
+.pill.ok{background:#dcfce7;color:var(--okt)} .pill.w{background:var(--warnbg);color:var(--warnt)}
+.comp{display:flex;align-items:flex-end;gap:6px;padding:8px 10px 12px;border-top:1px solid var(--border);background:#fff}
+.comp .ib{width:44px;height:44px;color:var(--t2)}
+.field{flex:1;min-height:44px;border-radius:22px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;padding:0 14px;font-size:14px;color:var(--t3)}
+.send{width:44px;height:44px;border-radius:50%;background:var(--p);color:#fff;display:grid;place-items:center;flex:none}
+.ctxbar{display:flex;align-items:center;gap:9px;padding:8px 12px;background:var(--soft);border-top:1px solid var(--border);font-size:12.5px}
+.ctxbar .th{width:34px;height:34px;border-radius:8px;background:#dbe5f5;flex:none}
+.ctxbar b{display:block;font-size:12.5px}
+.ctxbar .x{margin-left:auto;color:var(--t3);font-size:18px;width:32px;height:32px;display:grid;place-items:center}
+
+/* belum masuk / mati */
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;gap:10px;background:var(--surface)}
+.bubbleart{width:76px;height:76px;border-radius:50%;background:var(--soft);display:grid;place-items:center;color:var(--p)}
+.bubbleart svg{width:38px;height:38px}
+.empty b{font-size:17px;font-weight:800}
+.empty p{font-size:13.5px;color:var(--t2);line-height:1.5;max-width:260px}
+.btn{height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:800;padding:0 18px;cursor:pointer;user-select:none}
+.btn.pri{background:var(--p);color:#fff}
+.btn.sec{background:#fff;color:var(--p);border:1.5px solid var(--p)}
+.btn.wa{background:#fff;color:#15803d;border:1.5px solid #86efac}
+.maint{background:var(--warnbg);color:var(--warnt);font-size:13px;font-weight:700;padding:12px 14px;line-height:1.45;border-top:1px solid #fde68a}
+
+/* ===== DESKTOP ===== */
+.desk{width:1000px;max-width:calc(100vw - 32px);height:600px;border-radius:14px;overflow:hidden;background:var(--page);position:relative;box-shadow:0 10px 30px rgba(15,40,70,.15);border:1px solid #d5dbe3}
+.bar{height:34px;background:#e8ecf1;display:flex;align-items:center;gap:6px;padding:0 12px}
+.bar i{width:11px;height:11px;border-radius:50%;background:#cbd5e1}
+.bar span{margin-left:12px;font-size:12px;color:var(--t3);background:#fff;border-radius:999px;padding:3px 14px}
+.dhead{height:64px;background:#fff;display:flex;align-items:center;gap:14px;padding:0 24px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.dhead .search{flex:1;max-width:460px;height:40px;border-radius:999px;background:var(--surface);border:1px solid var(--border);font-size:13px;color:var(--t3);display:flex;align-items:center;padding:0 16px}
+.dhead .sp{flex:1}
+.dbody{padding:22px 24px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.dbody .ph{height:170px}
+.win{position:absolute;right:22px;bottom:18px;width:370px;height:500px;background:#fff;border-radius:18px;box-shadow:0 18px 50px rgba(15,40,70,.28);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border)}
+.win .chead{min-height:58px}
+.win .chead b{font-size:15.5px}
+.win .msgs{padding:10px}
+
+/* rincian pesanan & produk */
+.mini{width:360px;max-width:calc(100vw - 48px);background:#fff;border-radius:18px;padding:16px;box-shadow:0 4px 16px rgba(15,40,70,.10);display:flex;flex-direction:column;gap:10px}
+.mini h3{font-size:16px;font-weight:800}
+.mini .ln{display:flex;justify-content:space-between;font-size:13.5px;color:var(--t2)}
+.mini .ln b{color:var(--t1)}
+.sticky{display:flex;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid var(--border);background:#fff;border-radius:0 0 18px 18px}
+.chatsq{width:48px;height:48px;border-radius:12px;border:1.5px solid var(--border);display:grid;place-items:center;color:var(--p);flex:none}
+.sticky .btn{flex:1}
+
+/* keputusan */
+.qs{max-width:900px;display:flex;flex-direction:column;gap:10px}
+.q{background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.06);font-size:14px;line-height:1.55}
+.q b{color:var(--p7)}
+.q .opt{margin-top:6px;color:var(--t2)}
+.q .rec{display:inline-block;font-size:11.5px;font-weight:800;background:#dcfce7;color:var(--okt);padding:1px 8px;border-radius:999px;margin-left:4px}
+@media (max-width:420px){body{padding:16px}.phone,.mini{width:calc(100vw - 48px)}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.6A8 8 0 1 1 21 12z"/><circle cx="8.5" cy="12" r=".6" fill="currentColor"/><circle cx="12" cy="12" r=".6" fill="currentColor"/><circle cx="15.5" cy="12" r=".6" fill="currentColor"/></symbol>
+  <symbol id="bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+  <symbol id="user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="cam" viewBox="0 0 24 24"><path d="M3 8h3l2-3h8l2 3h3v11H3z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/></symbol>
+  <symbol id="min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+  <symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9H3z"/></symbol>
+  <symbol id="grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="play" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M10 9l5 3-5 3z"/></symbol>
+  <symbol id="cart" viewBox="0 0 24 24"><path d="M3 4h2l2.5 11h11L21 7H6.5"/><circle cx="9" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/></symbol>
+</svg>
+
+<h1>Chat pembeli di website Natalo</h1>
+<p class="lead">Pembeli yang belanja lewat <b>website</b> (HP maupun komputer) belum bisa chat ke toko. Gaya chatnya meniru <b>aplikasi Natalo</b>: gelembung pembeli biru, balasan toko putih, kepala "Natalo Petshop &amp; Aquarium" dengan status Online. Pesan yang dikirim dari website masuk ke NLCHAT sama persis seperti dari aplikasi. Ini gambar contoh, belum ada yang diubah.</p>
+
+<h2>1. Di HP (website versi HP)</h2>
+<p class="sub">Tombol chat ada di kepala halaman, di sebelah lonceng notifikasi, dengan angka merah kalau ada balasan yang belum dibaca. Ditekan → halaman chat penuh. Bilah bawah (Beranda, Produk, Feed, Akun) tidak berubah.</p>
+<div class="row">
+  <div class="col"><span class="cap">A · Tombol chat di kepala</span>
+    <div class="phone">
+      <div class="sb"><span>11.03</span><span>69%</span></div>
+      <div class="shophead">
+        <span class="logo">Natalo</span>
+        <div class="ib hi"><svg class="i"><use href="#chat"/></svg><span class="badge">2</span></div>
+        <div class="ib"><svg class="i"><use href="#bell"/></svg></div>
+        <div class="ib"><svg class="i"><use href="#user"/></svg></div>
+      </div>
+      <div class="shopbody"><div class="ph"></div><div class="ph s"></div><div class="ph"></div><div class="ph s"></div></div>
+      <div class="bnav">
+        <div class="on"><svg class="i"><use href="#home"/></svg>Beranda</div>
+        <div><svg class="i"><use href="#grid"/></svg>Produk</div>
+        <div><svg class="i"><use href="#play"/></svg>Feed</div>
+        <div><svg class="i"><use href="#user"/></svg>Akun</div>
+      </div>
+      <span class="callout" style="right:118px;top:84px">baru</span>
+    </div>
+  </div>
+
+  <div class="col"><span class="cap">B · Halaman chat</span>
+    <div class="phone">
+      <div class="sb"><span>11.03</span><span>69%</span></div>
+      <div class="chead">
+        <div class="ib"><svg class="i"><use href="#back"/></svg></div>
+        <div class="tt"><b>Natalo Petshop &amp; Aquarium</b><span class="st"><i></i>Online</span></div>
+      </div>
+      <div class="msgs">
+        <span class="day">Hari ini</span>
+        <div class="card">
+          <div class="k">Pesanan</div>
+          <div class="r"><span>ORD-20261022-5LLQZS</span><span>Rp166.400</span></div>
+          <div class="s">6 barang</div>
+          <span class="pill ok">Pembayaran terverifikasi</span>
+        </div>
+        <div class="b me">Kak, kira-kira kapan dikirim ya?<span class="tm">10:41 ✓✓</span></div>
+        <div class="note">Halo! Terima kasih sudah menghubungi Natalo Petshop. Tim kami akan segera membalas pesanmu.</div>
+        <div class="b them"><div class="who">Natasha</div>Siang ini dikirim kak, nanti nomor resinya kami kabari 🙏<span class="tm">10:44</span></div>
+      </div>
+      <div class="comp">
+        <div class="ib"><svg class="i"><use href="#cam"/></svg></div>
+        <div class="field">Tulis pesan…</div>
+        <div class="send"><svg class="i" style="width:19px"><use href="#send"/></svg></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col"><span class="cap">C · Belum masuk akun</span>
+    <div class="phone">
+      <div class="sb"><span>11.03</span><span>69%</span></div>
+      <div class="chead">
+        <div class="ib"><svg class="i"><use href="#back"/></svg></div>
+        <div class="tt"><b>Natalo Petshop &amp; Aquarium</b><span class="st off"><i></i>Di luar jam operasional</span></div>
+      </div>
+      <div class="empty">
+        <div class="bubbleart"><svg class="i"><use href="#chat"/></svg></div>
+        <b>Masuk dulu untuk chat</b>
+        <p>Supaya toko tahu pesanan dan riwayat belanjamu, chat hanya bisa dipakai setelah masuk akun.</p>
+        <div class="btn pri" style="width:100%">Masuk</div>
+        <div class="btn sec" style="width:100%">Daftar akun baru</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>2. Di komputer</h2>
+<p class="sub">Tombol chat di kepala halaman (sebelah lonceng). Ditekan → <b>jendela chat kecil di pojok kanan bawah</b>, halaman belanja tetap terlihat di belakangnya. Bisa dikecilkan (−) atau ditutup (×); pesan tetap tersimpan.</p>
+<div class="desk">
+  <div class="bar"><i></i><i></i><i></i><span>natalopetshop.com</span></div>
+  <div class="dhead">
+    <span class="logo" style="flex:none">Natalo</span>
+    <div class="search">Cari makanan, pasir, aksesoris…</div>
+    <div class="sp"></div>
+    <div class="ib hi"><svg class="i"><use href="#chat"/></svg><span class="badge">2</span></div>
+    <div class="ib"><svg class="i"><use href="#bell"/></svg></div>
+    <div class="ib"><svg class="i"><use href="#cart"/></svg></div>
+    <div class="ib"><svg class="i"><use href="#user"/></svg></div>
+  </div>
+  <div class="dbody"><div class="ph"></div><div class="ph"></div><div class="ph"></div><div class="ph"></div><div class="ph"></div><div class="ph"></div><div class="ph"></div><div class="ph"></div></div>
+  <div class="win">
+    <div class="chead">
+      <div class="tt" style="padding-left:6px"><b>Natalo Petshop &amp; Aquarium</b><span class="st"><i></i>Online</span></div>
+      <div class="ib"><svg class="i"><use href="#min"/></svg></div>
+      <div class="ib"><svg class="i"><use href="#x"/></svg></div>
+    </div>
+    <div class="msgs">
+      <span class="day">Hari ini</span>
+      <div class="b me">Royal Canin Kitten 2 kg ready kak?<span class="tm">09:12 ✓✓</span></div>
+      <div class="b them"><div class="who">Leonardi</div>Ready kak, stok 8 🙂<span class="tm">09:15</span></div>
+      <div class="b me">Oke saya checkout ya<span class="tm">09:16 ✓</span></div>
+    </div>
+    <div class="ctxbar"><div class="th"></div><div><span style="color:var(--t3)">Menanyakan produk</span><b>Royal Canin Kitten 2 kg</b></div><span class="x">×</span></div>
+    <div class="comp">
+      <div class="ib"><svg class="i"><use href="#cam"/></svg></div>
+      <div class="field">Tulis pesan…</div>
+      <div class="send"><svg class="i" style="width:19px"><use href="#send"/></svg></div>
+    </div>
+  </div>
+</div>
+
+<h2>3. Tombol tanya dari pesanan &amp; produk</h2>
+<p class="sub">Di rincian pesanan: tombol <b>"Tanya soal pesanan ini"</b>. Kartu pesanan otomatis ikut terkirim, jadi toko langsung tahu pesanan mana (sama seperti aplikasi). Di halaman produk versi HP: ikon chat di kiri tombol "Tambah ke keranjang"; pesan pertama membawa kartu "Menanyakan produk".</p>
+<div class="row">
+  <div class="col"><span class="cap">Rincian pesanan</span>
+    <div class="mini">
+      <h3>ORD-20261022-5LLQZS</h3>
+      <div class="ln"><span>Status pembayaran</span><b style="color:var(--okt)">Terverifikasi</b></div>
+      <div class="ln"><span>Total</span><b>Rp166.400</b></div>
+      <div class="btn pri"><svg class="i"><use href="#chat"/></svg>Tanya soal pesanan ini</div>
+      <div class="btn wa">Konfirmasi via WhatsApp</div>
+    </div>
+  </div>
+  <div class="col"><span class="cap">Halaman produk (HP)</span>
+    <div class="mini" style="padding:0;overflow:hidden">
+      <div style="height:150px;background:#e9eef6"></div>
+      <div style="padding:12px 16px"><h3>Royal Canin Kitten 2 kg</h3><div style="font-size:18px;font-weight:800;color:var(--p);margin-top:4px">Rp289.000</div></div>
+      <div class="sticky"><div class="chatsq"><svg class="i"><use href="#chat"/></svg></div><div class="btn pri">Tambah ke keranjang</div></div>
+    </div>
+  </div>
+  <div class="col"><span class="cap">Chat sedang dimatikan toko</span>
+    <div class="mini" style="padding:0;overflow:hidden">
+      <div class="chead"><div class="tt" style="padding-left:6px"><b>Natalo Petshop &amp; Aquarium</b><span class="st off"><i></i>Di luar jam operasional</span></div></div>
+      <div style="height:120px;background:var(--surface)"></div>
+      <div class="maint">Chat sedang tidak bisa dipakai. Hubungi kami lewat WhatsApp dulu ya.</div>
+      <div style="padding:10px 12px"><div class="btn wa">Chat lewat WhatsApp</div></div>
+    </div>
+  </div>
+</div>
+
+<h2>Yang perlu kamu putuskan</h2>
+<div class="qs">
+  <div class="q"><b>1. Letak tombol chat.</b> <span class="opt">(a) di kepala halaman, sebelah lonceng, seperti di aplikasi <span class="rec">saran</span> · (b) tombol bulat mengambang di pojok kanan bawah.</span></div>
+  <div class="q"><b>2. Tombol "Konfirmasi via WhatsApp" di rincian pesanan.</b> <span class="opt">(a) tetap ada di bawah tombol chat <span class="rec">saran</span> · (b) dihapus, semua lewat chat.</span></div>
+  <div class="q"><b>3. Pembeli yang belum masuk akun.</b> <span class="opt">(a) diminta masuk dulu, seperti layar C <span class="rec">saran</span> — toko jadi tahu nama &amp; pesanannya · (b) boleh chat tanpa akun (perlu dibangun dari nol, nama tidak terjamin).</span></div>
+  <div class="q"><b>4. Jendela chat di komputer.</b> <span class="opt">(a) jendela kecil pojok kanan bawah <span class="rec">saran</span> · (b) pindah ke halaman chat penuh seperti di HP.</span></div>
+</div>
+</body>
+</html>
