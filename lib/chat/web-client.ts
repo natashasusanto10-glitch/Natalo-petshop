@@ -70,7 +70,8 @@ export function forwardCursor(
     if (m.localState) continue;
     if (max === null || m.createdAt > max) max = m.createdAt;
   }
-  return max ?? prev;
+  if (max === null) return prev;
+  return prev === null ? max : Math.max(max, prev);
 }
 
 export function orderCardLabel(order: NonNullable<CustomerMessage["order"]>): {

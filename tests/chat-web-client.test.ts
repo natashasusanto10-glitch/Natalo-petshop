@@ -40,6 +40,7 @@ test("kursor maju: pakai nextCursor server, lalu createdAt server terbesar, abai
   assert.equal(forwardCursor(list, 150, 50), 150);
   assert.equal(forwardCursor(list, null, 50), 100);
   assert.equal(forwardCursor([], null, 50), 50);
+  assert.equal(forwardCursor([toWebMessage({ id: "m4", senderRole: "staff", type: "text", createdAt: 400 })], null, 500), 500);
 });
 
 test("label kartu pesanan bahasa sehari-hari", () => {
