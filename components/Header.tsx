@@ -85,6 +85,7 @@ export function Header() {
     currentPath === "/account/loyalty/redeem";
   const isProductDetail = /^\/products\/[^/]+$/.test(currentPath);
   const isOrderDetail = /^\/pesanan\/[^/]+$/.test(currentPath);
+  const isChatPage = /^\/chat(\/|$)/.test(currentPath);
   const isOrderSuccess = /^\/pesanan\/[^/]+\/success$/.test(currentPath);
   const isCheckoutPage = currentPath === "/checkout";
   const isCheckoutAddressPicker = currentPath === "/checkout/addresses";
@@ -178,6 +179,7 @@ export function Header() {
   }
 
   if (
+    isChatPage ||
     isSearchPage ||
     isProductSearchResult ||
     isCartPage ||

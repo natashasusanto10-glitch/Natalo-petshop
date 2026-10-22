@@ -51,6 +51,9 @@ export const HIDDEN_BOTTOM_NAV_PATTERNS: RegExp[] = [
   /^\/addresses(\/|$)/,
   /^\/brands(\/|$)/,
 
+  // Chat pembeli — halaman penuh dengan kepala sendiri
+  /^\/chat(\/|$)/,
+
   // Payment gateway — cegah user keluar dari flow bayar
   /^\/payment(\/|$)/,
   /^\/pembayaran(\/|$)/,

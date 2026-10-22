@@ -21,6 +21,7 @@ import { ViewTransitionsProvider } from "@/components/ViewTransitionsProvider";
 import { PushNotificationManager } from "@/components/PushNotificationManager";
 import { FeedUploadProvider } from "@/components/feed/FeedUploadProvider";
 import { FeedUploadToast } from "@/components/feed/FeedUploadToast";
+import { ChatLauncher } from "@/components/chat/ChatLauncher";
 
 const nunito = Nunito({
   subsets: ["latin"],
@@ -191,6 +192,9 @@ export default function RootLayout({
           </Suspense>
         </StoreOnly>
         <ToastProvider />
+        <StoreOnly>
+          <ChatLauncher />
+        </StoreOnly>
       </body>
     </html>
   );
