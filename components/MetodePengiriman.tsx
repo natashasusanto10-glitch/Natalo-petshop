@@ -132,6 +132,7 @@ export function MetodePengiriman({
       open={open}
       onClose={onClose}
       title="Pilih metode pengiriman"
+      desktopDialog
       footer={
         selected ? (
           <button
@@ -269,7 +270,7 @@ export function MetodePengiriman({
                   - {g.hint}
                 </span>
               </h3>
-              <div className="space-y-2">
+              <div className="grid gap-2 md:grid-cols-2">
                 {g.items.map((rate) => {
                   const isSelected =
                     selected?.courier_code === rate.courier_code &&
@@ -278,6 +279,7 @@ export function MetodePengiriman({
                     <button
                       key={`${rate.courier_code}-${rate.courier_service_code}`}
                       type="button"
+                      aria-pressed={isSelected}
                       onClick={() => onSelect(rate)}
                       className={`flex w-full items-center justify-between gap-3 rounded-2xl border p-4 text-left transition ${
                         isSelected
@@ -286,7 +288,7 @@ export function MetodePengiriman({
                       }`}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <CourierLogo code={rate.courier_code} />
                           <p className="font-bold text-zinc-950">
                             {rate.courier_name}

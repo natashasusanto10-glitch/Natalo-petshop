@@ -18,6 +18,8 @@ interface Props {
   /** Tombol di footer, optional. Misal "Apply" / "Reset" */
   footer?: ReactNode;
   variant?: "light" | "dark";
+  /** Use a centered dialog at desktop widths for checkout selections. */
+  desktopDialog?: boolean;
 }
 
 const DRAG_CLOSE_THRESHOLD = 120;
@@ -106,6 +108,7 @@ export function BottomSheet({
   children,
   footer,
   variant = "light",
+  desktopDialog = false,
 }: Props) {
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const dragStartYRef = useRef(0);
@@ -119,6 +122,19 @@ export function BottomSheet({
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isSnappingBack, setIsSnappingBack] = useState(false);
+  const [isDesktopDialog, setIsDesktopDialog] = useState(false);
+
+  useEffect(() => {
+    if (!desktopDialog) {
+      setIsDesktopDialog(false);
+      return;
+    }
+    const media = window.matchMedia("(min-width: 768px)");
+    const update = () => setIsDesktopDialog(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [desktopDialog]);
 
   useEffect(() => {
     if (!open) return;
@@ -285,7 +301,9 @@ export function BottomSheet({
               ? "bg-[#0B0F14] text-white shadow-[0_-18px_45px_rgba(0,0,0,0.45)]"
               : "bg-white shadow-2xl"
           }`}
-          onOpenAutoFocus={(event) => event.preventDefault()}
+          onOpenAutoFocus={(event) => {
+            if (!isDesktopDialog) event.preventDefault();
+          }}
           style={{
             maxHeight: "min(90dvh, calc(100dvh - env(safe-area-inset-top)))",
             touchAction: "pan-y",
@@ -296,17 +314,31 @@ export function BottomSheet({
               : isSnappingBack
                 ? `transform ${SNAP_BACK_MS}ms ${SNAP_BACK_EASE}`
                 : undefined,
+            ...(isDesktopDialog ? {
+              top: "50%",
+              bottom: "auto",
+              left: "50%",
+              right: "auto",
+              margin: 0,
+              width: "calc(100vw - 48px)",
+              maxWidth: "768px",
+              maxHeight: "min(80dvh, 800px)",
+              borderRadius: "24px",
+              transform: "translate3d(-50%, -50%, 0)",
+              animation: "none",
+              transition: "none",
+            } : {}),
           }}
         >
           <div
-            className="nat-bottom-sheet-drag-zone shrink-0 px-5 pb-3 pt-2"
-            onMouseDown={handleMouseDown}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={finishDrag}
-            onTouchCancel={finishDrag}
+            className={isDesktopDialog ? "shrink-0 px-6 py-5" : "nat-bottom-sheet-drag-zone shrink-0 px-5 pb-3 pt-2"}
+            onMouseDown={isDesktopDialog ? undefined : handleMouseDown}
+            onTouchStart={isDesktopDialog ? undefined : handleTouchStart}
+            onTouchMove={isDesktopDialog ? undefined : handleTouchMove}
+            onTouchEnd={isDesktopDialog ? undefined : finishDrag}
+            onTouchCancel={isDesktopDialog ? undefined : finishDrag}
           >
-            <div className="flex justify-center py-2">
+            <div className={isDesktopDialog ? "hidden" : "flex justify-center py-2"}>
               <div
                 className={`h-1.5 w-10 rounded-full ${
                   isDark ? "bg-zinc-600" : "bg-zinc-300"
