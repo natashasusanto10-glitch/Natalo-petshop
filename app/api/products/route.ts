@@ -78,6 +78,8 @@ export async function GET(request: NextRequest) {
   const brandsList = parseIdList(sp.get("brands"));
   const newFilter = asNewFilter(sp.get("new"));
   const popularFilter = asPopularFilter(sp.get("popular"));
+  const priceSortParam = sp.get("priceSort");
+  const priceSort = priceSortParam === "asc" || priceSortParam === "desc" ? priceSortParam : undefined;
   const seed = (sp.get("seed") ?? "").trim().slice(0, 80);
   const excludeIds = parseIdList(sp.get("exclude"));
   // Filter by ID list — dipakai wishlist supaya bisa fetch hanya
@@ -102,8 +104,9 @@ export async function GET(request: NextRequest) {
       search: search || undefined,
       newFilter,
       popularFilter,
+      priceSort,
       randomSeed:
-        seed && !category && !brand && !brandsList.length && !search && !newFilter && !popularFilter
+        seed && !priceSort && !category && !brand && !brandsList.length && !search && !newFilter && !popularFilter
           ? seed
           : undefined,
       take: limit,

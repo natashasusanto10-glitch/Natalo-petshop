@@ -147,7 +147,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   ///
   /// Chip "Produk Baru" tetap melayani yang mencari produk terbaru; backend
   /// otomatis mengabaikan seed saat ada filter apa pun.
-  late final String _listingSeed = _todayListingSeed();
+  String _listingSeed = _todayListingSeed();
 
   /// Tanggal WIB sebagai seed — urutan berganti tiap hari, stabil dalam
   /// satu hari. Zona toko dipakai supaya pergantian terasa wajar untuk
@@ -158,6 +158,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     final tanggal = wib.day.toString().padLeft(2, '0');
     return '${wib.year}-$bulan-$tanggal';
   }
+
   String? _nextCursor;
   bool _loadingMore = false;
   bool _hasMore = true;
@@ -182,44 +183,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
   // (bukan tiap keystroke search) — lihat guard di _loadProducts.
   List<PetBrand> _allBrands = const [];
   String? _brandsFetchedForCategory;
-  // ── Catalog rotation state — persisted via SharedPreferences ──
-  //
-  // Sebelumnya state in-memory only → reset tiap app restart, navigate
-  // away, atau iOS background-kill. User per session selalu lihat
-  // "fresh ordering" — tapi inconsistent: tap 2 produk hari ini,
-  // restart, tap lagi → counter restart dari 0, padahal user kira
-  // sudah dekat ke regenerate threshold.
-  //
-  // Sekarang persist ke SharedPreferences supaya:
-  // - Counter survive app kill/restart → user trust progress menuju
-  //   regenerate next.
-  // - Generation salt survive → ordering pattern stay konsisten
-  //   across sessions, tidak completely random saat reopen.
-  // - Reset hanya happen at threshold (3 atau 4) atau via clear cache.
-  static const _kKeyCatalogGeneration = 'products_catalog_generation';
-  static const _kKeyProductReturnCount = 'products_return_count';
-  static const _kKeyNextRegenerateAt = 'products_next_regenerate_at';
-  int _catalogGeneration = 0;
-  int _productReturnCount = 0;
-  // Alternate 3 ↔ 4 (per user spec) — regenerate ordering setiap user
-  // tap dan kembali 3-4 produk. Variable threshold supaya user tidak
-  // bisa predict timing (always "feels fresh").
-  int _nextCatalogRegenerateAt = 3;
-  bool _rotationStateLoaded = false;
-
-  bool get _shouldGenerateAllProducts {
-    return widget.selectedBrand == null &&
-        _activeMode == _ProductFilterMode.semua &&
-        _query.trim().isEmpty &&
-        _filter.category == null &&
-        _filter.brand == null &&
-        _filter.sort == ProductSort.newest &&
-        _filter.inStockOnly &&
-        !_filter.discountOnly &&
-        !_filter.withImageOnly &&
-        !widget.flashSaleOnly;
-  }
-
   List<String> get _categories {
     final values = _result.products
         .map((product) => product.category)
@@ -292,10 +255,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
           keywordMatch;
     }).toList();
 
-    if (_shouldGenerateAllProducts) {
-      return _generateAllProducts(filtered);
-    }
-    return _sortProducts(filtered);
+    // Server order is stable across pages; never re-sort the accumulated list.
+    return filtered;
   }
 
   @override
@@ -336,7 +297,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
     _scrollController.addListener(_onScroll);
     _loadSearchHistory();
-    _loadRotationState();
     _allCategories = homeSnapshotStore.categories;
     _loadAllCategories();
     _loadAllBrands();
@@ -387,40 +347,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
-  /// Load persisted rotation counter + catalog generation dari prefs.
-  /// Fire-and-forget — kalau gagal/disk corrupt, pakai default values
-  /// (counter=0, generation=0, threshold=3) — first session behavior.
-  Future<void> _loadRotationState() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      if (!mounted) return;
-      setState(() {
-        _catalogGeneration = prefs.getInt(_kKeyCatalogGeneration) ?? 0;
-        _productReturnCount = prefs.getInt(_kKeyProductReturnCount) ?? 0;
-        final saved = prefs.getInt(_kKeyNextRegenerateAt) ?? 3;
-        // Clamp ke 3 atau 4 — defense kalau prefs corrupt nilai weird.
-        _nextCatalogRegenerateAt = (saved == 3 || saved == 4) ? saved : 3;
-        _rotationStateLoaded = true;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _rotationStateLoaded = true);
-    }
-  }
-
-  /// Persist rotation state ke disk. Best-effort fire-and-forget — kalau
-  /// disk write gagal, state in-memory tetap update (next launch fallback
-  /// ke default kalau prefs unreadable).
-  Future<void> _persistRotationState() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_kKeyCatalogGeneration, _catalogGeneration);
-      await prefs.setInt(_kKeyProductReturnCount, _productReturnCount);
-      await prefs.setInt(_kKeyNextRegenerateAt, _nextCatalogRegenerateAt);
-    } catch (_) {
-      // Silent fail — in-memory state masih valid.
-    }
-  }
-
   @override
   void dispose() {
     _searchDebounce?.cancel();
@@ -445,7 +371,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   /// Load next page via cursor. Append produk ke list existing.
   /// Stop kalau response nextCursor null (no more pages).
   Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore || _nextCursor == null) return;
+    if (_loading || _loadingMore || !_hasMore || _nextCursor == null) return;
     final epoch = _loadEpoch;
     setState(() => _loadingMore = true);
     final result = await productService.fetchProducts(
@@ -463,6 +389,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
       brands: _filter.brands,
       newFilter: _filter.apiNewFilter,
       popularFilter: _filter.apiPopularFilter,
+      priceSort: switch (_filter.sort) {
+        ProductSort.priceLow => 'asc',
+        ProductSort.priceHigh => 'desc',
+        _ => null,
+      },
       inStock: _filter.inStockOnly,
       withImage: _filter.withImageOnly,
       discountOnly: widget.flashSaleOnly || _filter.discountOnly,
@@ -474,13 +405,22 @@ class _ProductsScreenState extends State<ProductsScreen> {
     // increment epoch) → JANGAN append hasil lama ke list baru + JANGAN
     // timpa _nextCursor dengan cursor lama. Buang diam-diam.
     if (!mounted || epoch != _loadEpoch) {
-      if (mounted) _loadingMore = false;
+      return;
+    }
+    if (!result.fromApi) {
+      setState(() => _loadingMore = false);
       return;
     }
     setState(() {
-      // Append produk baru ke list existing.
+      final existingIds = _result.products.map((product) => product.id).toSet();
+      // Append only; keep existing identities and positions.
       _result = ProductResult(
-        products: [..._result.products, ...result.products],
+        products: [
+          ..._result.products,
+          ...result.products.where(
+            (product) => existingIds.add(product.id),
+          ),
+        ],
         nextCursor: result.nextCursor,
         fromApi: result.fromApi,
         total: result.total,
@@ -515,6 +455,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
       brands: _filter.brands,
       newFilter: _filter.apiNewFilter,
       popularFilter: _filter.apiPopularFilter,
+      priceSort: switch (_filter.sort) {
+        ProductSort.priceLow => 'asc',
+        ProductSort.priceHigh => 'desc',
+        _ => null,
+      },
       inStock: _filter.inStockOnly,
       withImage: _filter.withImageOnly,
       discountOnly: widget.flashSaleOnly || _filter.discountOnly,
@@ -583,6 +528,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 
   Future<void> _refreshAll() async {
+    _listingSeed = _todayListingSeed();
     await Future.wait([_loadProducts(), _loadAllCategories()]);
   }
 
@@ -756,32 +702,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
     _loadProducts();
   }
 
-  List<Product> _sortProducts(List<Product> products) {
-    final sorted = [...products];
-    switch (_filter.sort) {
-      case ProductSort.priceLow:
-        sorted.sort((a, b) => a.finalPrice.compareTo(b.finalPrice));
-        break;
-      case ProductSort.priceHigh:
-        sorted.sort((a, b) => b.finalPrice.compareTo(a.finalPrice));
-        break;
-      case ProductSort.rating:
-        sorted.sort((a, b) {
-          final rating = b.rating.compareTo(a.rating);
-          return rating == 0 ? b.reviewCount.compareTo(a.reviewCount) : rating;
-        });
-        break;
-      case ProductSort.popular:
-        // API `/api/products?popular=best-seller` sudah memberi ranking
-        // rolling 7 hari dari order user. Jangan sort ulang di client,
-        // supaya urutan "Populer" tetap mengikuti data pembelian terbaru.
-        break;
-      case ProductSort.newest:
-        break;
-    }
-    return sorted;
-  }
-
   Future<void> _openCategoryBottomSheet() async {
     FocusScope.of(context).unfocus();
     // The sheet has its own route: parent setState cannot reliably update a
@@ -826,7 +746,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
               scrollController: scrollController,
               selectedCategory: _filter.category,
               categories: categories,
-              categoryNames: {for (final category in _allCategories) category.slug: category.name},
+              categoryNames: {
+                for (final category in _allCategories)
+                  category.slug: category.name
+              },
               onSelected: (category) => Navigator.pop(context, category),
             );
           },
@@ -996,63 +919,6 @@ class _ProductsScreenState extends State<ProductsScreen> {
     _loadProducts();
   }
 
-  List<Product> _generateAllProducts(List<Product> products) {
-    if (products.length <= 1) return products;
-    final viewed = recentlyViewedStore.items;
-    final brandScores = <String, int>{};
-    final categoryScores = <String, int>{};
-
-    for (var index = 0; index < viewed.length; index += 1) {
-      final weight = viewed.length - index;
-      final brand = viewed[index].brand.trim().toLowerCase();
-      final category = viewed[index].category.trim().toLowerCase();
-      if (brand.isNotEmpty) {
-        brandScores[brand] = (brandScores[brand] ?? 0) + weight;
-      }
-      if (category.isNotEmpty) {
-        categoryScores[category] = (categoryScores[category] ?? 0) + weight;
-      }
-    }
-
-    final generated = [...products]..sort((a, b) {
-        final scoreCompare = _generatedProductScore(
-          b,
-          brandScores,
-          categoryScores,
-        ).compareTo(
-          _generatedProductScore(a, brandScores, categoryScores),
-        );
-        if (scoreCompare != 0) return scoreCompare;
-        return _stableCatalogHash(a.id).compareTo(_stableCatalogHash(b.id));
-      });
-    return generated;
-  }
-
-  int _generatedProductScore(
-    Product product,
-    Map<String, int> brandScores,
-    Map<String, int> categoryScores,
-  ) {
-    final brand = product.brand.trim().toLowerCase();
-    final category = product.category.trim().toLowerCase();
-    var score = 0;
-    score += (brandScores[brand] ?? 0) * 3;
-    score += (categoryScores[category] ?? 0) * 5;
-    if (product.hasDiscount) score += 2;
-    score += product.reviewCount.clamp(0, 200) ~/ 40;
-    score += _stableCatalogHash(product.id) % 7;
-    return score;
-  }
-
-  int _stableCatalogHash(String value) {
-    var hash = 0x811C9DC5 ^ _catalogGeneration;
-    for (final codeUnit in value.codeUnits) {
-      hash ^= codeUnit;
-      hash = (hash * 0x01000193) & 0x7fffffff;
-    }
-    return hash;
-  }
-
   void _openProduct(Product product) {
     // Preload images sebelum navigate → product detail render instant.
     // Native superpower: precacheImage warms ImageCache, jadi widget
@@ -1066,30 +932,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         context,
       );
     }
-    Navigator.pushNamed(context, '/product-detail', arguments: product)
-        .whenComplete(_maybeRegenerateCatalogAfterReturn);
-  }
-
-  void _maybeRegenerateCatalogAfterReturn() {
-    if (!mounted || !_shouldGenerateAllProducts) return;
-    if (!_rotationStateLoaded) return; // wait until prefs hydrated
-    _productReturnCount += 1;
-    if (_productReturnCount < _nextCatalogRegenerateAt) {
-      // Counter < threshold — persist incremented count saja, no
-      // re-shuffle. User next session bisa lanjut dari sini.
-      _persistRotationState();
-      return;
-    }
-    setState(() {
-      _catalogGeneration += 1;
-      _productReturnCount = 0;
-      // Alternate 3 ↔ 4 per user spec — variable threshold supaya feel
-      // fresh + unpredictable. Pakai 3 vs 4 (was 2 vs 3) supaya user
-      // bisa scroll lebih lama tanpa shuffle terlalu sering.
-      _nextCatalogRegenerateAt = _nextCatalogRegenerateAt == 3 ? 4 : 3;
-    });
-    // Persist state baru setelah shuffle: generation++, count=0, threshold flipped.
-    _persistRotationState();
+    Navigator.pushNamed(context, '/product-detail', arguments: product);
   }
 
   @override
@@ -1173,7 +1016,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           query: _query,
                           activeMode: _activeMode,
                           selectedCategory: _filter.category,
-                          selectedCategoryLabel: _allCategories.where((category) => category.slug == _filter.category).firstOrNull?.name,
+                          selectedCategoryLabel: _allCategories
+                              .where((category) =>
+                                  category.slug == _filter.category)
+                              .firstOrNull
+                              ?.name,
                           visibleCount: products.length,
                           // Total dari API (jumlah produk sesuai filter di DB),
                           // bukan jumlah yang kebetulan ter-load.
@@ -1715,8 +1562,7 @@ class _DockIconButton extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   splashFactory: NoSplash.splashFactory,
                   splashColor: Colors.transparent,
-                  highlightColor:
-                      NataloColors.heroMid.withValues(alpha: 0.12),
+                  highlightColor: NataloColors.heroMid.withValues(alpha: 0.12),
                 ),
               ),
             ),
@@ -3726,9 +3572,8 @@ class _FilterSheetState extends State<_FilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final visibleBrands = _brandListExpanded
-        ? _sortedBrands
-        : _sortedBrands.take(8).toList();
+    final visibleBrands =
+        _brandListExpanded ? _sortedBrands : _sortedBrands.take(8).toList();
     final hasMoreBrands = _sortedBrands.length > 8;
     final previewCount = widget.previewCountForFilter(_candidateFilter);
     final cs = Theme.of(context).colorScheme;

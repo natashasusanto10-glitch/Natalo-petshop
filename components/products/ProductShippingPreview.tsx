@@ -79,7 +79,7 @@ export function ProductShippingPreview({ name, price, weightGram, hasVariants }:
           : addresses?.length === 0 ? <Link href="/akun/alamat" className="mt-1 block text-xs text-blue-600">Atur alamat untuk cek ongkir</Link>
           : addresses && <>
             <label className="mt-1 block text-xs text-gray-500" htmlFor="product-shipping-address">Kirim ke</label>
-            <select id="product-shipping-address" value={addressId} onChange={event => setAddressId(event.target.value)} className="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs">
+            <select id="product-shipping-address" value={addressId} onChange={event => setAddressId(event.target.value)} className="mt-1 block w-full min-w-0 max-w-full truncate rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs">
               {addresses.map(item => <option key={item.id} value={item.id}>{[item.label, item.areaLabel || item.city].filter(Boolean).join(" · ")}</option>)}
             </select>
             {!address?.areaId && <Link href="/akun/alamat" className="mt-1 block text-xs text-blue-600">Lengkapi alamat untuk cek ongkir</Link>}

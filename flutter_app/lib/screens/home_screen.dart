@@ -89,9 +89,15 @@ class _HomeScreenState extends State<HomeScreen> {
   // paginasi explore.
 
   final List<Product> _exploreProducts = [];
+  String _exploreSeed = catalogListingSeed();
+  int _exploreEpoch = 0;
+  late List<Product> _sessionViewed;
+  late List<String> _sessionSearches;
+  int _recommendationSeed = dailyRotationSeed();
   String? _exploreNextCursor;
   bool _exploreHasMore = true;
   bool _exploreLoading = false;
+  bool _recommendationsLoading = true;
   bool _exploreInitialLoaded = false;
 
   /// Brand untuk slider "Brand Favorit" di Home — HANYA brand yang punya
@@ -115,6 +121,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _sessionViewed = List.of(recentlyViewedStore.items);
+    _sessionSearches = List.of(searchHistoryStore.entries);
 
     // Cold-start resume check (Fase 2C-4) — bila ada upload feed yang
     // sempat jalan lalu app di-kill, tawarkan "Lanjutkan" di FeedUploadBar.
@@ -134,38 +142,23 @@ class _HomeScreenState extends State<HomeScreen> {
     // exclude list kosong → ambil top personalized yang SAMA dengan
     // section "Rekomendasi Untuk Kamu" di atas → duplikat di 2 section.
     _initializeRecsAndExplore();
-    // Re-fetch personalized recs setiap kali user buka produk baru
-    // (recentlyViewedStore berubah) — server bisa update rekomendasi
-    // berdasarkan signal baru.
-    recentlyViewedStore.addListener(_onRecentlyViewedChanged);
   }
 
   /// Sequential init: personalized → explore. Mencegah race condition
   /// duplikat produk antara "Rekomendasi Untuk Kamu" + "Jelajahi".
   Future<void> _initializeRecsAndExplore() async {
-    await _loadPersonalizedRecs();
-    if (!mounted) return;
+    final epoch = _exploreEpoch;
+    _recommendationsLoading = true;
+    await _loadPersonalizedRecs(epoch);
+    if (!mounted || epoch != _exploreEpoch) return;
+    _recommendationsLoading = false;
     await _loadMoreExplore(initial: true);
-  }
-
-  /// Re-fetch personalized recs saat recentlyViewedStore berubah.
-  /// Debounce manual: skip kalau fetch terakhir < 5 detik lalu supaya
-  /// tidak spam saat user scroll cepat antar produk.
-  DateTime? _lastPersonalizedFetch;
-  void _onRecentlyViewedChanged() {
-    final now = DateTime.now();
-    if (_lastPersonalizedFetch != null &&
-        now.difference(_lastPersonalizedFetch!).inSeconds < 5) {
-      return;
-    }
-    _loadPersonalizedRecs();
   }
 
   /// Fetch server-side personalized recommendations. Async, non-blocking.
   /// Hasil di-store di `_personalizedRecs`. Builder di `_RecommendationGrid`
   /// akan fall back ke client-side scoring kalau kosong.
-  Future<void> _loadPersonalizedRecs() async {
-    _lastPersonalizedFetch = DateTime.now();
+  Future<void> _loadPersonalizedRecs(int epoch) async {
     final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
     try {
       final recs = await productService.fetchPersonalizedRecommendations(
@@ -182,7 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // klien cuma menggilir isi kolam yang airnya tak pernah diganti.
         seed: ProductService.dailyRecommendationSeed(),
       );
-      if (!mounted) return;
+      if (!mounted || epoch != _exploreEpoch) return;
       setState(() => _personalizedRecs = recs);
     } catch (_) {
       // Fallback ke client-side scoring tetap jalan via builder logic.
@@ -196,8 +189,9 @@ class _HomeScreenState extends State<HomeScreen> {
     AppHaptics.impact();
     // Reset explore state supaya benar-benar refetch dari halaman 1.
     _resetExploreProducts();
-    // Reset debounce supaya pull-to-refresh selalu trigger ulang.
-    _lastPersonalizedFetch = null;
+    _sessionViewed = List.of(recentlyViewedStore.items);
+    _sessionSearches = List.of(searchHistoryStore.entries);
+    _recommendationSeed = dailyRotationSeed();
     // Store refresh force:true — user eksplisit minta, bypass throttle;
     // sekaligus membuat saran banner "tarik ke bawah" jujur (dulu fetch
     // produk utama tidak pernah di-retry). _initializeRecsAndExplore
@@ -213,14 +207,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    recentlyViewedStore.removeListener(_onRecentlyViewedChanged);
     super.dispose();
   }
 
   void _onScroll() {
     // Collapse header di-handle NATIVE oleh sliver (pinned+floating) —
     // listener ini murni untuk paginasi explore.
-    if (_exploreLoading || !_exploreHasMore) return;
+    if (_recommendationsLoading || _exploreLoading || !_exploreHasMore) return;
     // Trigger load saat 600px sebelum bottom — match PWA threshold.
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
@@ -232,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadMoreExplore({bool initial = false}) async {
     if (_exploreLoading) return;
     if (!initial && !_exploreHasMore) return;
+    final epoch = _exploreEpoch;
     setState(() => _exploreLoading = true);
     try {
       // "Jelajahi" = pintu ke SISA katalog, bukan "lebih banyak dari yang
@@ -254,10 +248,10 @@ class _HomeScreenState extends State<HomeScreen> {
         limit: 14,
         hasPrice: false,
         withImage: false,
-        seed: catalogListingSeed(),
+        seed: _exploreSeed,
       );
 
-      if (!mounted) return;
+      if (!mounted || epoch != _exploreEpoch) return;
       final nextProducts = page.products;
       setState(() {
         final existingIds = _exploreProducts.map((item) => item.id).toSet();
@@ -275,7 +269,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _exploreInitialLoaded = true;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || epoch != _exploreEpoch) return;
       setState(() {
         _exploreLoading = false;
         _exploreHasMore = false;
@@ -286,6 +280,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _resetExploreProducts() {
     setState(() {
+      _exploreEpoch++;
+      _exploreLoading = false;
+      _exploreSeed = catalogListingSeed();
       _exploreProducts.clear();
       _exploreNextCursor = null;
       _exploreHasMore = true;
@@ -308,16 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       '/product-detail',
       arguments: product,
-    ).whenComplete(_maybeRegenerateExploreAfterReturn);
-  }
-
-  /// Trigger setelah product detail close (`.whenComplete`). User
-  /// "balik ke Beranda" via back navigation dari detail = same count
-  /// sebagai tab switch back to Beranda. Pakai global counter.
-  void _maybeRegenerateExploreAfterReturn() {
-    if (!mounted || _exploreLoading) return;
-    _resetExploreProducts();
-    _loadMoreExplore(initial: true);
+    );
   }
 
   void _openProducts(BuildContext context, {String? brand, String? category}) {
@@ -349,8 +337,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Product> _buildPersonalizedRecommendations(List<Product> products) {
     if (products.isEmpty) return const [];
 
-    final viewed = recentlyViewedStore.items;
-    final searches = searchHistoryStore.entries;
+    final viewed = _sessionViewed;
+    final searches = _sessionSearches;
     final fallback = _fallbackRecommendations(products);
     if (viewed.isEmpty && searches.isEmpty) return fallback;
 
@@ -685,7 +673,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             slivers: [
                               SliverToBoxAdapter(
                                 child: AnimatedBuilder(
-                                  animation: recentlyViewedStore,
+                                  animation: homeSnapshotStore,
                                   builder: (context, _) {
                                     final recPool = _personalizedRecs.isNotEmpty
                                         ? _personalizedRecs
@@ -707,7 +695,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     // punya sinyal nyata (rating/pembelian).
                                     final recommendations = dailyRotatingPick(
                                       recPool,
-                                      seed: dailyRotationSeed(),
+                                      seed: _recommendationSeed,
                                       pinned: 0,
                                       count: 10,
                                       idOf: (p) => p.id,

@@ -245,7 +245,7 @@ export function ProductImageCarousel({ images, alt, transitionName, video, showT
                         alt={`${alt} - video produk`}
                         fill
                         sizes="(min-width: 1024px) 50vw, 100vw"
-                        className="object-cover"
+                        className="object-contain"
                         priority
                         placeholder="blur"
                         blurDataURL={IMAGE_BLUR_GRAY}
@@ -307,7 +307,7 @@ export function ProductImageCarousel({ images, alt, transitionName, video, showT
                       alt={`${alt} - gambar ${imageIndex + 1}`}
                       fill
                       sizes="(min-width: 1024px) 50vw, 100vw"
-                      className="object-cover"
+                      className="object-contain"
                       priority={index === 0}
                       placeholder="blur"
                       blurDataURL={IMAGE_BLUR_GRAY}

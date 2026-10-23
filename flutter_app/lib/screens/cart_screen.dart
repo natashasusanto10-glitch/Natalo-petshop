@@ -158,7 +158,6 @@ class _CartScreenState extends State<CartScreen>
     _selectedIds = cartStore.items.map((i) => i.key).toSet();
     cartStore.addListener(_onCartChanged);
     memberStore.addListener(_onMemberChanged);
-    recentlyViewedStore.addListener(_loadRecentlyViewed);
     _syncVouchersForSelection();
     // Validasi stok server saat cart dibuka — badge stok habis/sisa-N +
     // auto-deselect item habis supaya tidak ikut checkout.
@@ -246,7 +245,6 @@ class _CartScreenState extends State<CartScreen>
     _chromeController.dispose();
     cartStore.removeListener(_onCartChanged);
     memberStore.removeListener(_onMemberChanged);
-    recentlyViewedStore.removeListener(_loadRecentlyViewed);
     super.dispose();
   }
 

@@ -46,10 +46,12 @@ class _WishlistScreenState extends State<WishlistScreen> {
   //    purchase signal ×3.0/×2.5 + view signal ×1.2/×1.8 di server).
   //  - Load more: /api/products dengan cursor pagination — append produk
   //    catalog umum yang belum di-show.
-  //  - Final re-rank di client dengan _lookAgainScore (search history
+  //  - Rank only each new batch with _lookAgainScore (search history
   //    signal ×12/×4 yang unik di wishlist).
   List<Product> _lookAgainProducts = const [];
   String? _lookAgainNextCursor;
+  List<String> _lookAgainExcludedIds = const [];
+  int _lookAgainEpoch = 0;
   bool _lookAgainHasMore = false;
   bool _lookAgainLoading = false;
   bool _lookAgainInitialLoaded = false;
@@ -116,9 +118,14 @@ class _WishlistScreenState extends State<WishlistScreen> {
   /// Load more (initial=false):
   ///  1. Lanjut cursor /api/products → append produk baru.
   ///  2. Dedup by ID + filter favorit user.
-  ///  3. Apply re-rank ulang (search history bisa berubah saat scroll).
+  ///  3. Rank only new IDs, then append without moving existing cards.
   Future<void> _loadLookAgain({bool initial = false}) async {
-    if (_lookAgainLoading) return;
+    if (_lookAgainLoading && !initial) return;
+    if (initial) {
+      _lookAgainEpoch++;
+      _lookAgainExcludedIds = favoriteStore.ids.toList();
+    }
+    final epoch = _lookAgainEpoch;
     if (!initial && !_lookAgainHasMore) return;
 
     if (mounted) {
@@ -134,7 +141,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
     }
 
     try {
-      final favoriteIds = favoriteStore.ids.toList();
+      final favoriteIds = _lookAgainExcludedIds;
       final viewedIds = recentlyViewedStore.items.map((p) => p.id).toList();
       final newProducts = <Product>[];
       ProductPage page;
@@ -183,9 +190,18 @@ class _WishlistScreenState extends State<WishlistScreen> {
       }
 
       // Final layer: client-side re-rank dengan search history signal.
-      final ranked = _rankLookAgainProducts(merged.values.toList());
+      final existingIds =
+          _lookAgainProducts.map((product) => product.id).toSet();
+      final ranked = [
+        ..._lookAgainProducts,
+        ..._rankLookAgainProducts(
+          merged.values
+              .where((product) => !existingIds.contains(product.id))
+              .toList(),
+        ),
+      ];
 
-      if (!mounted) return;
+      if (!mounted || epoch != _lookAgainEpoch) return;
       setState(() {
         _lookAgainProducts = ranked;
         _lookAgainNextCursor = page.nextCursor;
@@ -194,7 +210,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
         _lookAgainInitialLoaded = true;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || epoch != _lookAgainEpoch) return;
       setState(() {
         _lookAgainLoading = false;
         _lookAgainInitialLoaded = true;
@@ -271,8 +287,16 @@ class _WishlistScreenState extends State<WishlistScreen> {
   }
 
   void _openProduct(Product product) {
+    final before = favoriteStore.ids.toSet();
     Navigator.pushNamed(context, '/product-detail', arguments: product)
-        .then((_) => _refresh());
+        .then((_) {
+      if (!mounted) return;
+      final after = favoriteStore.ids.toSet();
+      if (before.length != after.length || !before.containsAll(after)) {
+        // Reconcile favorites only. Keep recommendation pages and scroll alive.
+        setState(() => _productsFuture = favoriteStore.fetchFavoriteProducts());
+      }
+    });
   }
 
   void _addToCart(Product product) {

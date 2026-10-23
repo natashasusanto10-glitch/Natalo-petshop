@@ -181,8 +181,8 @@ export default async function ProductDetailPage({
         </div>
       </div>
 
-      <main className="product-detail-content mx-auto max-w-[1200px] md:px-4 md:py-6 md:pb-10">
-        <ProductDetailState key={slug}><div className="grid items-start gap-2 bg-gray-50 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:gap-6 md:bg-white">
+      <main className="product-detail-content mx-auto w-full min-w-0 max-w-[1200px] md:px-4 md:py-6 md:pb-10">
+        <ProductDetailState key={slug}><div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-start gap-2 bg-gray-50 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:gap-6 md:bg-white">
           <ProductImageCarousel
             images={productImages}
             alt={product.name}
@@ -190,7 +190,7 @@ export default async function ProductDetailPage({
             video={detailVideo}
           />
 
-          <section className="bg-white px-4 py-4 md:rounded-2xl md:border md:border-gray-100 md:p-5">
+          <section className="min-w-0 bg-white px-4 py-4 md:rounded-2xl md:border md:border-gray-100 md:p-5">
             {/* 6. Variant selector / quantity actions */}
             {product.hasVariants && product.variantAttrs && product.variants ? (
               <div id="beli" className="mb-4 scroll-mt-20 rounded-2xl border border-gray-100 p-4">
@@ -221,7 +221,7 @@ export default async function ProductDetailPage({
             <VoucherCard productSlug={slug} savingsAmount={hasDiscount ? Math.round(product.price - price) : 0} />
             {/* 2. Judul produk — ukuran sedang, weight 600 */}
             <div className="mt-3 flex items-start gap-2">
-            <h1 className="flex-1 text-base font-semibold leading-snug text-gray-900 md:text-xl md:font-bold">
+            <h1 className="min-w-0 flex-1 [overflow-wrap:anywhere] text-base font-semibold leading-snug text-gray-900 md:text-xl md:font-bold">
               {product.name}
             </h1>
             <FavoriteButton productId={product.id} initialFavorited={false} size="md" />
@@ -259,10 +259,10 @@ export default async function ProductDetailPage({
             information={
               <div>
                 <h2 className="mb-3 text-base font-bold text-gray-900">Informasi Produk</h2>
-                <dl className="grid grid-cols-[118px_1fr] gap-x-3 gap-y-2 text-sm">
-                  <dt className="text-gray-500">Berat Produk</dt><dd className="font-semibold">{new Intl.NumberFormat("id-ID").format(product.weightGram)} gram</dd>
-                  {product.brand && <><dt className="text-gray-500">Brand</dt><dd className="font-semibold">{product.brand}</dd></>}
-                  {productWithCategory?.category && <><dt className="text-gray-500">Kategori</dt><dd className="font-semibold">{productWithCategory.category.name}</dd></>}
+                <dl className="grid grid-cols-[118px_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
+                  <dt className="text-gray-500">Berat Produk</dt><dd className="min-w-0 break-words font-semibold">{new Intl.NumberFormat("id-ID").format(product.weightGram)} gram</dd>
+                  {product.brand && <><dt className="text-gray-500">Brand</dt><dd className="min-w-0 break-words font-semibold">{product.brand}</dd></>}
+                  {productWithCategory?.category && <><dt className="text-gray-500">Kategori</dt><dd className="min-w-0 break-words font-semibold">{productWithCategory.category.name}</dd></>}
                 </dl>
               </div>
             }

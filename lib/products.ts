@@ -343,7 +343,7 @@ function buildOrderBy(
   | Prisma.ProductOrderByWithRelationInput[] {
   // Popular filter has priority over new filter for ordering
   if (popularFilter === "highest-rating") {
-    return [{ avgRating: "desc" }, { reviewCount: "desc" }];
+    return [{ avgRating: "desc" }, { reviewCount: "desc" }, { id: "asc" }];
   }
   // "New" filter — admin-friendly strict createdAt sort, jangan
   // di-override Flash Sale supaya "Produk Baru" tetap akurat by waktu.
@@ -365,6 +365,60 @@ function buildOrderBy(
   ];
 }
 
+type PriceIndexEntry = { expiresAt: number; ids: string[] };
+const priceIndexes = new Map<string, Promise<PriceIndexEntry>>();
+
+async function priceOrderedIds(where: Prisma.ProductWhereInput, direction: "asc" | "desc", key: string) {
+  const pending = priceIndexes.get(key);
+  if (pending) {
+    const cached = await pending;
+    if (cached.expiresAt > Date.now()) return cached.ids;
+    priceIndexes.delete(key);
+  }
+  const request = (async () => {
+    const relations = getProductListInclude();
+    const rows = await prisma.product.findMany({
+      where,
+      select: {
+        id: true, price: true, discountPrice: true, flashSaleEndsAt: true,
+        hasVariants: true, variants: relations.variants,
+        discountItems: relations.discountItems,
+      },
+    });
+    const now = new Date();
+    let expiresAt = now.getTime() + 60_000;
+    const ranked = rows.map((product) => {
+      const candidates = product.hasVariants && product.variants.length
+        ? product.variants
+        : [{ id: null, price: product.price }];
+      const price = Math.min(...candidates.map((variant) => {
+        const discount = resolveActiveDiscount(
+          variant.price,
+          variant.id === null
+            ? { discountPrice: product.discountPrice, endsAt: product.flashSaleEndsAt }
+            : flashSaleForVariant(product.price, product.discountPrice, product.flashSaleEndsAt, variant.price),
+          product.discountItems.filter((item) => item.variantId === variant.id)
+            .map((item) => ({ discountedPrice: item.discountedPrice, endsAt: item.discount.endsAt })),
+          now,
+        );
+        return discount?.effectivePrice ?? variant.price;
+      }));
+      // Never reuse a price index beyond an active discount's expiry.
+      for (const end of [product.flashSaleEndsAt, ...product.discountItems.map((item) => item.discount.endsAt)]) {
+        if (end && end > now) expiresAt = Math.min(expiresAt, end.getTime());
+      }
+      return { id: product.id, price };
+    });
+    ranked.sort((a, b) => (direction === "asc" ? a.price - b.price : b.price - a.price) || a.id.localeCompare(b.id));
+    return { ids: ranked.map((item) => item.id), expiresAt };
+  })();
+  // Keep memory bounded across arbitrary searches and filter combinations.
+  if (priceIndexes.size >= 12) priceIndexes.delete(priceIndexes.keys().next().value!);
+  priceIndexes.set(key, request);
+  try { return (await request).ids; }
+  catch (error) { if (priceIndexes.get(key) === request) priceIndexes.delete(key); throw error; }
+}
+
 export async function getProducts(opts?: {
   category?: string;
   brand?: string;
@@ -375,6 +429,7 @@ export async function getProducts(opts?: {
   newFilter?: NewProductFilter;
   popularFilter?: PopularFilter;
   randomSeed?: string;
+  priceSort?: "asc" | "desc";
   excludeIds?: string[];
   /** Filter HANYA produk dengan ID dalam list ini. Dipakai wishlist
    *  untuk fetch produk yang specific di-favorit (bypass pagination
@@ -397,6 +452,7 @@ export async function getProducts(opts?: {
     newFilter,
     popularFilter,
     randomSeed,
+    priceSort,
     excludeIds,
     includeIds,
     hasPriceOnly,
@@ -421,6 +477,25 @@ export async function getProducts(opts?: {
   });
 
   try {
+    // Rank lightweight prices once, then hydrate only this page with live data.
+    if (priceSort && !popularFilter) {
+      const priceIndexKey = JSON.stringify([
+        category, brand, brands, search, newFilter, priceSort,
+        excludeIds, includeIds, hasPriceOnly, inStockOnly, withImageOnly, discountOnly,
+      ]);
+      const ids = (await priceOrderedIds(where, priceSort, priceIndexKey)).slice(skip ?? 0, take === undefined ? undefined : (skip ?? 0) + take);
+      if (!ids.length) return [];
+      const order = new Map(ids.map((id, index) => [id, index]));
+      const products = await prisma.product.findMany({
+        where: withAnd(where, { id: { in: ids } }),
+        include: getProductListInclude(),
+      });
+      return withProductListMeta(
+        products.sort((a, b) => order.get(a.id)! - order.get(b.id)!).map(mapProductListRecord),
+        viewerId,
+      );
+    }
+
     if (popularFilter === "most-searched") {
       const productIds = await getMostSearchedProductIds({
         productWhere: where,
@@ -553,7 +628,7 @@ export async function getProducts(opts?: {
     // dan storefront tampak "produk hilang semua". Log supaya langsung
     // kelihatan di Vercel logs / Sentry.
     console.error("[getProducts] product list query failed", err);
-    if (randomSeed) return [];
+    if (randomSeed || priceSort) return [];
     if (category || brand || search || newFilter || popularFilter) return [];
     return withVoucherPreviews(sampleProducts, viewerId);
   }

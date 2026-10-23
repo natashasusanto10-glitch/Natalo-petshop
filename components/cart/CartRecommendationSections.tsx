@@ -328,7 +328,6 @@ function VariantChoiceSheet({
 
 export function CartRecommendationSections({ cartItems }: Props) {
   const [recentlyViewed, setRecentlyViewed] = useState<CartRecommendationProduct[]>([]);
-  const [viewedSourceIds, setViewedSourceIds] = useState<string[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
   const [recommendations, setRecommendations] = useState<CartRecommendationProduct[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -344,11 +343,12 @@ export function CartRecommendationSections({ cartItems }: Props) {
   const recommendationRequestRef = useRef(0);
   const cartIds = useMemo(() => cartProductIds(cartItems), [cartItems]);
   const cartIdsKey = cartIds.join(",");
-  const recentIds = useMemo(() => recentlyViewed.map((product) => product.id), [recentlyViewed]);
-  const behaviorIdsKey = useMemo(
-    () => uniqueIds([...viewedSourceIds, ...recentIds]).join(","),
-    [recentIds, viewedSourceIds],
-  );
+  const initialCartIdsRef = useRef(cartIdsKey);
+  const latestCartIdsRef = useRef(cartIds);
+  useEffect(() => { latestCartIdsRef.current = cartIds; }, [cartIds]);
+  const recommendationContextRef = useRef({ cartIdsKey, behaviorIdsKey: "" });
+  const [recommendationContextReady, setRecommendationContextReady] = useState(false);
+
 
   useEffect(() => {
     recommendationsRef.current = recommendations;
@@ -382,9 +382,9 @@ export function CartRecommendationSections({ cartItems }: Props) {
 
   useEffect(() => {
     let active = true;
-    const currentCartIds = cartIdsKey ? cartIdsKey.split(",") : [];
+    const currentCartIds = initialCartIdsRef.current ? initialCartIdsRef.current.split(",") : [];
     const localRecentIds = readRecentProductIds().filter((id) => !currentCartIds.includes(id));
-    setViewedSourceIds(localRecentIds);
+    recommendationContextRef.current.behaviorIdsKey = localRecentIds.join(",");
     setRecentLoading(true);
     const params = new URLSearchParams({
       limit: "10",
@@ -397,18 +397,21 @@ export function CartRecommendationSections({ cartItems }: Props) {
         if (!active) return;
         const nextRecentlyViewed = Array.isArray(data.data) ? data.data : [];
         setRecentlyViewed(nextRecentlyViewed);
-        setViewedSourceIds(uniqueIds([...localRecentIds, ...nextRecentlyViewed.map((product) => product.id)]));
+        recommendationContextRef.current.behaviorIdsKey = uniqueIds([...localRecentIds, ...nextRecentlyViewed.map((product) => product.id)]).join(",");
       })
       .catch(() => {
         if (active) setRecentlyViewed([]);
       })
       .finally(() => {
-        if (active) setRecentLoading(false);
+        if (active) {
+          setRecentLoading(false);
+          setRecommendationContextReady(true);
+        }
       });
     return () => {
       active = false;
     };
-  }, [cartIdsKey]);
+  }, []);
 
   const loadRecommendations = useCallback(
     async (reset = false) => {
@@ -419,10 +422,11 @@ export function CartRecommendationSections({ cartItems }: Props) {
       loadingRef.current = true;
       setLoadingMore(true);
       setRecommendationError(false);
-      const currentCartIds = cartIdsKey ? cartIdsKey.split(",") : [];
-      const currentBehaviorIds = behaviorIdsKey ? behaviorIdsKey.split(",") : [];
+      const context = recommendationContextRef.current;
+      const currentCartIds = context.cartIdsKey ? context.cartIdsKey.split(",") : [];
+      const currentBehaviorIds = context.behaviorIdsKey ? context.behaviorIdsKey.split(",") : [];
       const alreadyShown = reset ? [] : recommendationsRef.current.map((product) => product.id);
-      const exclude = Array.from(new Set([...currentCartIds, ...currentBehaviorIds, ...alreadyShown]));
+      const exclude = Array.from(new Set([...latestCartIdsRef.current, ...currentBehaviorIds, ...alreadyShown]));
       const params = new URLSearchParams({
         limit: "10",
         cart: currentCartIds.join(","),
@@ -438,11 +442,17 @@ export function CartRecommendationSections({ cartItems }: Props) {
         if (!response.ok) throw new Error("Failed to load recommendations");
         const data = (await response.json()) as RecommendationsResponse;
         if (requestId !== recommendationRequestRef.current) return;
-        const nextProducts = Array.isArray(data.data) ? data.data : [];
+        const nextProducts = Array.isArray(data.data)
+          ? data.data.filter((product) => !latestCartIdsRef.current.includes(product.id))
+          : [];
         setRecommendations((current) => {
           if (reset) return nextProducts;
           const seen = new Set(current.map((product) => product.id));
-          return [...current, ...nextProducts.filter((product) => !seen.has(product.id))];
+          return [...current, ...nextProducts.filter((product) => {
+            if (seen.has(product.id)) return false;
+            seen.add(product.id);
+            return true;
+          })];
         });
         setCursor(data.next_cursor ?? null);
         setHasMore(Boolean(data.has_more));
@@ -456,22 +466,17 @@ export function CartRecommendationSections({ cartItems }: Props) {
         }
       }
     },
-    [behaviorIdsKey, cartIdsKey],
+    [],
   );
 
   useEffect(() => {
-    recommendationsRef.current = [];
-    cursorRef.current = null;
-    hasMoreRef.current = true;
-    setRecommendations([]);
-    setCursor(null);
-    setHasMore(true);
-    void loadRecommendations(true);
-  }, [cartIdsKey, behaviorIdsKey, loadRecommendations]);
+    if (recommendationContextReady) void loadRecommendations(true);
+    return () => { recommendationRequestRef.current += 1; };
+  }, [recommendationContextReady, loadRecommendations]);
 
   useEffect(() => {
     const node = sentinelRef.current;
-    if (!node || !hasMore || recommendationError) return;
+    if (!node || !recommendationContextReady || !hasMore || recommendationError) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) void loadRecommendations(false);
@@ -480,7 +485,7 @@ export function CartRecommendationSections({ cartItems }: Props) {
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasMore, loadRecommendations, recommendationError]);
+  }, [recommendationContextReady, hasMore, loadRecommendations, recommendationError]);
 
   return (
     <div className="mt-5 space-y-6 pb-[120px] md:pb-6">

@@ -180,6 +180,7 @@ class ProductService {
     int limit = 30,
     String? newFilter,
     String? popularFilter,
+    String? priceSort,
     bool inStock = false,
     bool hasPrice = false,
     bool withImage = false,
@@ -223,6 +224,7 @@ class ProductService {
           'limit': '$limit',
           if (newFilter != null) 'new': newFilter,
           if (popularFilter != null) 'popular': popularFilter,
+          if (priceSort != null) 'priceSort': priceSort,
           if (inStock) 'inStock': 'true',
           if (hasPrice) 'hasPrice': 'true',
           if (withImage) 'withImage': 'true',
@@ -257,7 +259,7 @@ class ProductService {
   }
 
   /// GET /api/products — list dengan optional filter. Kept for older screens
-  /// (Produk, Cart fallback, Wishlist) that expect a plain List<Product>.
+  /// (Produk, Cart fallback, Wishlist) that expect a plain `List<Product>`.
   Future<List<Product>> fetchAll({
     String? brand,
     String? category,
