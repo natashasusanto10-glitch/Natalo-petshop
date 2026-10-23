@@ -661,9 +661,10 @@ export function VariantEditor({
         if ((event.target as Element).closest("button")) onDirty?.();
       }}
     >
-      <label className="flex min-h-11 items-center gap-3 text-sm font-semibold">
+        <div className="flex min-h-11 items-center gap-3 text-sm font-semibold">
         <input
           type="checkbox"
+            aria-label="Produk memiliki variasi"
           checked={hasVariants}
           onChange={(e) => {
             setHasVariants(e.target.checked);
@@ -671,8 +672,8 @@ export function VariantEditor({
             setServerErrors(null);
           }}
         />{" "}
-        Produk memiliki variasi
-      </label>
+        <span>Produk memiliki variasi</span>
+        </div>
       {hasVariants && (
         <>
           <LayoutMotion
@@ -790,21 +791,21 @@ export function VariantEditor({
                   />
                 </label>
                 <label>
+                  <span className="admin-field-label">SKU</span>
+                  <input
+                    value={bulkSku}
+                    onChange={(e) => setBulkSku(e.target.value)}
+                    placeholder="Awalan SKU"
+                    className="admin-field-control"
+                  />
+                </label>
+                <label>
                   <span className="admin-field-label">Berat (gram)</span>
                   <NumberInput
                     value={bulkWeight}
                     onValueChange={setBulkWeight}
                     thousands={false}
                     placeholder="Berat"
-                    className="admin-field-control"
-                  />
-                </label>
-                <label>
-                  <span className="admin-field-label">SKU</span>
-                  <input
-                    value={bulkSku}
-                    onChange={(e) => setBulkSku(e.target.value)}
-                    placeholder="Awalan SKU"
                     className="admin-field-control"
                   />
                 </label>
